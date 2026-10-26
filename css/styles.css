@@ -45,3 +45,5 @@
 .auth-view{max-width:850px;margin:0 auto}
 @media(max-width:900px){.account-greeting{display:none}}
 @media(max-width:620px){.inline-actions{gap:5px}.inline-actions .button,.inline-actions .icon-button{padding:8px 9px;font-size:11px}.topbar-actions{gap:6px}}
+
+@media(max-width:620px){#register-open{display:none}}
