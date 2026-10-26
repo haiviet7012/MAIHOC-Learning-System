@@ -47,3 +47,16 @@
 @media(max-width:620px){.inline-actions{gap:5px}.inline-actions .button,.inline-actions .icon-button{padding:8px 9px;font-size:11px}.topbar-actions{gap:6px}}
 
 @media(max-width:620px){#register-open{display:none}}
+
+
+/* Account notifications and document moderation */
+.notification-bell{position:relative;min-width:42px;font-size:20px}
+.notification-count{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 4px;border-radius:999px;background:#d83242;color:#fff;font-size:11px;font-weight:700;line-height:19px;text-align:center}
+.notifications-list{display:grid;gap:10px;max-height:min(58vh,520px);overflow:auto}
+.notification-item{padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.notification-item.is-unread{border-left:4px solid var(--accent);background:var(--surface-2)}
+.notification-item-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.notification-item-head span{font-size:11px;color:var(--muted);white-space:nowrap}
+.notification-item p{margin:6px 0 4px;color:var(--muted)}
+.notification-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+.admin-submissions{margin-top:30px}
