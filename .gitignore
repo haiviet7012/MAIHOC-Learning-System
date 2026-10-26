@@ -2,3 +2,7 @@ server/node_modules/
 server/.env
 uploads/*
 !uploads/.gitkeep
+
+# Local account database and sessions
+data/
+server/data/

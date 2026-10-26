@@ -15,7 +15,16 @@
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark">M</span><span>MAI<span class="brand-light">HỌC</span></span></button>
       <div class="topbar-actions">
-        <button class="icon-button" id="upload-open" title="Tải tài liệu lên" aria-label="Tải tài liệu lên">＋ <span class="button-label">Upload tài liệu</span></button>
+        <button class="icon-button" id="upload-open" title="Tải tài liệu lên (chỉ Admin)" aria-label="Tải tài liệu lên" hidden>＋ <span class="button-label">Upload tài liệu</span></button>
+        <div class="inline-actions" id="auth-actions">
+          <button class="icon-button" id="login-open">Đăng nhập</button>
+          <button class="button primary small" id="register-open">Đăng ký</button>
+        </div>
+        <div class="inline-actions" id="user-actions" hidden>
+          <span class="account-greeting" id="user-greeting"></span>
+          <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
+          <button class="icon-button" id="logout-button">Đăng xuất</button>
+        </div>
         <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
         <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu">☰</button>
       </div>
@@ -43,9 +52,34 @@
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="exercise">Bài tập</option><option value="answer">Đáp án / lời giải</option></select></label>
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
       <label>Tệp tài liệu<input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required></label>
-      <label class="inline-check"><input type="checkbox" name="adminMode"> Tôi là quản trị viên</label>
       <div class="modal-actions"><button type="button" class="button secondary" data-close="upload-dialog">Hủy</button><button class="button primary" type="submit">Tải lên</button></div>
-      <p class="tiny muted">Bản demo có thể chạy không cần backend; tệp sẽ được đọc trong phiên hiện tại. Để lưu lâu dài, hãy cấu hình máy chủ.</p>
+      <p class="tiny muted">Chỉ tài khoản Admin đã đăng nhập mới được tải tài liệu lên. Quyền được kiểm tra ở máy chủ.</p>
+    </form>
+  </dialog>
+
+  <dialog id="login-dialog" class="modal compact">
+    <form id="login-form">
+      <div class="modal-heading"><div><p class="eyebrow">TÀI KHOẢN MAI HỌC</p><h2>Đăng nhập</h2></div><button type="button" class="close-button" data-close="login-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Đăng nhập để truy cập các chức năng dành riêng cho tài khoản của bạn.</p>
+      <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required minlength="1" maxlength="128" placeholder="Nhập mật khẩu"></label>
+      <p id="login-error" class="auth-error" role="alert" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="login-dialog">Hủy</button><button class="button primary" type="submit">Đăng nhập</button></div>
+      <p class="tiny muted">Chưa có tài khoản? <button class="text-button" id="switch-to-register" type="button">Đăng ký tại đây</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="register-dialog" class="modal compact">
+    <form id="register-form">
+      <div class="modal-heading"><div><p class="eyebrow">BẮT ĐẦU HÀNH TRÌNH</p><h2>Tạo tài khoản</h2></div><button type="button" class="close-button" data-close="register-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Tài khoản mới mặc định là User. Quyền Admin chỉ được cấp qua cấu hình quản trị phía máy chủ.</p>
+      <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
+      <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
+      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      <p id="register-error" class="auth-error" role="alert" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="register-dialog">Hủy</button><button class="button primary" type="submit">Tạo tài khoản</button></div>
+      <p class="tiny muted">Đã có tài khoản? <button class="text-button" id="switch-to-login" type="button">Đăng nhập</button></p>
     </form>
   </dialog>
 
