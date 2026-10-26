@@ -3,6 +3,7 @@ import {initTheme} from "./theme.js";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
 import {getDocuments,uploadDocument} from "./documents.js";
 import {evaluateDifficulty} from "./ai.js";
+import "./account-features.js";
 
 const view=$("#view");
 const state={route:"home",subject:"Toán",grade:"10",category:"theory",docId:null,examDocId:null,answers:{},timer:null,remaining:5400,warningShown:false,examStarted:false,examFinished:false};
@@ -270,7 +271,7 @@ $("#brand-home").addEventListener("click",()=>go("home"));
 $("#menu-toggle").addEventListener("click",()=>$("#subject-menu").classList.toggle("open"));
 document.addEventListener("click",e=>{if(!e.target.closest("#subject-menu")&&!e.target.closest("#menu-toggle")&&!e.target.closest('[data-action="browse-subjects"]'))$("#subject-menu").classList.remove("open");});
 $("#upload-open").addEventListener("click",()=>openDialog("upload-dialog"));
-$("#upload-form").addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);try{const result=await uploadDocument(fd);closeDialog("upload-dialog");form.reset();toast(result.localOnly?"Đã thêm tài liệu vào phiên trình duyệt hiện tại.":"Tài liệu đã được tải lên máy chủ.","success");render();}catch(err){toast(err.message||"Không thể tải tài liệu lên.","error");}});
+$("#upload-form").addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);try{const result=await uploadDocument(fd);closeDialog("upload-dialog");form.reset();toast(result.localOnly?"Đã thêm tài liệu vào phiên trình duyệt hiện tại.":result.status==="pending"?"Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo.":"Tài liệu đã được tải lên máy chủ.","success");render();}catch(err){toast(err.message||"Không thể tải tài liệu lên.","error");}});
 $("#confirm-yes").addEventListener("click",()=>{closeDialog("confirm-dialog");finishExam();});
 document.addEventListener("input",e=>{if(e.target.matches("[data-answer]"))state.answers[e.target.dataset.answer]=e.target.value;});
 window.addEventListener("beforeunload",e=>{if(state.route==="exam"&&state.examStarted){e.preventDefault();e.returnValue="";}});
@@ -287,7 +288,8 @@ function applyAuthUI(){
   const signedIn=Boolean(currentUser);
   $("#auth-actions").hidden=signedIn;
   $("#user-actions").hidden=!signedIn;
-  $("#upload-open").hidden=currentUser?.role!=="admin";
+  $("#upload-open").hidden=!signedIn;
+  $("#notifications-open").hidden=!signedIn;
   $("#admin-open").hidden=currentUser?.role!=="admin";
   $("#user-greeting").textContent=currentUser?`Xin chào, ${currentUser.name}${currentUser.role==="admin"?" · Admin":""}`:"";
 }
