@@ -1,0 +1,69 @@
+const $ = (s, root=document) => root.querySelector(s);
+const esc = (v="") => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let activeUser = null;
+async function request(url, options={}) {
+  const response = await fetch(url, {credentials:"same-origin", ...options});
+  const data = await response.json().catch(()=>({}));
+  if (!response.ok) throw new Error(data.error || "Yêu cầu không thành công.");
+  return data;
+}
+function toastNotice(message, type="success") {
+  const region=$("#toast-region"); if(!region)return;
+  const el=document.createElement("div");el.className="toast "+type;el.textContent=message;region.append(el);setTimeout(()=>el.remove(),3800);
+}
+async function loadUser() {
+  try { const data=await request("/api/auth/me"); activeUser=data.user||null; } catch { activeUser=null; }
+  const bell=$("#notifications-open"), upload=$("#upload-open");
+  if(bell)bell.hidden=!activeUser;
+  if(upload)upload.hidden=!activeUser;
+  if(activeUser)refreshNotifications();
+}
+async function refreshNotifications() {
+  if(!activeUser)return;
+  try {
+    const data=await request("/api/notifications");
+    const badge=$("#notification-count");
+    if(badge){badge.hidden=!(data.unread>0);badge.textContent=data.unread>99?"99+":String(data.unread);}
+    const list=$("#notifications-list");
+    if(list)list.innerHTML=(data.items||[]).length?data.items.map(n=>{
+      const date=new Date(String(n.createdAt).replace(" ","T")+"Z").toLocaleString("vi-VN");
+      return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(n.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(n.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
+    }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
+  } catch(e) { console.warn("Notifications:",e.message); }
+}
+async function saveProgress(payload) {
+  if(!activeUser)return;
+  try { await request("/api/progress",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});refreshNotifications(); }
+  catch(e){console.warn("Không lưu được tiến trình:",e.message);}
+}
+function addAdminReviewPanel() {
+  if(!activeUser||activeUser.role!=="admin"||!$("#admin-users-table")||$("#admin-review-panel"))return;
+  const panel=document.createElement("section");panel.id="admin-review-panel";panel.className="admin-submissions";
+  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu chờ duyệt</h2><p class="muted">Tài liệu do User gửi sẽ được thông báo khi có quyết định.</p></div></div><div id="pending-submissions"><p class="muted">Đang tải…</p></div>';
+  $("#admin-users-table").after(panel);loadSubmissions();
+}
+async function loadSubmissions() {
+  const box=$("#pending-submissions");if(!box)return;
+  try {
+    const data=await request("/api/admin/submissions");
+    box.innerHTML=(data.submissions||[]).length?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Người gửi</th><th>Phân loại</th><th>Ngày gửi</th><th>Thao tác</th></tr></thead><tbody>'+data.submissions.map(s=>'<tr><td><strong>'+esc(s.title)+'</strong><br><span class="muted tiny">'+esc(s.originalName)+' · '+Math.ceil(s.size/1024)+' KB</span></td><td>'+esc(s.userName)+'<br><span class="muted tiny">'+esc(s.userEmail)+'</span></td><td>'+esc(s.subject)+' · Lớp '+esc(s.grade)+'<br>'+esc(s.category)+'</td><td>'+esc(s.createdAt)+'</td><td><button class="button primary small" data-review-id="'+s.id+'" data-review-decision="approved">Duyệt</button> <button class="button secondary small" data-review-id="'+s.id+'" data-review-decision="rejected">Từ chối</button></td></tr>').join("")+'</tbody></table></div>':'<p class="muted">Không có tài liệu chờ duyệt.</p>';
+  } catch(e) {box.innerHTML='<p class="auth-error">'+esc(e.message)+'</p>';}
+}
+document.addEventListener("click",async e=>{
+  if(e.target.closest("#notifications-open")){await refreshNotifications();const d=$("#notifications-dialog");if(d&&!d.open)d.showModal();}
+  const read=e.target.closest("[data-notification-read]");
+  if(read){try{await request("/api/notifications/"+read.dataset.notificationRead+"/read",{method:"POST"});refreshNotifications();}catch(err){toastNotice(err.message,"error");}}
+  if(e.target.closest("#notifications-read-all")){try{await request("/api/notifications/read-all",{method:"POST"});refreshNotifications();}catch(err){toastNotice(err.message,"error");}}
+  const review=e.target.closest("[data-review-id]");
+  if(review){const decision=review.dataset.reviewDecision;const note=decision==="rejected"?(prompt("Lý do từ chối (không bắt buộc):")||""):"";try{await request("/api/admin/submissions/"+review.dataset.reviewId+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,note})});toastNotice(decision==="approved"?"Đã duyệt tài liệu.":"Đã từ chối tài liệu.");loadSubmissions();refreshNotifications();}catch(err){toastNotice(err.message,"error");}}
+  const readDoc=e.target.closest('[data-action="read-doc"]');
+  if(readDoc&&activeUser){saveProgress({itemType:"document",itemId:readDoc.dataset.id,subject:"Toán",grade:document.querySelector(".grade")?.textContent?.match(/\d+/)?.[0]||"10",status:"in_progress",progressPercent:10,lastPosition:"opened"});}
+  const startExam=e.target.closest('[data-action="start-exam"]');
+  if(startExam&&activeUser){saveProgress({itemType:"exam",itemId:startExam.dataset.id,subject:"Toán",grade:"10",status:"in_progress",progressPercent:0,lastPosition:"started"});}
+  if(e.target.closest("#confirm-yes")&&activeUser){const answers={};document.querySelectorAll("[data-answer]").forEach(el=>answers[el.dataset.answer]=el.value);saveProgress({itemType:"exam",itemId:document.querySelector(".exam-toolbar strong")?.textContent||"exam",subject:"Toán",grade:"10",status:"completed",progressPercent:100,answers,lastPosition:"submitted"});}
+});
+document.addEventListener("DOMContentLoaded",loadUser);
+const observer=new MutationObserver(()=>{const greeting=$("#user-greeting");if(greeting){const text=greeting.textContent||"";if(text.startsWith("Xin chào,")){request("/api/auth/me").then(d=>{activeUser=d.user||null;addAdminReviewPanel();}).catch(()=>{});}}});
+observer.observe(document.body,{childList:true,subtree:true});
+setInterval(()=>{if(activeUser)refreshNotifications();},45000);
+loadUser();
