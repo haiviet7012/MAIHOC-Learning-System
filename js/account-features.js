@@ -63,7 +63,8 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#confirm-yes")&&activeUser){const answers={};document.querySelectorAll("[data-answer]").forEach(el=>answers[el.dataset.answer]=el.value);saveProgress({itemType:"exam",itemId:document.querySelector(".exam-toolbar strong")?.textContent||"exam",subject:"Toán",grade:"10",status:"completed",progressPercent:100,answers,lastPosition:"submitted"});}
 });
 document.addEventListener("DOMContentLoaded",loadUser);
-const observer=new MutationObserver(()=>{const greeting=$("#user-greeting");if(greeting){const text=greeting.textContent||"";if(text.startsWith("Xin chào,")){request("/api/auth/me").then(d=>{activeUser=d.user||null;addAdminReviewPanel();}).catch(()=>{});}}});
+const observer=new MutationObserver(()=>{if(activeUser?.role==="admin" && $("#admin-users-table") && !$("#admin-review-panel")) addAdminReviewPanel();});
 observer.observe(document.body,{childList:true,subtree:true});
-setInterval(()=>{if(activeUser)refreshNotifications();},45000);
+setInterval(()=>{loadUser();},45000);
 loadUser();
+window.addEventListener("maihoc-auth-changed",loadUser);
