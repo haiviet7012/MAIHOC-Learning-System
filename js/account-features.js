@@ -39,8 +39,19 @@ async function saveProgress(payload) {
 function addAdminReviewPanel() {
   if(!activeUser||activeUser.role!=="admin"||!$("#admin-users-table")||$("#admin-review-panel"))return;
   const panel=document.createElement("section");panel.id="admin-review-panel";panel.className="admin-submissions";
-  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu chờ duyệt</h2><p class="muted">Tài liệu do User gửi sẽ được thông báo khi có quyết định.</p></div></div><div id="pending-submissions"><p class="muted">Đang tải…</p></div>';
-  $("#admin-users-table").after(panel);loadSubmissions();
+  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu chờ duyệt</h2><p class="muted">Tài liệu do User gửi sẽ được thông báo khi có quyết định.</p></div></div><div id="pending-submissions"><p class="muted">Đang tải…</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2><p class="muted">Các bài học, tài liệu và lượt thi đã được ghi nhận.</p></div></div><div id="admin-progress-list"><p class="muted">Đang tải…</p></div>';
+  $("#admin-users-table").after(panel);loadSubmissions();loadAdminProgress();
+}
+async function loadAdminProgress(){
+ const box=$("#admin-progress-list");if(!box)return;
+ try{const data=await request("/api/admin/progress");const rows=data.progress||[];
+ if(!rows.length){box.innerHTML="<p class=\"muted\">Chưa có tiến trình được ghi nhận.</p>";return;}
+ const table=document.createElement("table");table.className="admin-table";
+ table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Cập nhật</th></tr></thead>";
+ const body=document.createElement("tbody");
+ rows.forEach(p=>{const tr=document.createElement("tr");[p.userName+" ("+p.userEmail+")",p.itemType+" · "+p.itemId,p.subject+" · "+p.grade,p.status,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);});body.append(tr);});
+ table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap";wrap.append(table);box.replaceChildren(wrap);
+ }catch(e){box.textContent=e.message||"Không tải được tiến trình.";box.classList.add("auth-error");}
 }
 async function loadSubmissions() {
   const box=$("#pending-submissions");if(!box)return;
