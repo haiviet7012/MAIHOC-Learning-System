@@ -27,6 +27,8 @@ app.use((req,res,next)=>{
 });
 app.use(express.json({limit:"1mb"}));
 app.use(loadCurrentUser);
+// Do not expose backend source, environment files or the local account database as static assets.
+app.use((req,res,next)=>req.path==="/server"||req.path.startsWith("/server/")?res.sendStatus(404):next());
 app.use(express.static(root,{extensions:["html"],index:"index.html"}));
 
 const loginAttempts=new Map();
