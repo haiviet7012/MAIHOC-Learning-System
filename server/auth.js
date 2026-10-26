@@ -7,8 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scrypt = promisify(crypto.scrypt);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..");
-const dataDir = path.join(root, "data");
+const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 
 export const db = new Database(path.join(dataDir, "maihoc.sqlite"));
