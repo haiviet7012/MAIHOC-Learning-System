@@ -11,7 +11,61 @@ const docs=()=>getDocuments();
 const findDoc=id=>docs().find(d=>d.id===id);
 const by=(grade,category)=>docs().filter(d=>d.subject==="Toán"&&d.grade===String(grade)&&d.category===category);
 const categoryName=k=>CATEGORIES[k]?.label||k;
-function go(route,params={}){stopTimerIfLeaving(route);Object.assign(state,params);state.route=route;render();}
+function saveRouteHistory() {
+    const savedState = { ...state, timer: null };
+
+    // Sao lưu đáp án để có thể khôi phục khi quay lại.
+    savedState.answers = { ...state.answers };
+
+    return {
+        maihoc: true,
+        appState: savedState
+    };
+}
+
+function go(route, params = {}) {
+    stopTimerIfLeaving(route);
+
+    Object.assign(state, params);
+    state.route = route;
+
+    // Ghi trang mới vào lịch sử điều hướng của Chrome.
+    history.pushState(
+        saveRouteHistory(),
+        "",
+        window.location.href
+    );
+
+    render();
+}
+// Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
+history.replaceState(
+    saveRouteHistory(),
+    "",
+    window.location.href
+);
+
+// Khôi phục trang khi nhấn Back hoặc Forward.
+window.addEventListener("popstate", function (event) {
+    const saved = event.state;
+
+    // Nếu trạng thái trước đó thuộc MAI HỌC,
+    // khôi phục trang đó và không chuyển sang Google.
+    if (saved?.maihoc && saved.appState) {
+        const previousRoute = saved.appState.route;
+
+        stopTimerIfLeaving(previousRoute);
+
+        Object.assign(state, saved.appState);
+        state.timer = null;
+
+        render();
+        return;
+    }
+
+    // Không tự chuyển hướng khi gặp trạng thái không xác định.
+    // Để Chrome xử lý lịch sử điều hướng bình thường.
+});
 function stopTimerIfLeaving(route){if(state.route==="exam"&&route!=="exam"&&state.timer){clearInterval(state.timer);state.timer=null;}}
 function breadcrumb(title){return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">Toán</button><span>/</span><span>${escapeHTML(title)}</span></div>`;}
 function homePage(){return `<section class="hero"><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><div class="book-illustration"><strong>MAI<br>HỌC</strong><div class="book-line"></div><div class="book-line" style="width:75%"></div><div class="book-line" style="width:55%"></div><p style="font-size:11px">LEARN · PRACTICE · GROW</p></div></div></section>
@@ -24,6 +78,16 @@ function homePage(){return `<section class="hero"><div class="hero-copy"><p clas
 <section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
 <div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
 <p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;}
+function subjectPickerPage(){const subjects=[
+ {name:"Toán",icon:"∑",active:true,items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"Vật lý",icon:"⚛",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"Hóa học",icon:"⚗",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"Sinh học",icon:"❧",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"Tiếng Anh",icon:"A",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"Ngữ văn",icon:"文",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
+ {name:"IELTS",icon:"✦",items:["Ôn tập theo kỹ năng","Thư viện tài liệu","Phòng thi thử (có tính giờ)"]},
+ {name:"Đề thi THPT quốc gia",icon:"▤",items:["Đề thi các năm trước","Đề thi thử trường / sở","Phòng thi thử có tính giờ"]}
+ ];return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">TOÁN ĐANG HOẠT ĐỘNG</span></div><div class="subject-picker-grid">${subjects.map(x=>`<article class="subject-tile ${x.active?"is-active":"is-coming"}" ${x.active?'data-action="open-math" role="button" tabindex="0"':'data-action="coming-subject" data-name="'+x.name+'" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active?"ĐANG HOẠT ĐỘNG":"SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item=>`<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active?"Khám phá môn học":"Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;}
 function subjectPage(){return `${pageHeading("Môn Toán","Chọn một khu vực học tập để tiếp tục.")}<div class="grid three">
 ${[{r:"theory",i:"▤",t:"Ôn tập lý thuyết",d:"Đọc tài liệu và hệ thống kiến thức theo từng lớp."},{r:"practice",i:"✎",t:"Đề thi ôn tập",d:"Luyện tập theo bộ đề và chủ đề."},{r:"exam-select",i:"◷",t:"Phòng thi thử",d:"Thi mô phỏng có giới hạn thời gian 90 phút."}].map(x=>`<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d=>d.subject==="Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d=>d.subject==="Toán"&&d.grade===g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;}
 function gradePicker(route,category){return `${pageHeading(category?categoryName(category):"Chọn lớp","Chọn khối lớp để xem tài liệu môn Toán.")}<div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category||""}"><div><span class="pill">MÔN TOÁN</span><div class="grade">${gradeLabel(g)}</div><p>${category?by(g,category).length+" tài liệu":"Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`;}
@@ -37,6 +101,7 @@ function resultPage(){const d=findDoc(state.examDocId);const count=Object.values
 function render(){
   if(state.route==="home")view.innerHTML=homePage();
   else if(state.route==="subject")view.innerHTML=subjectPage();
+  else if(state.route==="subject-picker")view.innerHTML=subjectPickerPage();
   else if(state.route==="theory")view.innerHTML=gradePicker("theory","theory");
   else if(state.route==="practice")view.innerHTML=gradePicker("practice","practice");
   else if(state.route==="theory-list")view.innerHTML=resourceListPage("theory",state.grade);
@@ -57,14 +122,133 @@ function startTimer(){
 }
 function updateTimer(){const el=$("#timer");if(!el)return;const m=Math.floor(state.remaining/60),s=state.remaining%60;el.textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;el.classList.toggle("warning",state.remaining<=300);}
 function wireSplitter(){const split=$("#splitter"),exam=$("#split-exam"),left=$("#paper-pane");if(!split||split.dataset.ready)return;split.dataset.ready="1";let drag=false;split.addEventListener("pointerdown",e=>{drag=true;split.setPointerCapture(e.pointerId);});split.addEventListener("pointermove",e=>{if(!drag)return;const rect=exam.getBoundingClientRect();if(innerWidth<=620){const ratio=(e.clientY-rect.top)/rect.height;left.style.flex=`0 0 ${Math.max(25,Math.min(75,ratio*100))}%`;}else{const ratio=(e.clientX-rect.left)/rect.width;left.style.flex=`0 0 ${Math.max(25,Math.min(75,ratio*100))}%`;}});split.addEventListener("pointerup",()=>drag=false);}
-function finishExam(){if(state.timer){clearInterval(state.timer);state.timer=null;}state.examFinished=true;state.examStarted=false;state.answers={...state.answers};go("result");}
-function startExam(id){const d=findDoc(id);if(!d)return;state.examDocId=id;state.answers={};state.remaining=5400;state.warningShown=false;state.examStarted=true;state.examFinished=false;go("exam");}
+function finishExam() {
+    // Ngăn kết thúc bài thi nhiều lần.
+    if (state.examFinished) return;
+
+    // Đánh dấu bài thi đã kết thúc trước khi thoát fullscreen.
+    state.examFinished = true;
+    state.examStarted = false;
+
+    // Dừng đồng hồ đếm ngược.
+    if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+    }
+
+    // Chấm điểm và lưu kết quả nếu dự án có hàm chấm điểm riêng.
+    // Giữ nguyên logic chấm điểm hiện có của dự án.
+
+    // Thoát toàn màn hình rồi chuyển sang trang kết quả.
+    const leaveFullscreen = document.fullscreenElement
+        ? document.exitFullscreen().catch((error) => {
+            console.error("Không thể thoát toàn màn hình:", error);
+        })
+        : Promise.resolve();
+
+    Promise.resolve(leaveFullscreen).finally(() => {
+        go("result");
+    });
+}
+// PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
+// ============================================
+document.addEventListener("fullscreenchange", () => {
+    // Vẫn đang ở chế độ toàn màn hình.
+    if (document.fullscreenElement) return;
+
+    // Nếu bài thi đã kết thúc bình thường hoặc hết giờ,
+    // không xử lý như hành vi thoát bài thi.
+    if (
+        state.route !== "exam" ||
+        !state.examStarted ||
+        state.examFinished
+    ) {
+        return;
+    }
+
+    // Người thi chủ động thoát toàn màn hình.
+    state.examStarted = false;
+    state.examFinished = true;
+
+    if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+    }
+
+    // Không xóa đáp án ở đây nếu bạn cần lưu kết quả vi phạm.
+    go("home");
+
+    window.alert(
+        "Bạn đã thoát bài thi!\n\n" +
+        "Lượt thi đã kết thúc vì bạn thoát chế độ toàn màn hình."
+    );
+});
+
+// ============================================
+// BẮT ĐẦU THI THỬ - TỰ ĐỘNG TOÀN MÀN HÌNH
+// ============================================
+
+function startExam(id) {
+    const d = findDoc(id);
+    if (!d) return;
+
+    // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
+    // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
+    let fullscreenPromise = null;
+
+    if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+            try {
+                fullscreenPromise =
+                    document.documentElement.requestFullscreen();
+            } catch (error) {
+                console.error(
+                    "Không thể bật toàn màn hình:",
+                    error
+                );
+            }
+        }
+    }
+
+    // Khởi tạo lượt thi mới.
+    state.examDocId = id;
+    state.answers = {};
+    state.remaining = 10;
+    state.warningShown = false;
+    state.examStarted = true;
+    state.examFinished = false;
+
+    // Chuyển đến phòng thi.
+    go("exam");
+
+    // Thông báo nếu trình duyệt từ chối toàn màn hình.
+    if (fullscreenPromise) {
+        fullscreenPromise.catch((error) => {
+            console.error(
+                "Trình duyệt không cho phép toàn màn hình:",
+                error
+            );
+
+            toast(
+                "Không thể bật toàn màn hình. Hãy thử nhấn Vào phòng thi lại.",
+                "error"
+            );
+        });
+    } else if (!document.fullscreenElement) {
+        toast(
+            "Trình duyệt không hỗ trợ chế độ toàn màn hình.",
+            "error"
+        );
+    }
+}
 async function doEvaluate(id){const d=findDoc(id);if(!d)return;$("#difficulty-result").innerHTML='<span class="spinner"></span> Đang phân tích…';openDialog("difficulty-dialog");try{const result=await evaluateDifficulty(d.content||d.description,d.title);$("#difficulty-result").textContent=result.analysis||result.text||"AI chưa trả về kết quả.";}catch(e){$("#difficulty-result").textContent=`Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;}}
 function subjectClick(subject){if(subject==="Toán"){go("subject");$("#subject-menu").classList.remove("open");}else{toast(`${subject}: sẽ được cập nhật trong thời gian tới — Coming soon!`);$("#subject-menu").classList.remove("open");}}
 document.addEventListener("click",async e=>{
  const routeBtn=e.target.closest("[data-route]");if(routeBtn){e.preventDefault();const r=routeBtn.dataset.route;go(r);return;}
  const action=e.target.closest("[data-action]");if(action){const a=action.dataset.action;
-  if(a==="browse-subjects"){ $("#subject-menu").classList.toggle("open");return;}
+  if(a==="browse-subjects"){ $("#subject-menu").classList.remove("open");go("subject-picker");return;}
+  if(a==="open-math"){go("subject");return;}
+  if(a==="coming-subject"){toast(`${action.dataset.name}: sẽ được cập nhật trong thời gian tới — Coming soon!`);return;}
   if(a==="choose-grade"){state.grade=action.dataset.grade;go("theory-list",{grade:action.dataset.grade});return;}
   if(a==="select-grade-route"){const g=action.dataset.grade,next=action.dataset.next,cat=action.dataset.category;state.grade=g;if(next==="exam-list")go("exam-list",{grade:g});else if(cat==="theory")go("theory-list",{grade:g});else if(cat==="practice")go("practice-list",{grade:g});else go("exercise-list",{grade:g});return;}
   if(a==="open-upload"){openDialog("upload-dialog");return;}
@@ -84,4 +268,13 @@ $("#upload-form").addEventListener("submit",async e=>{e.preventDefault();const f
 $("#confirm-yes").addEventListener("click",()=>{closeDialog("confirm-dialog");finishExam();});
 document.addEventListener("input",e=>{if(e.target.matches("[data-answer]"))state.answers[e.target.dataset.answer]=e.target.value;});
 window.addEventListener("beforeunload",e=>{if(state.route==="exam"&&state.examStarted){e.preventDefault();e.returnValue="";}});
-initTheme();render();
+
+// ============================================
+// ĐIỀU HƯỚNG NÚT BACK CỦA TRÌNH DUYỆT
+// Áp dụng cho toàn bộ website MAI HỌC
+// ============================================
+
+
+// Khởi tạo giao diện như bình thường.
+initTheme();
+render();
