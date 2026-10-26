@@ -84,3 +84,12 @@ Máy chủ Express đã tích hợp upload giới hạn 20 MB/tệp. Chỉ Admin
 - Cân nhắc rate limit dùng store bền vững, logging/audit, quét tệp upload và chính sách bảo vệ dữ liệu.
 - Tích hợp lịch sử thi và tiến độ học tập với ID tài khoản; bổ sung đáp án chuẩn và chấm điểm chính xác.
 - Kiểm tra quyền riêng tư, bản quyền tài liệu và điều khoản sử dụng Gemini trước khi public.
+
+## Tài khoản, tiến trình và duyệt tài liệu
+
+- `server/data/maihoc.sqlite` lưu tài khoản, phiên đăng nhập, tiến trình học, thông báo và hồ sơ tài liệu chờ duyệt.
+- `uploads/` lưu tài liệu đã được Admin duyệt; `uploads/pending/` chứa file chờ duyệt và không được phục vụ công khai.
+- User cần đăng nhập để gửi tài liệu. Tài liệu chỉ xuất hiện trong thư viện sau khi Admin duyệt tại trang Quản trị.
+- Biến `ADMIN_EMAIL` nhận email báo có tài liệu chờ duyệt. Cấu hình `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` và `SMTP_FROM` trong `server/.env` để bật email. Với Gmail, dùng App Password, không dùng mật khẩu tài khoản thường.
+- API tiến trình: `GET /api/progress`, `PUT /api/progress`; Admin có thể xem dữ liệu tổng hợp qua `GET /api/admin/progress`. Thông báo: `GET /api/notifications`.
+- Sau khi cập nhật dependency, chạy `cd server` rồi `npm install` để cài thêm `nodemailer` và cập nhật `package-lock.json`.

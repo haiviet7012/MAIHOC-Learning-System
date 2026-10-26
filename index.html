@@ -15,7 +15,8 @@
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark">M</span><span>MAI<span class="brand-light">HỌC</span></span></button>
       <div class="topbar-actions">
-        <button class="icon-button" id="upload-open" title="Tải tài liệu lên (chỉ Admin)" aria-label="Tải tài liệu lên" hidden>＋ <span class="button-label">Upload tài liệu</span></button>
+        <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
+        <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
         <div class="inline-actions" id="auth-actions">
           <button class="icon-button" id="login-open">Đăng nhập</button>
           <button class="button primary small" id="register-open">Đăng ký</button>
@@ -46,15 +47,21 @@
   <dialog id="upload-dialog" class="modal">
     <form id="upload-form" method="dialog">
       <div class="modal-heading"><div><p class="eyebrow">KHO TÀI LIỆU</p><h2>Upload tài liệu</h2></div><button type="button" class="close-button" data-close="upload-dialog" aria-label="Đóng">×</button></div>
-      <p class="muted">Thêm tài liệu và đáp án cho hệ thống. Tệp được lưu trên máy chủ khi bạn chạy backend.</p>
+      <p class="muted">Tài liệu bạn gửi sẽ được Admin kiểm tra trước khi xuất hiện trong thư viện. Admin có thể tải lên trực tiếp.</p>
       <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
       <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="exercise">Bài tập</option><option value="answer">Đáp án / lời giải</option></select></label>
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
       <label>Tệp tài liệu<input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required></label>
       <div class="modal-actions"><button type="button" class="button secondary" data-close="upload-dialog">Hủy</button><button class="button primary" type="submit">Tải lên</button></div>
-      <p class="tiny muted">Chỉ tài khoản Admin đã đăng nhập mới được tải tài liệu lên. Quyền được kiểm tra ở máy chủ.</p>
+      <p class="tiny muted">Cần đăng nhập để gửi tài liệu. Tệp tối đa 20 MB; tài liệu do User gửi sẽ ở trạng thái chờ duyệt.</p>
     </form>
+  </dialog>
+
+  <dialog id="notifications-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">TRUNG TÂM THÔNG BÁO</p><h2>Thông báo</h2></div><button type="button" class="close-button" data-close="notifications-dialog" aria-label="Đóng">×</button></div>
+    <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button></div>
+    <div id="notifications-list" class="notifications-list"><p class="muted">Đang tải thông báo…</p></div>
   </dialog>
 
   <dialog id="login-dialog" class="modal compact">
