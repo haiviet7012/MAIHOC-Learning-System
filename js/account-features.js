@@ -63,6 +63,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#confirm-yes")&&activeUser){const answers={};document.querySelectorAll("[data-answer]").forEach(el=>answers[el.dataset.answer]=el.value);saveProgress({itemType:"exam",itemId:document.querySelector(".exam-toolbar strong")?.textContent||"exam",subject:"Toán",grade:"10",status:"completed",progressPercent:100,answers,lastPosition:"submitted"});}
 });
 document.addEventListener("DOMContentLoaded",loadUser);
+fetch("/api/documents").then(r=>r.ok?r.json():[]).then(list=>{if(!Array.isArray(list))return;const key="maihoc-uploaded-docs";const existing=JSON.parse(localStorage.getItem(key)||"[]");const known=new Set(existing.map(d=>d.id));for(const d of list){if(!known.has(d.id))existing.push({...d,sample:false,description:d.originalName||"Tài liệu đã được Admin duyệt"});}localStorage.setItem(key,JSON.stringify(existing));}).catch(()=>{});
 const observer=new MutationObserver(()=>{if(activeUser?.role==="admin" && $("#admin-users-table") && !$("#admin-review-panel")) addAdminReviewPanel();});
 observer.observe(document.body,{childList:true,subtree:true});
 setInterval(()=>{loadUser();},45000);
