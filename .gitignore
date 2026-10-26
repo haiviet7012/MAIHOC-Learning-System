@@ -1,0 +1,23 @@
+server/node_modules/
+server/.env
+uploads/*
+!uploads/.gitkeep
+
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

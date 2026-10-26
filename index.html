@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#123b70">
+  <title>MAI HỌC — Học tập & luyện thi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark">M</span><span>MAI<span class="brand-light">HỌC</span></span></button>
+      <div class="topbar-actions">
+        <button class="icon-button" id="upload-open" title="Tải tài liệu lên" aria-label="Tải tài liệu lên">＋ <span class="button-label">Upload tài liệu</span></button>
+        <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
+        <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu">☰</button>
+      </div>
+      <nav class="subject-menu" id="subject-menu" aria-label="Danh sách môn học">
+        <button data-subject="Toán" class="subject-link active">Toán</button>
+        <button data-subject="Tiếng Anh" class="subject-link">Tiếng Anh</button>
+        <button data-subject="Vật lý" class="subject-link">Vật lý</button>
+        <button data-subject="Hóa học" class="subject-link">Hóa học</button>
+        <button data-subject="Ngữ văn" class="subject-link">Ngữ văn</button>
+        <button data-subject="Sinh học" class="subject-link">Sinh học</button>
+        <button data-subject="Đề thi THPT quốc gia" class="subject-link">Đề thi THPT quốc gia</button>
+        <button data-subject="IELTS" class="subject-link">IELTS</button>
+      </nav>
+    </header>
+    <main id="view" class="view" tabindex="-1"></main>
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  </div>
+
+  <dialog id="upload-dialog" class="modal">
+    <form id="upload-form" method="dialog">
+      <div class="modal-heading"><div><p class="eyebrow">KHO TÀI LIỆU</p><h2>Upload tài liệu</h2></div><button type="button" class="close-button" data-close="upload-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Thêm tài liệu và đáp án cho hệ thống. Tệp được lưu trên máy chủ khi bạn chạy backend.</p>
+      <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
+      <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
+      <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="exercise">Bài tập</option><option value="answer">Đáp án / lời giải</option></select></label>
+      <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
+      <label>Tệp tài liệu<input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required></label>
+      <label class="inline-check"><input type="checkbox" name="adminMode"> Tôi là quản trị viên</label>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="upload-dialog">Hủy</button><button class="button primary" type="submit">Tải lên</button></div>
+      <p class="tiny muted">Bản demo có thể chạy không cần backend; tệp sẽ được đọc trong phiên hiện tại. Để lưu lâu dài, hãy cấu hình máy chủ.</p>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">XÁC NHẬN</p><h2 id="confirm-title">Nộp bài?</h2></div><button type="button" class="close-button" data-close="confirm-dialog" aria-label="Đóng">×</button></div>
+    <p id="confirm-message">Bạn chắc chắn muốn nộp bài?</p>
+    <div class="modal-actions"><button class="button secondary" data-close="confirm-dialog">Tiếp tục làm</button><button id="confirm-yes" class="button primary">Nộp bài</button></div>
+  </dialog>
+
+  <dialog id="difficulty-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">ĐÁNH GIÁ BẰNG AI</p><h2>Độ khó đề thi</h2></div><button type="button" class="close-button" data-close="difficulty-dialog" aria-label="Đóng">×</button></div>
+    <div id="difficulty-result" class="ai-result"><span class="spinner"></span> Đang phân tích…</div>
+  </dialog>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
