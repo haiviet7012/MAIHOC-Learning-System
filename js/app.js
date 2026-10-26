@@ -6,6 +6,7 @@ import {evaluateDifficulty} from "./ai.js";
 
 const view=$("#view");
 const state={route:"home",subject:"Toán",grade:"10",category:"theory",docId:null,examDocId:null,answers:{},timer:null,remaining:5400,warningShown:false,examStarted:false,examFinished:false};
+let currentUser=null;
 const gradeLabel=g=>`Lớp ${g}`;
 const docs=()=>getDocuments();
 const findDoc=id=>docs().find(d=>d.id===id);
@@ -98,6 +99,8 @@ function examListPage(grade){const list=by(grade,"exam");return `${pageHeading(`
 function questionsFor(doc){const content=doc?.content||"";const found=[...content.matchAll(/Câu\s*(\d+)\.\s*([^\n]+)/gi)].map(m=>({n:m[1],text:m[2]}));return found.length?found:[{n:"1",text:"Nhập câu hỏi tại đây (quản trị viên có thể cập nhật nội dung đề)."},{n:"2",text:"Trình bày lời giải của bạn."},{n:"3",text:"Hoàn thành bài toán sau."}];}
 function examPage(){const d=findDoc(state.examDocId);if(!d)return examSelectPage();const qs=questionsFor(d);return `${breadcrumb("Phòng thi thử")}<div class="exam-toolbar"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} · Làm bài trong tối đa 90 phút</div></div><div id="timer" class="timer">90:00</div><button class="button primary" data-action="submit-exam">Nộp bài</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane"><span class="pill">ĐỀ THI</span><h2>${escapeHTML(d.title)}</h2><p class="muted">Đọc kỹ từng câu hỏi và nhập câu trả lời ở khung bên phải.</p>${qs.map(q=>`<div class="question"><h3>Câu ${q.n}. ${escapeHTML(q.text)}</h3><p class="exam-instructions">Hãy trình bày lời giải rõ ràng.</p></div>`).join("")}</section><div class="splitter" id="splitter" role="separator" aria-label="Kéo để thay đổi kích thước hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PHẦN ĐIỀN ĐÁP ÁN</span><h2>Bài làm của bạn</h2><form id="answer-form">${qs.map(q=>`<div class="question"><h3>Câu ${q.n}</h3><textarea data-answer="${q.n}" placeholder="Nhập đáp án hoặc lời giải…" aria-label="Đáp án câu ${q.n}">${escapeHTML(state.answers[q.n]||"")}</textarea></div>`).join("")}</form></section></div>`;}
 function resultPage(){const d=findDoc(state.examDocId);const count=Object.values(state.answers).filter(v=>String(v).trim()).length;return `${pageHeading("Kết quả lượt thi","Bạn đã hoàn tất lượt thi thử.")}<div class="result-panel"><span class="pill">ĐÃ NỘP BÀI</span><div class="result-score">${count}/${Object.keys(state.answers).length}</div><h2>Câu đã trả lời</h2><p class="muted">Đây là số câu có nội dung trả lời, chưa phải điểm số được chấm tự động. Để chấm điểm chính xác, quản trị viên cần bổ sung đáp án chuẩn và quy tắc chấm.</p><div class="modal-actions"><button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button></div></div>`;}
+function adminPage(){return `${pageHeading("Quản trị MAI HỌC","Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;}
+async function loadAdminUsers(){if(state.route!=="admin")return;const status=$("#admin-users-status"),container=$("#admin-users-table");try{const response=await fetch("/api/admin/users",{credentials:"same-origin"});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||"Không thể tải danh sách tài khoản.");if(state.route!=="admin")return;$("#admin-user-total").textContent=String(payload.total??payload.users?.length??0);status.textContent=`Hiển thị ${payload.users?.length||0} tài khoản gần nhất.`;const rows=(payload.users||[]).map(u=>{const created=u.createdAt?new Date(u.createdAt.replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${u.role==="admin"?"Admin":"User"}</span></td><td>${escapeHTML(created)}</td></tr>`;}).join("");container.innerHTML=`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Chưa có tài khoản.</td></tr>'}</tbody></table></div>`;}catch(error){if(state.route!=="admin")return;status.textContent=error.message||"Lỗi khi tải dữ liệu.";status.classList.add("auth-error");container.innerHTML="";}}
 function render(){
   if(state.route==="home")view.innerHTML=homePage();
   else if(state.route==="subject")view.innerHTML=subjectPage();
@@ -112,7 +115,9 @@ function render(){
   else if(state.route==="reader")view.innerHTML=readerPage();
   else if(state.route==="exam")view.innerHTML=examPage();
   else if(state.route==="result")view.innerHTML=resultPage();
+  else if(state.route==="admin")view.innerHTML=adminPage();
   view.focus({preventScroll:true});
+  if(state.route==="admin")loadAdminUsers();
   if(state.route==="exam"){wireSplitter();if(state.examStarted&&!state.examFinished)startTimer();}
 }
 function startTimer(){
@@ -246,6 +251,7 @@ function subjectClick(subject){if(subject==="Toán"){go("subject");$("#subject-m
 document.addEventListener("click",async e=>{
  const routeBtn=e.target.closest("[data-route]");if(routeBtn){e.preventDefault();const r=routeBtn.dataset.route;go(r);return;}
  const action=e.target.closest("[data-action]");if(action){const a=action.dataset.action;
+  if(a==="admin-dashboard"){if(currentUser?.role==="admin")go("admin");else toast("Bạn cần đăng nhập bằng tài khoản Admin.","error");return;}
   if(a==="browse-subjects"){ $("#subject-menu").classList.remove("open");go("subject-picker");return;}
   if(a==="open-math"){go("subject");return;}
   if(a==="coming-subject"){toast(`${action.dataset.name}: sẽ được cập nhật trong thời gian tới — Coming soon!`);return;}
@@ -275,6 +281,86 @@ window.addEventListener("beforeunload",e=>{if(state.route==="exam"&&state.examSt
 // ============================================
 
 
+
+// -------------------- ACCOUNT UI + API --------------------
+function applyAuthUI(){
+  const signedIn=Boolean(currentUser);
+  $("#auth-actions").hidden=signedIn;
+  $("#user-actions").hidden=!signedIn;
+  $("#upload-open").hidden=currentUser?.role!=="admin";
+  $("#admin-open").hidden=currentUser?.role!=="admin";
+  $("#user-greeting").textContent=currentUser?`Xin chào, ${currentUser.name}${currentUser.role==="admin"?" · Admin":""}`:"";
+}
+async function refreshAuthUI(){
+  try{
+    const response=await fetch("/api/auth/me",{credentials:"same-origin"});
+    const data=await response.json().catch(()=>({}));
+    currentUser=response.ok?data.user||null:null;
+  }catch{currentUser=null;}
+  applyAuthUI();
+}
+async function postJson(url,body){
+  const response=await fetch(url,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const payload=response.status===204?{}:await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(payload.error||"Máy chủ không thể xử lý yêu cầu.");
+  return payload;
+}
+$("#login-open").addEventListener("click",()=>{ $("#login-error").hidden=true;openDialog("login-dialog"); });
+$("#register-open").addEventListener("click",()=>{ $("#register-error").hidden=true;openDialog("register-dialog"); });
+$("#switch-to-register").addEventListener("click",()=>{closeDialog("login-dialog");openDialog("register-dialog");});
+$("#switch-to-login").addEventListener("click",()=>{closeDialog("register-dialog");openDialog("login-dialog");});
+$("#login-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const form=event.currentTarget;
+  const submit=form.querySelector('button[type="submit"]');
+  const error=$("#login-error");
+  error.hidden=true;
+  if(submit)submit.disabled=true;
+  try{
+    const values=Object.fromEntries(new FormData(form).entries());
+    const result=await postJson("/api/auth/login",values);
+    currentUser=result.user;
+    applyAuthUI();
+    closeDialog("login-dialog");
+    form.reset();
+    toast("Đăng nhập thành công.","success");
+    go(currentUser.role==="admin"?"admin":"home");
+  }catch(err){error.textContent=err.message;error.hidden=false;}
+  finally{if(submit)submit.disabled=false;}
+});
+$("#register-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const form=event.currentTarget;
+  const submit=form.querySelector('button[type="submit"]');
+  const error=$("#register-error");
+  error.hidden=true;
+  const values=Object.fromEntries(new FormData(form).entries());
+  if(values.password!==values.confirmPassword){error.textContent="Mật khẩu nhập lại chưa khớp.";error.hidden=false;return;}
+  delete values.confirmPassword;
+  if(submit)submit.disabled=true;
+  try{
+    const result=await postJson("/api/auth/register",values);
+    currentUser=result.user;
+    applyAuthUI();
+    closeDialog("register-dialog");
+    form.reset();
+    toast("Tạo tài khoản thành công.","success");
+    go("home");
+  }catch(err){error.textContent=err.message;error.hidden=false;}
+  finally{if(submit)submit.disabled=false;}
+});
+$("#logout-button").addEventListener("click",async()=>{
+  try{
+    const response=await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"});
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||"Không thể đăng xuất.");}
+    currentUser=null;
+    applyAuthUI();
+    if(state.route==="admin")go("home");
+    toast("Bạn đã đăng xuất.","success");
+  }catch(error){toast(error.message||"Không thể đăng xuất.","error");}
+});
+
 // Khởi tạo giao diện như bình thường.
 initTheme();
 render();
+refreshAuthUI();
