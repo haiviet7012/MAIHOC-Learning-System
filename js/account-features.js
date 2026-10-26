@@ -39,8 +39,18 @@ async function saveProgress(payload) {
 function addAdminReviewPanel() {
   if(!activeUser||activeUser.role!=="admin"||!$("#admin-users-table")||$("#admin-review-panel"))return;
   const panel=document.createElement("section");panel.id="admin-review-panel";panel.className="admin-submissions";
-  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu chờ duyệt</h2><p class="muted">Tài liệu do User gửi sẽ được thông báo khi có quyết định.</p></div></div><div id="pending-submissions"><p class="muted">Đang tải…</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2><p class="muted">Các bài học, tài liệu và lượt thi đã được ghi nhận.</p></div></div><div id="admin-progress-list"><p class="muted">Đang tải…</p></div>';
-  $("#admin-users-table").after(panel);loadSubmissions();loadAdminProgress();
+  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2></div></div><div id="admin-progress-list"><p class="muted">Loading...</p></div>';
+
+  $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();loadAdminProgress();
+}
+async function loadApprovedDocuments(){
+  const box=$("#approved-documents");if(!box)return;
+  try{
+    const data=await request("/api/documents");
+    const documents=Array.isArray(data)?data:[];
+    if(!documents.length){box.innerHTML='<p class="muted">Chưa có tài liệu đã duyệt.</p>';return;}
+    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Danh mục</th><th>Dung lượng</th><th>Thao tác</th></tr></thead><tbody>'+documents.map(d=>'<tr><td><strong>'+esc(d.title)+'</strong><br><span class="muted tiny">'+esc(d.originalName||d.filename)+'</span></td><td>'+esc(d.subject)+' / '+esc(d.grade)+' / '+esc(d.category)+'</td><td>'+Math.ceil((Number(d.size)||0)/1024)+' KB</td><td><button class="button secondary small" data-delete-document="'+esc(d.id)+'">Xóa</button></td></tr>').join('')+'</tbody></table></div>';
+  }catch(error){box.innerHTML='<p class="auth-error">'+esc(error.message)+'</p>';}
 }
 async function loadAdminProgress(){
  const box=$("#admin-progress-list");if(!box)return;
@@ -61,6 +71,21 @@ async function loadSubmissions() {
   } catch(e) {box.innerHTML='<p class="auth-error">'+esc(e.message)+'</p>';}
 }
 document.addEventListener("click",async e=>{
+  const deleteDocument=e.target.closest("[data-delete-document]");
+  if(deleteDocument){
+    const id=deleteDocument.dataset.deleteDocument;
+    if(!confirm("Bạn có chắc muốn xóa tài liệu này?"))return;
+    try{
+      await request("/api/admin/documents/"+encodeURIComponent(id),{method:"DELETE"});
+      const key="maihoc-uploaded-docs";
+      const cached=JSON.parse(localStorage.getItem(key)||"[]");
+      localStorage.setItem(key,JSON.stringify(cached.filter(d=>String(d.id)!==String(id))));
+      toastNotice("Đã xóa tài liệu.");
+      loadApprovedDocuments();
+      window.dispatchEvent(new Event("maihoc-documents-changed"));
+    }catch(error){toastNotice(error.message,"error");}
+  }
+
   if(e.target.closest("#notifications-open")){await refreshNotifications();const d=$("#notifications-dialog");if(d&&!d.open)d.showModal();}
   const read=e.target.closest("[data-notification-read]");
   if(read){try{await request("/api/notifications/"+read.dataset.notificationRead+"/read",{method:"POST"});refreshNotifications();}catch(err){toastNotice(err.message,"error");}}

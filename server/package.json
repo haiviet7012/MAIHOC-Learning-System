@@ -15,5 +15,8 @@
     "multer": "^1.4.5-lts.1",
     "better-sqlite3": "^11.8.1",
     "nodemailer": "^6.10.1"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true
   }
 }

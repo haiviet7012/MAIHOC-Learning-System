@@ -1,76 +1,84 @@
-import {SUBJECTS,CATEGORIES} from "./data.js";
-import {initTheme} from "./theme.js";
+import { SUBJECTS, CATEGORIES } from "./data.js";
+import { initTheme } from "./theme.js";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
-import {getDocuments,uploadDocument} from "./documents.js";
-import {evaluateDifficulty} from "./ai.js";
+import {
+    getDocuments,
+    refreshDocuments,
+    uploadDocument
+} from "./documents.js";
+import { evaluateDifficulty } from "./ai.js";
 import "./account-features.js";
-
-const view=$("#view");
-const state={route:"home",subject:"Toán",grade:"10",category:"theory",docId:null,examDocId:null,answers:{},timer:null,remaining:5400,warningShown:false,examStarted:false,examFinished:false};
-let currentUser=null;
-const gradeLabel=g=>`Lớp ${g}`;
-const docs=()=>getDocuments();
-const findDoc=id=>docs().find(d=>d.id===id);
-const by=(grade,category)=>docs().filter(d=>d.subject==="Toán"&&d.grade===String(grade)&&d.category===category);
-const categoryName=k=>CATEGORIES[k]?.label||k;
+const view = $("#view");
+const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
+let currentUser = null;
+const gradeLabel = g => `Lớp ${g}`;
+await refreshDocuments();
+// Luôn đọc danh sách mới nhất từ documents.js.
+const docs = () => getDocuments();
+const findDoc = id =>
+    docs().find(d => String(d.id) === String(id));
+const by = (grade, category) =>
+    docs().filter(
+        d =>
+            d.subject === "Toán" &&
+            String(d.grade) === String(grade) &&
+            d.category === category
+    );
+const categoryName = k => CATEGORIES[k]?.label || k;
+const currentDocumentCategory = () => state.route === "reader"
+    ? findDoc(state.docId)?.category
+    : ({
+        theory: "theory",
+        "theory-list": "theory",
+        practice: "practice",
+        "practice-list": "practice",
+        "exam-select": "exam",
+        "exam-list": "exam",
+        "exercise-list": "exercise",
+    })[state.route];
 function saveRouteHistory() {
     const savedState = { ...state, timer: null };
-
     // Sao lưu đáp án để có thể khôi phục khi quay lại.
     savedState.answers = { ...state.answers };
-
     return {
         maihoc: true,
         appState: savedState
     };
 }
-
 function go(route, params = {}) {
     stopTimerIfLeaving(route);
-
     Object.assign(state, params);
     state.route = route;
-
     // Ghi trang mới vào lịch sử điều hướng của Chrome.
-    history.pushState(
-        saveRouteHistory(),
-        "",
-        window.location.href
-    );
-
+    history.pushState(saveRouteHistory(), "", window.location.href);
     render();
 }
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
-history.replaceState(
-    saveRouteHistory(),
-    "",
-    window.location.href
-);
-
+history.replaceState(saveRouteHistory(), "", window.location.href);
 // Khôi phục trang khi nhấn Back hoặc Forward.
 window.addEventListener("popstate", function (event) {
     const saved = event.state;
-
     // Nếu trạng thái trước đó thuộc MAI HỌC,
     // khôi phục trang đó và không chuyển sang Google.
     if (saved?.maihoc && saved.appState) {
         const previousRoute = saved.appState.route;
-
         stopTimerIfLeaving(previousRoute);
-
         Object.assign(state, saved.appState);
         state.timer = null;
-
         render();
         return;
     }
-
     // Không tự chuyển hướng khi gặp trạng thái không xác định.
     // Để Chrome xử lý lịch sử điều hướng bình thường.
 });
-function stopTimerIfLeaving(route){if(state.route==="exam"&&route!=="exam"&&state.timer){clearInterval(state.timer);state.timer=null;}}
-function breadcrumb(title){return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">Toán</button><span>/</span><span>${escapeHTML(title)}</span></div>`;}
-function homePage(){return `<section class="hero"><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><div class="book-illustration"><strong>MAI<br>HỌC</strong><div class="book-line"></div><div class="book-line" style="width:75%"></div><div class="book-line" style="width:55%"></div><p style="font-size:11px">LEARN · PRACTICE · GROW</p></div></div></section>
+function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "exam" && state.timer) {
+    clearInterval(state.timer);
+    state.timer = null;
+} }
+function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">Toán</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
+function homePage() {
+    return `<section class="hero">
+    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><div class="book-illustration"><strong>MAI<br>HỌC</strong><div class="book-line"></div><div class="book-line" style="width:75%"></div><div class="book-line" style="width:55%"></div><p style="font-size:11px">LEARN · PRACTICE · GROW</p></div></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
 <div class="grid three">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
@@ -78,80 +86,220 @@ function homePage(){return `<section class="hero"><div class="hero-copy"><p clas
  <article class="card clickable resource-card" data-route="exam-select"><div class="card-icon">◷</div><span class="pill">90 PHÚT</span><h3>Phòng thi thử</h3><p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p></article>
 </div>
 <section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
-<div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
-<p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;}
-function subjectPickerPage(){const subjects=[
- {name:"Toán",icon:"∑",active:true,items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"Vật lý",icon:"⚛",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"Hóa học",icon:"⚗",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"Sinh học",icon:"❧",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"Tiếng Anh",icon:"A",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"Ngữ văn",icon:"文",items:["Ôn tập lý thuyết","Làm đề ôn tập","Phòng thi thử (có tính giờ)"]},
- {name:"IELTS",icon:"✦",items:["Ôn tập theo kỹ năng","Thư viện tài liệu","Phòng thi thử (có tính giờ)"]},
- {name:"Đề thi THPT quốc gia",icon:"▤",items:["Đề thi các năm trước","Đề thi thử trường / sở","Phòng thi thử có tính giờ"]}
- ];return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">TOÁN ĐANG HOẠT ĐỘNG</span></div><div class="subject-picker-grid">${subjects.map(x=>`<article class="subject-tile ${x.active?"is-active":"is-coming"}" ${x.active?'data-action="open-math" role="button" tabindex="0"':'data-action="coming-subject" data-name="'+x.name+'" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active?"ĐANG HOẠT ĐỘNG":"SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item=>`<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active?"Khám phá môn học":"Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;}
-function subjectPage(){return `${pageHeading("Môn Toán","Chọn một khu vực học tập để tiếp tục.")}<div class="grid three">
-${[{r:"theory",i:"▤",t:"Ôn tập lý thuyết",d:"Đọc tài liệu và hệ thống kiến thức theo từng lớp."},{r:"practice",i:"✎",t:"Đề thi ôn tập",d:"Luyện tập theo bộ đề và chủ đề."},{r:"exam-select",i:"◷",t:"Phòng thi thử",d:"Thi mô phỏng có giới hạn thời gian 90 phút."}].map(x=>`<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d=>d.subject==="Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d=>d.subject==="Toán"&&d.grade===g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;}
-function gradePicker(route,category){return `${pageHeading(category?categoryName(category):"Chọn lớp","Chọn khối lớp để xem tài liệu môn Toán.")}<div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category||""}"><div><span class="pill">MÔN TOÁN</span><div class="grade">${gradeLabel(g)}</div><p>${category?by(g,category).length+" tài liệu":"Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`;}
-function resourceListPage(category,grade){const list=by(grade,category);return `${pageHeading(`${categoryName(category)} — ${gradeLabel(grade)}`,`Tài liệu môn Toán ${gradeLabel(grade).toLowerCase()}.`)}<div class="stat-row"><div class="stat"><span class="muted">Tài liệu</span><strong>${list.length}</strong></div><div class="stat"><span class="muted">Môn học</span><strong>Toán</strong></div><div class="stat"><span class="muted">Khối lớp</span><strong>${grade}</strong></div></div>${list.length?`<div class="resource-list">${list.map(d=>`<div class="resource-row"><div class="card-icon">${CATEGORIES[d.category]?.icon||"▧"}</div><div class="resource-main"><h3>${escapeHTML(d.title)}</h3><p>${escapeHTML(d.description||"Tài liệu môn Toán")} · ${d.sample?"Tài liệu mẫu":d.localOnly?"Lưu trong trình duyệt":"Đã tải lên"}</p></div><div class="resource-actions"><button class="button secondary small" data-action="read-doc" data-id="${d.id}">Mở tài liệu</button>${category==="exam"?`<button class="button primary small" data-action="start-exam" data-id="${d.id}">Bắt đầu thi</button>`:""}</div></div>`).join("")}</div>`:`<div class="empty-state"><h3>Chưa có tài liệu cho mục này</h3><p>Hãy upload tài liệu bằng nút ở thanh trên hoặc chọn lớp khác.</p><button class="button primary" data-action="open-upload">Upload tài liệu</button></div>`}<p class="footer-note">Tài liệu mẫu chỉ dùng để minh họa luồng hoạt động của website.</p>`;}
-function readerPage(){const d=findDoc(state.docId);if(!d)return subjectPage();const related=docs().filter(x=>x.subject===d.subject&&x.grade===d.grade&&x.id!==d.id);let content="";if(d.content)content=`<pre>${escapeHTML(d.content)}</pre>`;else if(d.filename||d.description){content=`<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Tệp này đã được tải lên nhưng bản demo chưa có trình đọc định dạng này. Khi chạy backend, hãy mở tệp trong danh sách tài liệu đã lưu.</p>${d.filename?`<p>${escapeHTML(d.filename)}</p>`:""}</div>`;}return `${pageHeading(d.title,`${d.subject} · ${gradeLabel(d.grade)} · ${categoryName(d.category)}`)}<div class="reader-layout"><section class="reader-main">${content}<div class="modal-actions"><button class="button secondary" data-route="${d.category==="theory"?"theory":d.category==="exam"?"exam-select":"practice"}">← Quay lại danh sách</button>${d.category==="exam"?`<button class="button primary" data-action="start-exam" data-id="${d.id}">Bắt đầu thi thử</button>`:""}</div></section><aside class="reader-side"><h3>Tài liệu cùng lớp</h3>${related.length?related.map(x=>`<button class="button ghost small" data-action="read-doc" data-id="${x.id}">${escapeHTML(x.title)}</button>`).join(""):`<p class="muted">Chưa có tài liệu liên quan.</p>`}<hr style="border:0;border-top:1px solid var(--border);margin:20px 0"><p class="muted tiny">Mẹo: dùng nút Upload tài liệu để bổ sung nội dung cho thư viện.</p></aside></div>`;}
-function examSelectPage(){return `${pageHeading("Phòng thi thử","Chọn khối lớp và đề thi. Mỗi lượt thi có thời gian tối đa 90 phút.")}<div class="grid three">${["10","11","12"].map(g=>`<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="exam-list" data-category="exam"><div><span class="pill">THI THỬ · 90 PHÚT</span><div class="grade">${gradeLabel(g)}</div><p>${by(g,"exam").length} đề thi có sẵn</p></div><span class="arrow">→</span></article>`).join("")}</div>`;}
-function examListPage(grade){const list=by(grade,"exam");return `${pageHeading(`Chọn đề thi — ${gradeLabel(grade)}`,"Mỗi đề có thời gian 90 phút. Độ khó được AI đánh giá khi backend Gemini đã được cấu hình.")}${list.length?`<div class="exam-list">${list.map((d,i)=>`<article class="exam-card"><span class="pill">ĐỀ ${String(i+1).padStart(2,"0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>◷ Thời gian: 90 phút</span><span>✦ Độ khó: AI đánh giá</span><span>▤ ${gradeLabel(d.grade)}</span></div><button class="button secondary" data-action="evaluate" data-id="${d.id}">Đánh giá độ khó bằng AI</button><button class="button primary" data-action="start-exam" data-id="${d.id}">Vào phòng thi →</button></article>`).join("")}</div>`:`<div class="empty-state"><h3>Chưa có đề thi cho lớp ${grade}</h3><p>Upload đề thi thử để bắt đầu.</p><button class="button primary" data-action="open-upload">Upload đề thi</button></div>`}<p class="footer-note">Đề thi mẫu là dữ liệu minh họa; nội dung và thang điểm cần được quản trị viên bổ sung.</p>`;}
-function questionsFor(doc){const content=doc?.content||"";const found=[...content.matchAll(/Câu\s*(\d+)\.\s*([^\n]+)/gi)].map(m=>({n:m[1],text:m[2]}));return found.length?found:[{n:"1",text:"Nhập câu hỏi tại đây (quản trị viên có thể cập nhật nội dung đề)."},{n:"2",text:"Trình bày lời giải của bạn."},{n:"3",text:"Hoàn thành bài toán sau."}];}
-function examPage(){const d=findDoc(state.examDocId);if(!d)return examSelectPage();const qs=questionsFor(d);return `${breadcrumb("Phòng thi thử")}<div class="exam-toolbar"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} · Làm bài trong tối đa 90 phút</div></div><div id="timer" class="timer">90:00</div><button class="button primary" data-action="submit-exam">Nộp bài</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane"><span class="pill">ĐỀ THI</span><h2>${escapeHTML(d.title)}</h2><p class="muted">Đọc kỹ từng câu hỏi và nhập câu trả lời ở khung bên phải.</p>${qs.map(q=>`<div class="question"><h3>Câu ${q.n}. ${escapeHTML(q.text)}</h3><p class="exam-instructions">Hãy trình bày lời giải rõ ràng.</p></div>`).join("")}</section><div class="splitter" id="splitter" role="separator" aria-label="Kéo để thay đổi kích thước hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PHẦN ĐIỀN ĐÁP ÁN</span><h2>Bài làm của bạn</h2><form id="answer-form">${qs.map(q=>`<div class="question"><h3>Câu ${q.n}</h3><textarea data-answer="${q.n}" placeholder="Nhập đáp án hoặc lời giải…" aria-label="Đáp án câu ${q.n}">${escapeHTML(state.answers[q.n]||"")}</textarea></div>`).join("")}</form></section></div>`;}
-function resultPage(){const d=findDoc(state.examDocId);const count=Object.values(state.answers).filter(v=>String(v).trim()).length;return `${pageHeading("Kết quả lượt thi","Bạn đã hoàn tất lượt thi thử.")}<div class="result-panel"><span class="pill">ĐÃ NỘP BÀI</span><div class="result-score">${count}/${Object.keys(state.answers).length}</div><h2>Câu đã trả lời</h2><p class="muted">Đây là số câu có nội dung trả lời, chưa phải điểm số được chấm tự động. Để chấm điểm chính xác, quản trị viên cần bổ sung đáp án chuẩn và quy tắc chấm.</p><div class="modal-actions"><button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button></div></div>`;}
-function adminPage(){return `${pageHeading("Quản trị MAI HỌC","Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;}
-async function loadAdminUsers(){if(state.route!=="admin")return;const status=$("#admin-users-status"),container=$("#admin-users-table");try{const response=await fetch("/api/admin/users",{credentials:"same-origin"});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||"Không thể tải danh sách tài khoản.");if(state.route!=="admin")return;$("#admin-user-total").textContent=String(payload.total??payload.users?.length??0);status.textContent=`Hiển thị ${payload.users?.length||0} tài khoản gần nhất.`;const rows=(payload.users||[]).map(u=>{const created=u.createdAt?new Date(u.createdAt.replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${u.role==="admin"?"Admin":"User"}</span></td><td>${escapeHTML(created)}</td></tr>`;}).join("");container.innerHTML=`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Chưa có tài khoản.</td></tr>'}</tbody></table></div>`;}catch(error){if(state.route!=="admin")return;status.textContent=error.message||"Lỗi khi tải dữ liệu.";status.classList.add("auth-error");container.innerHTML="";}}
-function render(){
-  if(state.route==="home")view.innerHTML=homePage();
-  else if(state.route==="subject")view.innerHTML=subjectPage();
-  else if(state.route==="subject-picker")view.innerHTML=subjectPickerPage();
-  else if(state.route==="theory")view.innerHTML=gradePicker("theory","theory");
-  else if(state.route==="practice")view.innerHTML=gradePicker("practice","practice");
-  else if(state.route==="theory-list")view.innerHTML=resourceListPage("theory",state.grade);
-  else if(state.route==="practice-list")view.innerHTML=resourceListPage("practice",state.grade);
-  else if(state.route==="exercise-list")view.innerHTML=resourceListPage("exercise",state.grade);
-  else if(state.route==="exam-select")view.innerHTML=examSelectPage();
-  else if(state.route==="exam-list")view.innerHTML=examListPage(state.grade);
-  else if(state.route==="reader")view.innerHTML=readerPage();
-  else if(state.route==="exam")view.innerHTML=examPage();
-  else if(state.route==="result")view.innerHTML=resultPage();
-  else if(state.route==="admin")view.innerHTML=adminPage();
-  view.focus({preventScroll:true});
-  if(state.route==="admin")loadAdminUsers();
-  if(state.route==="exam"){wireSplitter();if(state.examStarted&&!state.examFinished)startTimer();}
+<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
+<p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
 }
-function startTimer(){
-  if(state.timer)return;
-  updateTimer();
-  state.timer=setInterval(()=>{state.remaining--;updateTimer();if(state.remaining===300&&!state.warningShown){state.warningShown=true;toast("Bạn còn 5 phút! Hãy kiểm tra bài và chuẩn bị nộp.","error");}if(state.remaining<=0){clearInterval(state.timer);state.timer=null;toast("Đã hết giờ. Bài thi sẽ được nộp tự động.","error");finishExam();}},1000);
+function subjectPickerPage() {
+    const subjects = [
+        { name: "Toán", icon: "∑", active: true, items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "Vật lý", icon: "⚛", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "Hóa học", icon: "⚗", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "Sinh học", icon: "❧", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "Tiếng Anh", icon: "A", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "Ngữ văn", icon: "文", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
+        { name: "IELTS", icon: "✦", items: ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử (có tính giờ)"] },
+        { name: "Đề thi THPT quốc gia", icon: "▤", items: ["Đề thi các năm trước", "Đề thi thử trường / sở", "Phòng thi thử có tính giờ"] }
+    ];
+    return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">TOÁN ĐANG HOẠT ĐỘNG</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-math" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
-function updateTimer(){const el=$("#timer");if(!el)return;const m=Math.floor(state.remaining/60),s=state.remaining%60;el.textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;el.classList.toggle("warning",state.remaining<=300);}
-function wireSplitter(){const split=$("#splitter"),exam=$("#split-exam"),left=$("#paper-pane");if(!split||split.dataset.ready)return;split.dataset.ready="1";let drag=false;split.addEventListener("pointerdown",e=>{drag=true;split.setPointerCapture(e.pointerId);});split.addEventListener("pointermove",e=>{if(!drag)return;const rect=exam.getBoundingClientRect();if(innerWidth<=620){const ratio=(e.clientY-rect.top)/rect.height;left.style.flex=`0 0 ${Math.max(25,Math.min(75,ratio*100))}%`;}else{const ratio=(e.clientX-rect.left)/rect.width;left.style.flex=`0 0 ${Math.max(25,Math.min(75,ratio*100))}%`;}});split.addEventListener("pointerup",()=>drag=false);}
+function subjectPage() {
+    return `${pageHeading("Môn Toán", "Chọn một khu vực học tập để tiếp tục.")}<div class="grid three">
+${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === "Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === "Toán" && d.grade === g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
+}
+function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn Toán.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN TOÁN</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
+function resourceListPage(category, grade) { const list = by(grade, category); return `${pageHeading(`${categoryName(category)} — ${gradeLabel(grade)}`, `Tài liệu môn Toán ${gradeLabel(grade).toLowerCase()}.`)}<div class="stat-row"><div class="stat"><span class="muted">Tài liệu</span><strong>${list.length}</strong></div><div class="stat"><span class="muted">Môn học</span><strong>Toán</strong></div><div class="stat"><span class="muted">Khối lớp</span><strong>${grade}</strong></div></div>${list.length ? `<div class="resource-list">${list.map(d => `<div class="resource-row"><div class="card-icon">${CATEGORIES[d.category]?.icon || "▧"}</div><div class="resource-main"><h3>${escapeHTML(d.title)}</h3><p>${escapeHTML(d.description || "Tài liệu môn Toán")} · ${d.sample ? "Tài liệu mẫu" : d.localOnly ? "Lưu trong trình duyệt" : "Đã tải lên"}</p></div><div class="resource-actions"><button class="button secondary small" data-action="read-doc" data-id="${d.id}">Mở tài liệu</button>${category === "exam" ? `<button class="button primary small" data-action="start-exam" data-id="${d.id}">Bắt đầu thi</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty-state"><h3>Chưa có tài liệu cho mục này</h3><p>Hãy upload tài liệu bằng nút ở thanh trên hoặc chọn lớp khác.</p><button class="button primary" data-action="open-upload" data-category="${category}">Upload tài liệu</button></div>`}<p class="footer-note">Tài liệu mẫu chỉ dùng để minh họa luồng hoạt động của website.</p>`; }
+function readerPage() {
+    const d = findDoc(state.docId);
+    if (!d)
+        return subjectPage();
+    const related = docs().filter((item) => item.subject === d.subject &&
+        item.grade === d.grade &&
+        item.category === d.category &&
+        item.id !== d.id);
+const candidateFileUrl =
+    d.fileUrl || d.fileURL || d.url || d.downloadUrl || d.downloadURL || "";
+let fileUrl = "";
+try {
+    const parsedFileUrl = new URL(candidateFileUrl, window.location.origin);
+    if (parsedFileUrl.origin === window.location.origin) {
+        fileUrl = `${parsedFileUrl.pathname}${parsedFileUrl.search}${parsedFileUrl.hash}`;
+    }
+} catch {
+    fileUrl = "";
+}
+const fileName =
+    d.filename ||
+    d.fileName ||
+    d.originalName ||
+    "";
+let extension = "";
+if (fileName.includes(".")) {
+    extension = fileName
+        .split(".")
+        .pop()
+        .toLowerCase();
+} else if (fileUrl) {
+    try {
+        const pathname = new URL(
+            fileUrl,
+            window.location.origin
+        ).pathname;
+        extension = pathname
+            .split("/")
+            .pop()
+            .split(".")
+            .pop()
+            .toLowerCase();
+    } catch {
+        extension = "";
+    }
+}
+    let content = "";
+    if (d.content) {
+        content = `<pre class="document-text">${escapeHTML(d.content)}</pre>`;
+    }
+    else if (fileUrl && ["pdf", "txt"].includes(extension)) {
+        content = `<div class="document-viewer"><iframe src="${escapeHTML(fileUrl)}" title="${escapeHTML(d.title)}" width="100%" height="760" loading="lazy"></iframe><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Mở PDF trong tab mới</a></p></div>`;
+    }
+    else if (fileUrl && ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)) {
+        content = `<div class="document-viewer"><img src="${escapeHTML(fileUrl)}" alt="${escapeHTML(d.title)}" style="display:block;max-width:100%;height:auto;margin:auto"><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Mở ảnh trong tab mới</a></p></div>`;
+    }
+    else if (fileUrl) {
+        content = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Định dạng này chưa thể xem trực tiếp trong trang.</p><a class="button primary" href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Mở hoặc tải tài liệu</a></div>`;
+    }
+    else {
+        content = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Tài liệu đã được ghi nhận nhưng chưa có đường dẫn tệp để hiển thị. Nếu tài liệu được lưu trên máy chủ, hãy kiểm tra API upload có trả về fileUrl hoặc url hay không.</p>${fileName ? `<p>${escapeHTML(fileName)}</p>` : ""}</div>`;
+    }
+    return `${pageHeading(d.title, `${d.subject} · ${gradeLabel(d.grade)} · ${categoryName(d.category)}`)}
+        <div class="reader-layout">
+            <section class="reader-main">
+                ${content}
+                <div class="modal-actions">
+                    <button class="button secondary" data-route="${d.category === "theory" ? "theory" : d.category === "exam" ? "exam-select" : "practice"}">← Quay lại danh sách</button>
+                    ${d.category === "exam" ? `<button class="button primary" data-action="start-exam" data-id="${d.id}">Bắt đầu thi thử</button>` : ""}
+                </div>
+            </section>
+            <aside class="reader-side">
+                <h3>Tài liệu cùng lớp</h3>
+                ${related.length ? related.map((item) => `<button class="button ghost small" data-action="read-doc" data-id="${item.id}">${escapeHTML(item.title)}</button>`).join("") : `<p class="muted">Chưa có tài liệu liên quan.</p>`}
+                <hr style="border:0;border-top:1px solid var(--border);margin:20px 0">
+                <p class="muted tiny">Mẹo: dùng nút Upload tài liệu để bổ sung nội dung cho thư viện.</p>
+            </aside>
+        </div>`;
+}
+function examSelectPage() { return `${pageHeading("Phòng thi thử", "Chọn khối lớp và đề thi. Mỗi lượt thi có thời gian tối đa 90 phút.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="exam-list" data-category="exam"><div><span class="pill">THI THỬ · 90 PHÚT</span><div class="grade">${gradeLabel(g)}</div><p>${by(g, "exam").length} đề thi có sẵn</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
+function examListPage(grade) { const list = by(grade, "exam"); return `${pageHeading(`Chọn đề thi — ${gradeLabel(grade)}`, "Mỗi đề có thời gian 90 phút. Độ khó được AI đánh giá khi backend Gemini đã được cấu hình.")}${list.length ? `<div class="exam-list">${list.map((d, i) => `<article class="exam-card"><span class="pill">ĐỀ ${String(i + 1).padStart(2, "0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>◷ Thời gian: 90 phút</span><span>✦ Độ khó: AI đánh giá</span><span>▤ ${gradeLabel(d.grade)}</span></div><button class="button secondary" data-action="evaluate" data-id="${d.id}">Đánh giá độ khó bằng AI</button><button class="button primary" data-action="start-exam" data-id="${d.id}">Vào phòng thi →</button></article>`).join("")}</div>` : `<div class="empty-state"><h3>Chưa có đề thi cho lớp ${grade}</h3><p>Upload đề thi thử để bắt đầu.</p><button class="button primary" data-action="open-upload">Upload đề thi</button></div>`}<p class="footer-note">Đề thi mẫu là dữ liệu minh họa; nội dung và thang điểm cần được quản trị viên bổ sung.</p>`; }
+function questionsFor(doc) { const content = doc?.content || ""; const found = [...content.matchAll(/Câu\s*(\d+)\.\s*([^\n]+)/gi)].map(m => ({ n: m[1], text: m[2] })); return found.length ? found : [{ n: "1", text: "Nhập câu hỏi tại đây (quản trị viên có thể cập nhật nội dung đề)." }, { n: "2", text: "Trình bày lời giải của bạn." }, { n: "3", text: "Hoàn thành bài toán sau." }]; }
+function examPage() { const d = findDoc(state.examDocId); if (!d)
+    return examSelectPage(); const qs = questionsFor(d); return `${breadcrumb("Phòng thi thử")}<div class="exam-toolbar"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} · Làm bài trong tối đa 90 phút</div></div><div id="timer" class="timer">90:00</div><button class="button primary" data-action="submit-exam">Nộp bài</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane"><span class="pill">ĐỀ THI</span><h2>${escapeHTML(d.title)}</h2><p class="muted">Đọc kỹ từng câu hỏi và nhập câu trả lời ở khung bên phải.</p>${qs.map(q => `<div class="question"><h3>Câu ${q.n}. ${escapeHTML(q.text)}</h3><p class="exam-instructions">Hãy trình bày lời giải rõ ràng.</p></div>`).join("")}</section><div class="splitter" id="splitter" role="separator" aria-label="Kéo để thay đổi kích thước hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PHẦN ĐIỀN ĐÁP ÁN</span><h2>Bài làm của bạn</h2><form id="answer-form">${qs.map(q => `<div class="question"><h3>Câu ${q.n}</h3><textarea data-answer="${q.n}" placeholder="Nhập đáp án hoặc lời giải…" aria-label="Đáp án câu ${q.n}">${escapeHTML(state.answers[q.n] || "")}</textarea></div>`).join("")}</form></section></div>`; }
+function resultPage() { const d = findDoc(state.examDocId); const count = Object.values(state.answers).filter(v => String(v).trim()).length; return `${pageHeading("Kết quả lượt thi", "Bạn đã hoàn tất lượt thi thử.")}<div class="result-panel"><span class="pill">ĐÃ NỘP BÀI</span><div class="result-score">${count}/${Object.keys(state.answers).length}</div><h2>Câu đã trả lời</h2><p class="muted">Đây là số câu có nội dung trả lời, chưa phải điểm số được chấm tự động. Để chấm điểm chính xác, quản trị viên cần bổ sung đáp án chuẩn và quy tắc chấm.</p><div class="modal-actions"><button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button></div></div>`; }
+function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+async function loadAdminUsers() { if (state.route !== "admin")
+    return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
+    const response = await fetch("/api/admin/users", { credentials: "same-origin" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok)
+        throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
+    if (state.route !== "admin")
+        return;
+    $("#admin-user-total").textContent = String(payload.total ?? payload.users?.length ?? 0);
+    status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
+    const rows = (payload.users || []).map(u => { const created = u.createdAt ? new Date(u.createdAt.replace(" ", "T") + "Z").toLocaleString("vi-VN") : "—"; return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${u.role === "admin" ? "Admin" : "User"}</span></td><td>${escapeHTML(created)}</td></tr>`; }).join("");
+    container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th></tr></thead><tbody>${rows || '<tr><td colspan="5">Chưa có tài khoản.</td></tr>'}</tbody></table></div>`;
+}
+catch (error) {
+    if (state.route !== "admin")
+        return;
+    status.textContent = error.message || "Lỗi khi tải dữ liệu.";
+    status.classList.add("auth-error");
+    container.innerHTML = "";
+} }
+function render() {
+    view.classList.toggle("reader-fullscreen", state.route === "reader");
+    document.body.classList.toggle("reader-open", state.route === "reader");
+    if (state.route === "home")
+        view.innerHTML = homePage();
+    else if (state.route === "subject")
+        view.innerHTML = subjectPage();
+    else if (state.route === "subject-picker")
+        view.innerHTML = subjectPickerPage();
+    else if (state.route === "theory")
+        view.innerHTML = gradePicker("theory", "theory");
+    else if (state.route === "practice")
+        view.innerHTML = gradePicker("practice", "practice");
+    else if (state.route === "theory-list")
+        view.innerHTML = resourceListPage("theory", state.grade);
+    else if (state.route === "practice-list")
+        view.innerHTML = resourceListPage("practice", state.grade);
+    else if (state.route === "exercise-list")
+        view.innerHTML = resourceListPage("exercise", state.grade);
+    else if (state.route === "exam-select")
+        view.innerHTML = examSelectPage();
+    else if (state.route === "exam-list")
+        view.innerHTML = examListPage(state.grade);
+    else if (state.route === "reader")
+        view.innerHTML = readerPage();
+    else if (state.route === "exam")
+        view.innerHTML = examPage();
+    else if (state.route === "result")
+        view.innerHTML = resultPage();
+    else if (state.route === "admin")
+        view.innerHTML = adminPage();
+    view.focus({ preventScroll: true });
+    if (state.route === "admin")
+        loadAdminUsers();
+    if (state.route === "exam") {
+        wireSplitter();
+        if (state.examStarted && !state.examFinished)
+            startTimer();
+    }
+}
+function startTimer() {
+    if (state.timer)
+        return;
+    updateTimer();
+    state.timer = setInterval(() => { state.remaining--; updateTimer(); if (state.remaining === 300 && !state.warningShown) {
+        state.warningShown = true;
+        toast("Bạn còn 5 phút! Hãy kiểm tra bài và chuẩn bị nộp.", "error");
+    } if (state.remaining <= 0) {
+        clearInterval(state.timer);
+        state.timer = null;
+        toast("Đã hết giờ. Bài thi sẽ được nộp tự động.", "error");
+        finishExam();
+    } }, 1000);
+}
+function updateTimer() { const el = $("#timer"); if (!el)
+    return; const m = Math.floor(state.remaining / 60), s = state.remaining % 60; el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`; el.classList.toggle("warning", state.remaining <= 300); }
+function wireSplitter() { const split = $("#splitter"), exam = $("#split-exam"), left = $("#paper-pane"); if (!split || split.dataset.ready)
+    return; split.dataset.ready = "1"; let drag = false; split.addEventListener("pointerdown", e => { drag = true; split.setPointerCapture(e.pointerId); }); split.addEventListener("pointermove", e => { if (!drag)
+    return; const rect = exam.getBoundingClientRect(); if (innerWidth <= 620) {
+    const ratio = (e.clientY - rect.top) / rect.height;
+    left.style.flex = `0 0 ${Math.max(25, Math.min(75, ratio * 100))}%`;
+}
+else {
+    const ratio = (e.clientX - rect.left) / rect.width;
+    left.style.flex = `0 0 ${Math.max(25, Math.min(75, ratio * 100))}%`;
+} }); split.addEventListener("pointerup", () => drag = false); }
 function finishExam() {
     // Ngăn kết thúc bài thi nhiều lần.
-    if (state.examFinished) return;
-
+    if (state.examFinished)
+        return;
     // Đánh dấu bài thi đã kết thúc trước khi thoát fullscreen.
     state.examFinished = true;
     state.examStarted = false;
-
     // Dừng đồng hồ đếm ngược.
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
     }
-
     // Chấm điểm và lưu kết quả nếu dự án có hàm chấm điểm riêng.
     // Giữ nguyên logic chấm điểm hiện có của dự án.
-
     // Thoát toàn màn hình rồi chuyển sang trang kết quả.
     const leaveFullscreen = document.fullscreenElement
         ? document.exitFullscreen().catch((error) => {
             console.error("Không thể thoát toàn màn hình:", error);
         })
         : Promise.resolve();
-
     Promise.resolve(leaveFullscreen).finally(() => {
         go("result");
     });
@@ -160,62 +308,48 @@ function finishExam() {
 // ============================================
 document.addEventListener("fullscreenchange", () => {
     // Vẫn đang ở chế độ toàn màn hình.
-    if (document.fullscreenElement) return;
-
+    if (document.fullscreenElement)
+        return;
     // Nếu bài thi đã kết thúc bình thường hoặc hết giờ,
     // không xử lý như hành vi thoát bài thi.
-    if (
-        state.route !== "exam" ||
+    if (state.route !== "exam" ||
         !state.examStarted ||
-        state.examFinished
-    ) {
+        state.examFinished) {
         return;
     }
-
     // Người thi chủ động thoát toàn màn hình.
     state.examStarted = false;
     state.examFinished = true;
-
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
     }
-
     // Không xóa đáp án ở đây nếu bạn cần lưu kết quả vi phạm.
     go("home");
-
-    window.alert(
-        "Bạn đã thoát bài thi!\n\n" +
-        "Lượt thi đã kết thúc vì bạn thoát chế độ toàn màn hình."
-    );
+    window.alert("Bạn đã thoát bài thi!\n\n" +
+        "Lượt thi đã kết thúc vì bạn thoát chế độ toàn màn hình.");
 });
-
 // ============================================
 // BẮT ĐẦU THI THỬ - TỰ ĐỘNG TOÀN MÀN HÌNH
 // ============================================
-
 function startExam(id) {
     const d = findDoc(id);
-    if (!d) return;
-
+    if (!d)
+        return;
     // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
     // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
     let fullscreenPromise = null;
-
     if (!document.fullscreenElement) {
         if (document.documentElement.requestFullscreen) {
             try {
                 fullscreenPromise =
                     document.documentElement.requestFullscreen();
-            } catch (error) {
-                console.error(
-                    "Không thể bật toàn màn hình:",
-                    error
-                );
+            }
+            catch (error) {
+                console.error("Không thể bật toàn màn hình:", error);
             }
         }
     }
-
     // Khởi tạo lượt thi mới.
     state.examDocId = id;
     state.answers = {};
@@ -223,148 +357,339 @@ function startExam(id) {
     state.warningShown = false;
     state.examStarted = true;
     state.examFinished = false;
-
     // Chuyển đến phòng thi.
     go("exam");
-
     // Thông báo nếu trình duyệt từ chối toàn màn hình.
     if (fullscreenPromise) {
         fullscreenPromise.catch((error) => {
-            console.error(
-                "Trình duyệt không cho phép toàn màn hình:",
-                error
-            );
-
-            toast(
-                "Không thể bật toàn màn hình. Hãy thử nhấn Vào phòng thi lại.",
-                "error"
-            );
+            console.error("Trình duyệt không cho phép toàn màn hình:", error);
+            toast("Không thể bật toàn màn hình. Hãy thử nhấn Vào phòng thi lại.", "error");
         });
-    } else if (!document.fullscreenElement) {
-        toast(
-            "Trình duyệt không hỗ trợ chế độ toàn màn hình.",
-            "error"
-        );
+    }
+    else if (!document.fullscreenElement) {
+        toast("Trình duyệt không hỗ trợ chế độ toàn màn hình.", "error");
     }
 }
-async function doEvaluate(id){const d=findDoc(id);if(!d)return;$("#difficulty-result").innerHTML='<span class="spinner"></span> Đang phân tích…';openDialog("difficulty-dialog");try{const result=await evaluateDifficulty(d.content||d.description,d.title);$("#difficulty-result").textContent=result.analysis||result.text||"AI chưa trả về kết quả.";}catch(e){$("#difficulty-result").textContent=`Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;}}
-function subjectClick(subject){if(subject==="Toán"){go("subject");$("#subject-menu").classList.remove("open");}else{toast(`${subject}: sẽ được cập nhật trong thời gian tới — Coming soon!`);$("#subject-menu").classList.remove("open");}}
-document.addEventListener("click",async e=>{
- const routeBtn=e.target.closest("[data-route]");if(routeBtn){e.preventDefault();const r=routeBtn.dataset.route;go(r);return;}
- const action=e.target.closest("[data-action]");if(action){const a=action.dataset.action;
-  if(a==="admin-dashboard"){if(currentUser?.role==="admin")go("admin");else toast("Bạn cần đăng nhập bằng tài khoản Admin.","error");return;}
-  if(a==="browse-subjects"){ $("#subject-menu").classList.remove("open");go("subject-picker");return;}
-  if(a==="open-math"){go("subject");return;}
-  if(a==="coming-subject"){toast(`${action.dataset.name}: sẽ được cập nhật trong thời gian tới — Coming soon!`);return;}
-  if(a==="choose-grade"){state.grade=action.dataset.grade;go("theory-list",{grade:action.dataset.grade});return;}
-  if(a==="select-grade-route"){const g=action.dataset.grade,next=action.dataset.next,cat=action.dataset.category;state.grade=g;if(next==="exam-list")go("exam-list",{grade:g});else if(cat==="theory")go("theory-list",{grade:g});else if(cat==="practice")go("practice-list",{grade:g});else go("exercise-list",{grade:g});return;}
-  if(a==="open-upload"){openDialog("upload-dialog");return;}
-  if(a==="read-doc"){go("reader",{docId:action.dataset.id});return;}
-  if(a==="start-exam"){startExam(action.dataset.id);return;}
-  if(a==="evaluate"){doEvaluate(action.dataset.id);return;}
-  if(a==="submit-exam"){openDialog("confirm-dialog");return;}
- }
- const subject=e.target.closest("[data-subject]");if(subject){subjectClick(subject.dataset.subject);return;}
- const close=e.target.closest("[data-close]");if(close){closeDialog(close.dataset.close);return;}
+async function doEvaluate(id) { const d = findDoc(id); if (!d)
+    return; $("#difficulty-result").innerHTML = '<span class="spinner"></span> Đang phân tích…'; openDialog("difficulty-dialog"); try {
+    const result = await evaluateDifficulty(d.content || d.description, d.title);
+    $("#difficulty-result").textContent = result.analysis || result.text || "AI chưa trả về kết quả.";
+}
+catch (e) {
+    $("#difficulty-result").textContent = `Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;
+} }
+function subjectClick(subject) { if (subject === "Toán") {
+    go("subject");
+    $("#subject-menu").classList.remove("open");
+}
+else {
+    toast(`${subject}: sẽ được cập nhật trong thời gian tới — Coming soon!`);
+    $("#subject-menu").classList.remove("open");
+} }
+document.addEventListener("click", async (e) => {
+    const routeBtn = e.target.closest("[data-route]");
+    if (routeBtn) {
+        e.preventDefault();
+        const r = routeBtn.dataset.route;
+        go(r);
+        return;
+    }
+    const action = e.target.closest("[data-action]");
+    if (action) {
+        const a = action.dataset.action;
+        if (a === "admin-dashboard") {
+            if (currentUser?.role === "admin")
+                go("admin");
+            else
+                toast("Bạn cần đăng nhập bằng tài khoản Admin.", "error");
+            return;
+        }
+        if (a === "browse-subjects") {
+            $("#subject-menu").classList.remove("open");
+            go("subject-picker");
+            return;
+        }
+        if (a === "open-math") {
+            go("subject");
+            return;
+        }
+        if (a === "coming-subject") {
+            toast(`${action.dataset.name}: sẽ được cập nhật trong thời gian tới — Coming soon!`);
+            return;
+        }
+        if (a === "choose-grade") {
+            state.grade = action.dataset.grade;
+            go("theory-list", { grade: action.dataset.grade });
+            return;
+        }
+        if (a === "select-grade-route") {
+            const g = action.dataset.grade, next = action.dataset.next, cat = action.dataset.category;
+            state.grade = g;
+            if (next === "exam-list")
+                go("exam-list", { grade: g });
+            else if (cat === "theory")
+                go("theory-list", { grade: g });
+            else if (cat === "practice")
+                go("practice-list", { grade: g });
+            else
+                go("exercise-list", { grade: g });
+            return;
+        }
+        if (a === "open-upload") {
+            const category = action.dataset.category || currentDocumentCategory();
+            if (category) $("#upload-form").elements.category.value = category;
+            openDialog("upload-dialog");
+            return;
+        }
+        if (a === "read-doc") {
+            const id = action.dataset.id;
+            // Mở trang đọc ngay lập tức; không để API đồng bộ làm nút bị treo.
+            const documentToOpen = findDoc(id);
+            if (!documentToOpen) {
+                toast("Không tìm thấy tài liệu trong danh sách hiện tại. Hãy tải lại trang và thử lại.", "error");
+                return;
+            }
+            go("reader", { docId: documentToOpen.id });
+            // Đồng bộ ngầm sau khi điều hướng. Nếu có dữ liệu mới, cập nhật
+            // trang đọc khi người dùng vẫn đang ở đúng tài liệu đó.
+            refreshDocuments()
+                .then(() => {
+                    if (state.route === "reader" && String(state.docId) === String(id)) {
+                        render();
+                    }
+                })
+                .catch(error => console.error("Không thể đồng bộ tài liệu:", error));
+            return;
+        }
+        if (a === "start-exam") {
+            startExam(action.dataset.id);
+            return;
+        }
+        if (a === "evaluate") {
+            doEvaluate(action.dataset.id);
+            return;
+        }
+        if (a === "submit-exam") {
+            openDialog("confirm-dialog");
+            return;
+        }
+    }
+    const subject = e.target.closest("[data-subject]");
+    if (subject) {
+        subjectClick(subject.dataset.subject);
+        return;
+    }
+    const close = e.target.closest("[data-close]");
+    if (close) {
+        closeDialog(close.dataset.close);
+        return;
+    }
 });
-$("#brand-home").addEventListener("click",()=>go("home"));
-$("#menu-toggle").addEventListener("click",()=>$("#subject-menu").classList.toggle("open"));
-document.addEventListener("click",e=>{if(!e.target.closest("#subject-menu")&&!e.target.closest("#menu-toggle")&&!e.target.closest('[data-action="browse-subjects"]'))$("#subject-menu").classList.remove("open");});
-$("#upload-open").addEventListener("click",()=>openDialog("upload-dialog"));
-$("#upload-form").addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);try{const result=await uploadDocument(fd);closeDialog("upload-dialog");form.reset();toast(result.localOnly?"Đã thêm tài liệu vào phiên trình duyệt hiện tại.":result.status==="pending"?"Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo.":"Tài liệu đã được tải lên máy chủ.","success");render();}catch(err){toast(err.message||"Không thể tải tài liệu lên.","error");}});
-$("#confirm-yes").addEventListener("click",()=>{closeDialog("confirm-dialog");finishExam();});
-document.addEventListener("input",e=>{if(e.target.matches("[data-answer]"))state.answers[e.target.dataset.answer]=e.target.value;});
-window.addEventListener("beforeunload",e=>{if(state.route==="exam"&&state.examStarted){e.preventDefault();e.returnValue="";}});
-
+$("#brand-home").addEventListener("click", () => go("home"));
+$("#menu-toggle").addEventListener("click", () => $("#subject-menu").classList.toggle("open"));
+document.addEventListener("click", e => { if (!e.target.closest("#subject-menu") && !e.target.closest("#menu-toggle") && !e.target.closest('[data-action="browse-subjects"]'))
+    $("#subject-menu").classList.remove("open"); });
+$("#upload-open").addEventListener("click", () => {
+    const category = currentDocumentCategory();
+    if (category) $("#upload-form").elements.category.value = category;
+    openDialog("upload-dialog");
+});
+/* ============================================
+   CHỐNG SPAM CLICK KHI UPLOAD TÀI LIỆU
+   ============================================ */
+// Khóa upload trong khi request đang xử lý.
+let uploadInProgress = false;
+// Lưu các tệp đã upload thành công trong phiên trang hiện tại.
+const uploadedFileKeys = new Set();
+$("#upload-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const fileInput = form.querySelector('input[type="file"]');
+    const file = fileInput?.files?.[0];
+    // Kiểm tra tệp đã được chọn.
+    if (!file) {
+        toast("Vui lòng chọn tài liệu trước khi tải lên.", "error");
+        return;
+    }
+    // Nhận diện tệp dựa trên tên, kích thước và thời điểm chỉnh sửa.
+    const fileKey = JSON.stringify({
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified
+    });
+    // Nếu đang upload, không gửi thêm request.
+    if (uploadInProgress) {
+        toast("Tài liệu đang được tải lên. Vui lòng chờ.", "error");
+        return;
+    }
+    // Nếu tệp đã upload thành công, không upload lại.
+    if (uploadedFileKeys.has(fileKey)) {
+        toast("Tài liệu này đã được tải lên rồi.", "error");
+        return;
+    }
+    // Khóa ngay trước khi gọi API.
+    uploadInProgress = true;
+    const originalText = submitButton?.textContent;
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Đang tải lên...";
+    }
+    try {
+        const fd = new FormData(form);
+        const result = await uploadDocument(fd);
+        // Chỉ đánh dấu đã upload khi server xử lý thành công.
+        uploadedFileKeys.add(fileKey);
+        closeDialog("upload-dialog");
+        form.reset();
+        toast(result.localOnly
+            ? "Đã thêm tài liệu vào phiên trình duyệt hiện tại."
+            : result.status === "pending"
+                ? "Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo."
+                : "Tài liệu đã được tải lên máy chủ.", "success");
+        render();
+    }
+    catch (err) {
+        toast(err.message || "Không thể tải tài liệu lên.", "error");
+    }
+    finally {
+        // Mở khóa sau khi request kết thúc.
+        uploadInProgress = false;
+        if (submitButton) {
+            submitButton.disabled = false;
+            if (originalText !== undefined) {
+                submitButton.textContent = originalText;
+            }
+        }
+    }
+});
+$("#confirm-yes").addEventListener("click", () => { closeDialog("confirm-dialog"); finishExam(); });
+document.addEventListener("input", e => { if (e.target.matches("[data-answer]"))
+    state.answers[e.target.dataset.answer] = e.target.value; });
+window.addEventListener("beforeunload", e => { if (state.route === "exam" && state.examStarted) {
+    e.preventDefault();
+    e.returnValue = "";
+} });
 // ============================================
 // ĐIỀU HƯỚNG NÚT BACK CỦA TRÌNH DUYỆT
 // Áp dụng cho toàn bộ website MAI HỌC
 // ============================================
-
-
-
 // -------------------- ACCOUNT UI + API --------------------
-function applyAuthUI(){
-  const signedIn=Boolean(currentUser);
-  $("#auth-actions").hidden=signedIn;
-  $("#user-actions").hidden=!signedIn;
-  $("#upload-open").hidden=!signedIn;
-  $("#notifications-open").hidden=!signedIn;
-  $("#admin-open").hidden=currentUser?.role!=="admin";
-  $("#user-greeting").textContent=currentUser?`Xin chào, ${currentUser.name}${currentUser.role==="admin"?" · Admin":""}`:"";
+function applyAuthUI() {
+    const signedIn = Boolean(currentUser);
+    $("#auth-actions").hidden = signedIn;
+    $("#user-actions").hidden = !signedIn;
+    $("#upload-open").hidden = !signedIn;
+    $("#notifications-open").hidden = !signedIn;
+    $("#admin-open").hidden = currentUser?.role !== "admin";
+    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
 }
-async function refreshAuthUI(){
-  try{
-    const response=await fetch("/api/auth/me",{credentials:"same-origin"});
-    const data=await response.json().catch(()=>({}));
-    currentUser=response.ok?data.user||null:null;
-  }catch{currentUser=null;}
-  applyAuthUI();
+async function refreshAuthUI() {
+    try {
+        const response = await fetch("/api/auth/me", { credentials: "same-origin" });
+        const data = await response.json().catch(() => ({}));
+        currentUser = response.ok ? data.user || null : null;
+    }
+    catch {
+        currentUser = null;
+    }
+    applyAuthUI();
 }
-async function postJson(url,body){
-  const response=await fetch(url,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const payload=response.status===204?{}:await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(payload.error||"Máy chủ không thể xử lý yêu cầu.");
-  return payload;
+async function postJson(url, body) {
+    const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
+    if (!response.ok)
+        throw new Error(payload.error || "Máy chủ không thể xử lý yêu cầu.");
+    return payload;
 }
-$("#login-open").addEventListener("click",()=>{ $("#login-error").hidden=true;openDialog("login-dialog"); });
-$("#register-open").addEventListener("click",()=>{ $("#register-error").hidden=true;openDialog("register-dialog"); });
-$("#switch-to-register").addEventListener("click",()=>{closeDialog("login-dialog");openDialog("register-dialog");});
-$("#switch-to-login").addEventListener("click",()=>{closeDialog("register-dialog");openDialog("login-dialog");});
-$("#login-form").addEventListener("submit",async event=>{
-  event.preventDefault();
-  const form=event.currentTarget;
-  const submit=form.querySelector('button[type="submit"]');
-  const error=$("#login-error");
-  error.hidden=true;
-  if(submit)submit.disabled=true;
-  try{
-    const values=Object.fromEntries(new FormData(form).entries());
-    const result=await postJson("/api/auth/login",values);
-    currentUser=result.user;
-    applyAuthUI();
-    window.dispatchEvent(new Event("maihoc-auth-changed"));
-    closeDialog("login-dialog");
-    form.reset();
-    toast("Đăng nhập thành công.","success");
-    go(currentUser.role==="admin"?"admin":"home");
-  }catch(err){error.textContent=err.message;error.hidden=false;}
-  finally{if(submit)submit.disabled=false;}
+$("#login-open").addEventListener("click", () => { $("#login-error").hidden = true; openDialog("login-dialog"); });
+$("#register-open").addEventListener("click", () => { $("#register-error").hidden = true; openDialog("register-dialog"); });
+$("#switch-to-register").addEventListener("click", () => { closeDialog("login-dialog"); openDialog("register-dialog"); });
+$("#switch-to-login").addEventListener("click", () => { closeDialog("register-dialog"); openDialog("login-dialog"); });
+$("#login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('button[type="submit"]');
+    const error = $("#login-error");
+    error.hidden = true;
+    if (submit)
+        submit.disabled = true;
+    try {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const result = await postJson("/api/auth/login", values);
+        currentUser = result.user;
+        applyAuthUI();
+        window.dispatchEvent(new Event("maihoc-auth-changed"));
+        closeDialog("login-dialog");
+        form.reset();
+        toast("Đăng nhập thành công.", "success");
+        go(currentUser.role === "admin" ? "admin" : "home");
+    }
+    catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+    }
+    finally {
+        if (submit)
+            submit.disabled = false;
+    }
 });
-$("#register-form").addEventListener("submit",async event=>{
-  event.preventDefault();
-  const form=event.currentTarget;
-  const submit=form.querySelector('button[type="submit"]');
-  const error=$("#register-error");
-  error.hidden=true;
-  const values=Object.fromEntries(new FormData(form).entries());
-  if(values.password!==values.confirmPassword){error.textContent="Mật khẩu nhập lại chưa khớp.";error.hidden=false;return;}
-  delete values.confirmPassword;
-  if(submit)submit.disabled=true;
-  try{
-    const result=await postJson("/api/auth/register",values);
-    currentUser=result.user;
-    applyAuthUI();
-    closeDialog("register-dialog");
-    form.reset();
-    toast("Tạo tài khoản thành công.","success");
-    go("home");
-  }catch(err){error.textContent=err.message;error.hidden=false;}
-  finally{if(submit)submit.disabled=false;}
+$("#register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('button[type="submit"]');
+    const error = $("#register-error");
+    error.hidden = true;
+    const values = Object.fromEntries(new FormData(form).entries());
+    if (values.password !== values.confirmPassword) {
+        error.textContent = "Mật khẩu nhập lại chưa khớp.";
+        error.hidden = false;
+        return;
+    }
+    delete values.confirmPassword;
+    if (submit)
+        submit.disabled = true;
+    try {
+        const result = await postJson("/api/auth/register", values);
+        currentUser = result.user;
+        applyAuthUI();
+        closeDialog("register-dialog");
+        form.reset();
+        toast("Tạo tài khoản thành công.", "success");
+        go("home");
+    }
+    catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+    }
+    finally {
+        if (submit)
+            submit.disabled = false;
+    }
 });
-$("#logout-button").addEventListener("click",async()=>{
-  try{
-    const response=await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"});
-    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||"Không thể đăng xuất.");}
-    currentUser=null;
-    applyAuthUI();
-    window.dispatchEvent(new Event("maihoc-auth-changed"));
-    if(state.route==="admin")go("home");
-    toast("Bạn đã đăng xuất.","success");
-  }catch(error){toast(error.message||"Không thể đăng xuất.","error");}
+$("#logout-button").addEventListener("click", async () => {
+    try {
+        const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            throw new Error(result.error || "Không thể đăng xuất.");
+        }
+        currentUser = null;
+        applyAuthUI();
+        window.dispatchEvent(new Event("maihoc-auth-changed"));
+        if (state.route === "admin")
+            go("home");
+        toast("Bạn đã đăng xuất.", "success");
+    }
+    catch (error) {
+        toast(error.message || "Không thể đăng xuất.", "error");
+    }
 });
-
 // Khởi tạo giao diện như bình thường.
 initTheme();
 render();
 refreshAuthUI();
+
+window.addEventListener("maihoc-documents-changed", () => {
+    refreshDocuments().then(() => render());
+});

@@ -44,8 +44,23 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     subject TEXT NOT NULL, grade TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
     filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL,
+    file_data BLOB,
+    content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
     admin_note TEXT, reviewed_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), reviewed_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL, grade TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
+    filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    file_data BLOB NOT NULL,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS app_migrations (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -54,6 +69,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, read_at, id DESC);
 `);
+
+const submissionColumns = new Set(
+  db.pragma("table_info(document_submissions)").map((column) => column.name)
+);
+if (!submissionColumns.has("file_data")) {
+  db.exec("ALTER TABLE document_submissions ADD COLUMN file_data BLOB");
+}
+if (!submissionColumns.has("content_type")) {
+  db.exec("ALTER TABLE document_submissions ADD COLUMN content_type TEXT NOT NULL DEFAULT 'application/octet-stream'");
+}
 
 const SESSION_COOKIE = "maihoc.sid";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
