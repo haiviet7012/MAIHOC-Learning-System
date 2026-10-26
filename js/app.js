@@ -323,6 +323,7 @@ $("#login-form").addEventListener("submit",async event=>{
     const result=await postJson("/api/auth/login",values);
     currentUser=result.user;
     applyAuthUI();
+    window.dispatchEvent(new Event("maihoc-auth-changed"));
     closeDialog("login-dialog");
     form.reset();
     toast("Đăng nhập thành công.","success");
@@ -357,6 +358,7 @@ $("#logout-button").addEventListener("click",async()=>{
     if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||"Không thể đăng xuất.");}
     currentUser=null;
     applyAuthUI();
+    window.dispatchEvent(new Event("maihoc-auth-changed"));
     if(state.route==="admin")go("home");
     toast("Bạn đã đăng xuất.","success");
   }catch(error){toast(error.message||"Không thể đăng xuất.","error");}
