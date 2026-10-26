@@ -39,7 +39,7 @@ app.use((req,res,next)=>{
 app.use(express.json({limit:"1mb"}));
 app.use(loadCurrentUser);
 // Do not expose backend source, environment files or the local account database as static assets.
-app.use((req,res,next)=>req.path==="/server"||req.path.startsWith("/server/")?res.sendStatus(404):next());
+app.use((req,res,next)=>req.path==="/server"||req.path.startsWith("/server/")||req.path.startsWith("/uploads/pending/")?res.sendStatus(404):next());
 app.use(express.static(root,{extensions:["html"],index:"index.html"}));
 
 const loginAttempts=new Map();
@@ -110,6 +110,7 @@ app.post("/api/notifications/read-all",requireAuth,(req,res)=>{
   db.prepare("UPDATE notifications SET read_at=datetime('now') WHERE user_id=? AND read_at IS NULL").run(req.user.id);
   res.json({ok:true});
 });
+app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
 app.get("/api/progress",requireAuth,(req,res)=>{
   const rows=db.prepare("SELECT id,item_type AS itemType,item_id AS itemId,subject,grade,status,progress_percent AS progressPercent,score,answers_json AS answers,last_position AS lastPosition,started_at AS startedAt,updated_at AS updatedAt FROM user_progress WHERE user_id=? ORDER BY updated_at DESC").all(req.user.id);
   res.json({progress:rows});
