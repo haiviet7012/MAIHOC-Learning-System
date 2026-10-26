@@ -7,7 +7,7 @@ import {fileURLToPath} from "node:url";
 import {GoogleGenerativeAI} from "@google/generative-ai";
 import {
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
-  loadCurrentUser, requireAuth, requireAdmin, requireSameOrigin, createInitialAdmin
+  loadCurrentUser, requireAdmin, requireSameOrigin, createInitialAdmin
 } from "./auth.js";
 
 dotenv.config();
@@ -63,6 +63,7 @@ app.post("/api/auth/login",requireSameOrigin,loginRateLimit,async(req,res)=>{
   try{
     const user=await authenticateUser(req.body?.email,req.body?.password);
     if(!user)return res.status(401).json({error:"Email hoặc mật khẩu không chính xác."});
+    loginAttempts.delete(`${req.ip}:${String(req.body?.email||"").trim().toLowerCase()}`);
     createSession(user.id,res);
     res.json({user});
   }catch(error){
