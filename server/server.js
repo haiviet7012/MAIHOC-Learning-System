@@ -172,13 +172,27 @@ function passwordResetSmtpFailure(error){
 }
 async function sendPasswordResetEmail(to,code,mailTransport=createPasswordResetTransport()){
   const {SMTP_FROM,SMTP_USER,transporter}=mailTransport;
-  await transporter.sendMail({
-    from:SMTP_FROM||SMTP_USER,
+  const result=await transporter.sendMail({
+    from:{name:"MAI HỌC - Xác minh tài khoản",address:SMTP_FROM||SMTP_USER},
     to,
-    subject:"Mã xác minh đặt lại mật khẩu MAI HỌC",
-    text:`Bạn đã yêu cầu đặt lại mật khẩu MAI HỌC.\n\nMã xác minh của bạn là: ${code}\nMã có hiệu lực trong 10 phút và chỉ dùng một lần.\nNếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.\n\nVì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.`,
-    html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;line-height:1.6"><h2>Đặt lại mật khẩu MAI HỌC</h2><p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản này.</p><p>Mã xác minh có hiệu lực <strong>10 phút</strong>:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px;padding:16px;background:#eef4ff;text-align:center">${code}</p><p>Mã chỉ dùng một lần. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p><p>Vì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.</p></div>`
+    replyTo:SMTP_FROM||SMTP_USER,
+    subject:"[MAI HỌC] Mã xác minh đặt lại mật khẩu",
+    text:`Bạn đã yêu cầu đặt lại mật khẩu MAI HỌC.\n\nMã xác minh của bạn là: ${code}\nMã có hiệu lực trong 10 phút và chỉ dùng một lần.\n\nNếu không thấy thư trong hộp thư đến, hãy kiểm tra Spam/Thư rác, All Mail/Tất cả thư và tìm kiếm “MAI HỌC”.\nNếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.\n\nVì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.`,
+    html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;line-height:1.6;color:#172b45"><h2 style="color:#123b70">MAI HỌC — Đặt lại mật khẩu</h2><p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản này.</p><p>Mã xác minh có hiệu lực <strong>10 phút</strong> và chỉ dùng một lần:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px;padding:16px;background:#eef4ff;text-align:center;border-radius:8px">${code}</p><p>Nếu không thấy thư trong hộp thư đến, hãy kiểm tra thư mục Spam/Thư rác.</p><p>Nếu bạn không yêu cầu, hãy bỏ qua email này. Không chia sẻ mã xác minh với bất kỳ ai.</p></div>`
   });
+  if(result.accepted?.length===0 || result.rejected?.length){
+    const error=new Error("SMTP không chấp nhận địa chỉ nhận thư.");
+    error.code="EMAIL_RECIPIENT_REJECTED";
+    error.rejected=result.rejected;
+    throw error;
+  }
+  console.info("Password reset email accepted by SMTP:",{
+    messageId:result.messageId,
+    accepted:result.accepted?.length||0,
+    rejected:result.rejected?.length||0,
+    response:result.response
+  });
+  return result;
 }
 
 async function emailAdmins(subject,textBody){
@@ -287,9 +301,11 @@ app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
 
 
 const passwordResetRequestAttempts=new Map();
-function consumePasswordResetRateLimit(key,limit,now){
+function consumePasswordResetRateLimit(key,limit,windowMsOrNow,maybeNow){
+  const windowMs=maybeNow===undefined?15*60*1000:windowMsOrNow;
+  const now=maybeNow===undefined?windowMsOrNow:maybeNow;
   let state=passwordResetRequestAttempts.get(key);
-  if(!state||now-state.startedAt>15*60*1000)state={count:0,startedAt:now};
+  if(!state||now-state.startedAt>windowMs)state={count:0,startedAt:now};
   if(state.count>=limit){passwordResetRequestAttempts.set(key,state);return false;}
   state.count++;
   passwordResetRequestAttempts.set(key,state);
@@ -303,10 +319,23 @@ function passwordResetRateLimit(req,res,next){
     }
   }
   const email=String(req.body?.email||"").trim().toLowerCase();
+  const resendKey="resend:"+req.ip+":"+email;
+  const previous=passwordResetRequestAttempts.get(resendKey);
+  if(previous&&now-previous.lastSentAt<30*1000){
+    const retryAfter=Math.ceil((30*1000-(now-previous.lastSentAt))/1000);
+    res.setHeader("Retry-After",String(retryAfter));
+    return res.status(429).json({error:`Bạn chỉ có thể gửi lại mã sau ${retryAfter} giây.`,retryAfter});
+  }
   const ipAllowed=consumePasswordResetRateLimit("ip:"+req.ip,10,now);
-  const emailAllowed=consumePasswordResetRateLimit("email:"+email,3,now);
+  const emailAllowed=consumePasswordResetRateLimit("email:"+email,6,15*60*1000,now);
   if(!ipAllowed||!emailAllowed)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
+  req.passwordResetCooldownKey=resendKey;
   next();
+}
+function markPasswordResetEmailSent(req){
+  if(req.passwordResetCooldownKey){
+    passwordResetRequestAttempts.set(req.passwordResetCooldownKey,{lastSentAt:Date.now(),startedAt:Date.now()});
+  }
 }
 
 app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,async(req,res)=>{
@@ -322,6 +351,8 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
     const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     // Keep the same generic response for registered and unknown addresses.
     if(!user){
+      // Avoid account enumeration while keeping a successful-request cooldown.
+      markPasswordResetEmailSent(req);
       return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
     }
 
@@ -333,6 +364,7 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
       .run(user.id,tokenHash,now+10*60*1000,0,now);
     try{
       await sendPasswordResetEmail(user.email,code,mailTransport);
+      markPasswordResetEmailSent(req);
     }catch(error){
       db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
       console.error("Password reset email failed:",{
