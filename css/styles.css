@@ -676,3 +676,13 @@ body.exam-open .topbar-actions>#theme-toggle .button-label{display:inline!import
  body.exam-open .view.exam-fullscreen{padding:48px 5px 5px!important}
  body.exam-open .view.exam-fullscreen .split-exam{height:calc(100dvh - 102px)!important;max-height:calc(100dvh - 102px)!important}
 }
+
+/* Exam results: clear side-by-side comparison of submitted and approved answers. */
+.grade-details-table-wrap{width:100%;overflow-x:auto;margin:16px 0}
+.grade-details-table{width:100%;min-width:760px;border-collapse:collapse}
+.grade-details-table th,.grade-details-table td{padding:12px 14px;border:1px solid var(--border);text-align:left;vertical-align:top}
+.grade-details-table thead th{background:var(--surface-2);color:var(--text);font-size:12px}
+.grade-details-table td:nth-child(2){color:var(--text)}
+.grade-details-table td:nth-child(3){color:var(--primary);font-weight:600}
+.grade-details-table .is-correct{color:#11a36a}
+.grade-details-table .is-wrong{color:#e45b69}
