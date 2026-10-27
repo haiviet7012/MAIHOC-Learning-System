@@ -233,7 +233,7 @@ app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
   db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
   const users=db.prepare("SELECT u.id,u.name,u.email,u.role,u.admin_level AS adminLevel,p.last_seen_at AS lastSeenAt FROM user_presence p JOIN users u ON u.id=p.user_id WHERE p.last_seen_at>=? ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,u.name COLLATE NOCASE").all(now-3*60*1000);
   res.setHeader("Cache-Control","private, no-store");
-  res.json({users:users.map(user=>({...user,lastSeenAt:Number(user.lastSeenAt)}),total:users.length,windowMs:3*60*1000});
+  res.json({users:users.map(user=>({...user,lastSeenAt:Number(user.lastSeenAt)})),total:users.length,windowMs:3*60*1000});
 });
 
 
