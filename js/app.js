@@ -316,6 +316,7 @@ function resultPage() {
     const layout = assessmentLayoutFor(d);
     const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
     const rows = Array.isArray(result?.results) ? result.results : [];
+    const resultMessage = result?.message ? "<p class=\"muted\">" + escapeHTML(result.message) + "</p>" : "";
     const detailRows = rows.map(item => {
         const statements = Array.isArray(item.statements) ? item.statements : null;
         const userAnswer = item.userAnswer ?? (statements ? statements.map(row => String(row.statement) + ": " + formatExamAnswer(row.userAnswer)).join(" · ") : "—");
@@ -333,7 +334,7 @@ function resultPage() {
     const actions = saved
         ? (currentUser?.role === "admin" ? "<button class=\"button secondary\" data-route=\"admin\">Quay lại tiến trình</button>" : "<button class=\"button secondary\" data-route=\"home\">Về trang học tập</button>")
         : "<button class=\"button secondary\" data-route=\"exam-select\">Chọn đề khác</button><button class=\"button primary\" data-route=\"subject\">Về môn Toán</button>";
-    return pageHeading("Kết quả bài làm", d?.title || "Đề thi") + "<div class=\"result-panel\"><span class=\"pill\">ĐÃ NỘP BÀI</span>" + owner + scoreBlock + "<h2>" + (hasDetails ? "Đối chiếu đáp án từng câu" : (result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm")) + "</h2>" + table + "<div class=\"modal-actions\">" + actions + "</div></div>";
+    return pageHeading("Kết quả bài làm", d?.title || "Đề thi") + "<div class=\"result-panel\"><span class=\"pill\">ĐÃ NỘP BÀI</span>" + owner + scoreBlock + resultMessage + "<h2>" + (hasDetails ? "Đối chiếu đáp án từng câu" : (result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm")) + "</h2>" + table + "<div class=\"modal-actions\">" + actions + "</div></div>";
 }
 
 async function openSavedExamResult(id) {
@@ -672,6 +673,7 @@ function finishExam() {
     // Đánh dấu bài thi đã kết thúc trước khi thoát fullscreen.
     state.examFinished = true;
     state.examStarted = false;
+    document.body.classList.remove("exam-open", "exam-native-fullscreen");
     // Dừng đồng hồ đếm ngược.
     if (state.timer) {
         clearInterval(state.timer);
@@ -701,6 +703,8 @@ function finishExam() {
 // PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
 // ============================================
 document.addEventListener("fullscreenchange", () => {
+    // Keep the timed-exam state synchronized with native browser fullscreen.
+    document.body.classList.toggle("exam-native-fullscreen", Boolean(document.fullscreenElement && state.route === "exam" && findDoc(state.examDocId)?.category === "exam"));
     // Vẫn đang ở chế độ toàn màn hình.
     if (document.fullscreenElement)
         return;
@@ -732,6 +736,8 @@ function startExam(id) {
     if (!d)
         return;
     const isTimedExam = d.category === "exam";
+    document.body.classList.toggle("exam-open", isTimedExam);
+    document.body.classList.toggle("exam-native-fullscreen", Boolean(document.fullscreenElement && isTimedExam));
     // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
     // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
     let fullscreenPromise = null;
@@ -1064,9 +1070,13 @@ $("#upload-form").addEventListener("submit", async (e) => {
     }
 });
 $("#confirm-yes").addEventListener("click", () => { closeDialog("confirm-dialog"); finishExam(); });
-document.addEventListener("input", e => { if (e.target.matches("[data-answer]"))
-    state.answers[e.target.dataset.answer] = e.target.value; });
+document.addEventListener("input", e => {
+    const field=e.target.closest("[data-answer]");
+    if(field) state.answers[field.dataset.answer]=field.value;
+});
 document.addEventListener("change", e => {
+    const answerInput = e.target.closest("[data-answer]");
+    if (answerInput) state.answers[answerInput.dataset.answer] = answerInput.value;
     const multipleChoice = e.target.closest("[data-answer-choice]");
     if (multipleChoice) {
         const questionId = multipleChoice.dataset.answerChoice;
