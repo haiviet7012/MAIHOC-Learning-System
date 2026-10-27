@@ -315,7 +315,8 @@ function passwordResetRateLimit(req,res,next){
   const now=Date.now();
   if(passwordResetRequestAttempts.size>5000){
     for(const [key,state] of passwordResetRequestAttempts){
-      if(now-state.startedAt>15*60*1000)passwordResetRequestAttempts.delete(key);
+      const age=now-Number(state.updatedAt||state.startedAt||0);
+      if(age>15*60*1000)passwordResetRequestAttempts.delete(key);
     }
   }
   const email=String(req.body?.email||"").trim().toLowerCase();
@@ -334,7 +335,8 @@ function passwordResetRateLimit(req,res,next){
 }
 function markPasswordResetEmailSent(req){
   if(req.passwordResetCooldownKey){
-    passwordResetRequestAttempts.set(req.passwordResetCooldownKey,{lastSentAt:Date.now(),startedAt:Date.now()});
+    const now=Date.now();
+    passwordResetRequestAttempts.set(req.passwordResetCooldownKey,{lastSentAt:now,startedAt:now,updatedAt:now});
   }
 }
 
