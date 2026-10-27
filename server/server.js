@@ -15,7 +15,7 @@ import {GoogleGenerativeAI} from "@google/generative-ai";
 
 import nodemailer from "nodemailer";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
-import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
+import { solveExamDocument, isAIQuotaError, answerTargetsForLayout } from "./grading/exam-solution-engine.js";
 
 import {
 
@@ -852,6 +852,34 @@ app.post("/api/admin/documents/:id/solution/generate",requireSameOrigin,requireA
   res.status(202).json({ok:true,id:document.id,status:"queued"});
 });
 
+app.post("/api/admin/documents/:id/solution/manual",requireSameOrigin,requireAdmin,(req,res)=>{
+  const document=db.prepare("SELECT id,title,subject,category,original_name,file_data FROM documents WHERE id=?").get(String(req.params.id));
+  if(!document)return res.status(404).json({error:"Không tìm thấy đề."});
+  if(!["exam","practice"].includes(document.category))return res.status(400).json({error:"Chỉ có thể nhập đáp án cho đề ôn tập hoặc đề thi thử."});
+  const existing=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(document.id);
+  if(activeSolutionJobs.has(document.id)||["queued","reading","solving"].includes(existing?.status))return res.status(409).json({error:"AI đang xử lý đề này. Hãy chờ tác vụ kết thúc rồi chọn nhập đáp án thủ công."});
+  if(existing?.status==="ready")return res.status(409).json({error:"Đề đã có bộ đáp án được duyệt. Không thể ghi đè bằng chế độ nhập thủ công."});
+  const config=assessmentConfigFor(document.subject,document.category);
+  if(!config?.layout?.sections?.length||!config?.grading||!config.layout.sections.filter(section=>Number(section.count)>0).every(section=>section.grading))return res.status(409).json({error:"Thiếu cấu hình câu hỏi hoặc thang điểm trong configs/exam-layouts.json."});
+  const targets=answerTargetsForLayout(config.layout);
+  if(!targets.length)return res.status(409).json({error:"Cấu hình đề chưa có câu hỏi để nhập đáp án."});
+  const questions=targets.map(target=>({
+    ...target,
+    questionText:target.type==="true_false"?`Câu ${target.questionId}, mệnh đề ${target.statement}`:`Câu ${target.targetId}`,
+    answer:"",aiAnswer:"",explanation:"",confidence:1,uncertainty:"",
+    rubric:target.type==="essay"?[{criterion:"Đáp án chính xác theo đề",points:Number(target.maximumPoints)||0.5}]:[],reviewStatus:"pending"
+  }));
+  const generated={schemaVersion:1,source:"manual-entry",provider:"manual",model:"Nhập đáp án thủ công",scale:Number(config.grading.scale)||10,
+    generatedAt:new Date().toISOString(),questions,answerCount:0,requiredCount:questions.length};
+  const sourceHash=crypto.createHash("sha256").update(Buffer.from(document.file_data)).digest("hex");
+  db.prepare(`INSERT INTO exam_solutions(document_id,status,progress,phase,model,source_hash,generated_json,approved_json,solution_version,generated_at,approved_at,approved_by,error_code,error_message)
+    VALUES(?,'review',100,'Chờ admin nhập đáp án thủ công','Nhập thủ công',?,?,NULL,1,datetime('now'),NULL,NULL,NULL,NULL)
+    ON CONFLICT(document_id) DO UPDATE SET status='review',progress=100,phase='Chờ admin nhập đáp án thủ công',model='Nhập thủ công',source_hash=excluded.source_hash,
+      generated_json=excluded.generated_json,approved_json=NULL,solution_version=exam_solutions.solution_version+1,generated_at=datetime('now'),approved_at=NULL,approved_by=NULL,error_code=NULL,error_message=NULL,updated_at=datetime('now')`)
+    .run(document.id,sourceHash,JSON.stringify(generated));
+  res.status(201).json({ok:true,id:document.id,status:"review",mode:"manual"});
+});
+
 app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdmin,(req,res)=>{
   const documentId=String(req.params.id);
   const row=db.prepare(`SELECT d.subject,d.category,s.generated_json,s.solution_version,s.source_hash
@@ -859,7 +887,8 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   if(!row)return res.status(404).json({error:"Chưa có tác vụ lời giải cho đề này."});
   let generated;
   try{generated=JSON.parse(row.generated_json||"null");}catch{}
-  if(!generated?.questions?.length)return res.status(409).json({error:"AI chưa tạo lời giải để duyệt."});
+  if(!generated?.questions?.length)return res.status(409).json({error:"Chưa có danh sách câu hỏi để duyệt."});
+  const manualMode=generated.source==="manual-entry";
   const submitted=req.body?.questions;
   if(!Array.isArray(submitted)||submitted.length!==generated.questions.length)return res.status(400).json({error:"Cần duyệt từng câu trước khi lưu bộ chấm."});
   const submittedById=new Map();
@@ -874,7 +903,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   const reviewed=[];
   for(const original of generated.questions){
     const item=submittedById.get(original.targetId);
-    if(!item||!["correct","incorrect"].includes(item.decision))return res.status(400).json({error:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
+    if(!item||!(manualMode?item.decision==="manual":["correct","incorrect"].includes(item.decision)))return res.status(400).json({error:manualMode?`Thiếu đáp án thủ công cho câu ${original.targetId}.`:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
     const answer=String(item.answer??"").trim().slice(0,3000);
     const explanation=String(item.explanation??original.explanation??"").trim().slice(0,12000);
     if(!answer)return res.status(400).json({error:`Thiếu đáp án chuẩn cho câu ${original.targetId}.`});
@@ -900,9 +929,9 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const uncertainty=String(original.uncertainty||"").trim();
     reviewed.push({...original,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
       uncertainty:/^(none|null|undefined|n\/a)$/i.test(uncertainty)?"":uncertainty,
-      reviewStatus:item.decision==="correct"?"approved":"corrected"});
+      reviewStatus:manualMode?"manual":item.decision==="correct"?"approved":"corrected"});
   }
-  const approved={schemaVersion:1,source:"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
+  const approved={schemaVersion:1,source:manualMode?"manual-entry":"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
     version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,questions:reviewed,
     reviewedAt:new Date().toISOString(),reviewedBy:req.user.id};
   const review=db.transaction(()=>{
@@ -911,7 +940,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const reviewMap=new Map(reviewed.map(item=>[item.targetId,item]));
     for(const before of generated.questions){
       const after=reviewMap.get(before.targetId);
-      insertAudit.run(documentId,approved.version,before.targetId,after.reviewStatus==="approved"?"correct":"corrected",
+      insertAudit.run(documentId,approved.version,before.targetId,after.reviewStatus==="corrected"?"corrected":"correct",
         JSON.stringify(before),JSON.stringify(after),req.user.id);
     }
     updateSolutionJob(documentId,{status:"ready",progress:100,phase:"Đã duyệt, sẵn sàng chấm",approved_json:JSON.stringify(approved),approved_at:approved.reviewedAt,approved_by:req.user.id,error_code:null,error_message:null});

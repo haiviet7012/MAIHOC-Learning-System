@@ -186,9 +186,10 @@ async function loadAnswerKeySections(){
           status='<span class="answer-key-status is-ready">Đã tải đáp án</span>'+
             (doc.gradingAvailable?'<span class="answer-key-status is-ready">Đã sẵn sàng chấm</span>':'<span class="answer-key-status is-missing">Chưa thể chấm tự động</span>')+
             `<a class="text-button" href="/api/admin/documents/${encodeURIComponent(doc.id)}/answer-key" target="_blank" rel="noopener">Xem tệp đáp án gốc</a>`;
-        }else status='<span class="answer-key-status is-missing">Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n</span>';
+        }else if(doc.solutionStatus==="ready")status='<span class="answer-key-status is-ready">Đã duyệt, sẵn sàng chấm</span>';
+        else status='<span class="answer-key-status is-missing">Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n</span>';
         const upload=category==="theory"?"":`<label class="button secondary small answer-key-upload-label">${doc.hasAnswerKey?"Thay \u0111\u00e1p \u00e1n":"Upload \u0111\u00e1p \u00e1n"}<input type="file" accept=".pdf,.txt,.json,.csv,.docx" data-answer-key-upload="${esc(doc.id)}" hidden></label>`;
-        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><span class="answer-key-status ${doc.solutionStatus==="ready"?"is-ready":doc.solutionStatus==="failed"?"is-missing":""}">${esc(doc.solutionPhase||"Ch\u01b0a t\u1ea1o l\u1eddi gi\u1ea3i")}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress)}%`:""}</span><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duy\u1ec7t l\u1eddi gi\u1ea3i AI":doc.solutionStatus==="ready"?"Xem b\u1ed9 ch\u1ea5m \u0111\u00e3 duy\u1ec7t":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem ti\u1ebfn tr\u00ecnh":doc.solutionStatus==="failed"?"Xem l\u1ed7i / th\u1eed l\u1ea1i":"T\u1ea1o l\u1eddi gi\u1ea3i AI"}</button></div>`;
+        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><span class="answer-key-status ${doc.solutionStatus==="ready"?"is-ready":doc.solutionStatus==="failed"?"is-missing":""}">${esc(doc.solutionPhase||"Ch\u01b0a t\u1ea1o l\u1eddi gi\u1ea3i")}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress)}%`:""}</span><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duy\u1ec7t l\u1eddi gi\u1ea3i AI":doc.solutionStatus==="ready"?"Xem b\u1ed9 ch\u1ea5m \u0111\u00e3 duy\u1ec7t":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem ti\u1ebfn tr\u00ecnh":doc.solutionStatus==="failed"?"Xem l\u1ed7i / th\u1eed l\u1ea1i":"T\u1ea1o l\u1eddi gi\u1ea3i AI"}</button>${["ready","queued","reading","solving"].includes(doc.solutionStatus)?"":`<button class="button secondary small" data-solution-manual="${esc(doc.id)}">Nhập đáp án thủ công</button>`}</div>`;
         return `<article class="answer-key-row"><div class="answer-key-main"><strong>${esc(doc.title)}</strong><span class="muted tiny">L\u1edbp ${esc(doc.grade)}${doc.answerKeyOriginalName?" \u00b7 "+esc(doc.answerKeyOriginalName):""}</span><div class="answer-key-statuses"><a class="text-button" href="/api/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">Xem \u0111\u1ec1</a>${status}${solution}</div></div>${upload}</article>`;
       }).join("");
     }
@@ -203,6 +204,8 @@ function solutionMathText(value){
   const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎"};
   for(let i=0;i<6;i++){
     const previous=text;
+    text=text.replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→$1")
+      .replace(/\\vec\s*\{([^{}]*)\}/g,"→$1");
     text=text.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g,"√($1)")
       .replace(/\\(?:text|mathrm|mathbf)\s*\{([^{}]*)\}/g,"$1")
@@ -218,7 +221,7 @@ function solutionMathText(value){
     .replace(/\\(?:left|right|displaystyle|,|;|:|!| )/g,"").replace(/\\([A-Za-z]+)/g,"$1")
     .replace(/\\([{}_$])/g,"$1").replace(/[{}]/g,"").replace(/\s+([,.;])/g,"$1").trim();
 }
-function solutionQuestionMarkup(item,editable){
+function solutionQuestionMarkup(item,editable,manualMode=false){
   const rubric=Array.isArray(item.rubric)?item.rubric:[];
   const rubricText=rubric.map(row=>`${solutionMathText(row.criterion)} (${row.points} điểm)`).join("\n")||"Chưa có rubric chi tiết.";
   const uncertainty=String(item.uncertainty||"").trim();
@@ -238,18 +241,25 @@ function solutionQuestionMarkup(item,editable){
   }else{
     answerEditor=`<input data-solution-answer value="${esc(solutionMathText(answer))}" ${editable?"":"disabled"}>`;
   }
+  const leftPane=manualMode
+    ?`<section class="solution-review-pane"><h4>CÂU HỎI · XEM ĐỀ GỐC</h4><p><strong>${esc(solutionMathText(item.questionText||item.targetId||""))}</strong></p><p class="muted">Mở đề gốc để đối chiếu nội dung câu hỏi, sau đó nhập đáp án ở khung bên phải.</p></section>`
+    :`<section class="solution-review-pane"><h4>ĐỀ VÀ LỜI GIẢI AI</h4><p><strong>${esc(solutionMathText(item.questionText||""))}</strong></p><p><strong>AI chọn:</strong> ${esc(aiAnswer||"Chưa có đáp án")}</p>${item.referenceAnswer?`<p class="muted"><strong>File đáp án đối chiếu:</strong> ${esc(solutionMathText(item.referenceAnswer))}</p>`:""}<p>${esc(solutionMathText(item.explanation||"AI chưa tạo lời giải chi tiết."))}</p><p class="muted tiny"><strong>Rubric AI:</strong><br>${esc(rubricText)}</p>${showUncertainty?`<p class="auth-error">${esc(solutionMathText(uncertainty))}</p>`:""}</section>`;
+  const reviewControls=editable?(manualMode
+    ?`<div class="solution-review-controls"><span class="answer-key-status">Đáp án thủ công sẽ được lưu sau khi bấm “Lưu đáp án chuẩn đã duyệt”.</span></div>`
+    :`<div class="solution-review-controls"><button type="button" class="button secondary small" data-solution-decision="incorrect">Sai, tôi đã sửa</button><button type="button" class="button secondary small" data-solution-decision="correct">Đúng</button><span class="answer-key-status" data-solution-decision-label>Chưa xác nhận</span></div>`)
+    :`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":item.reviewStatus==="manual"?"Admin đã nhập thủ công":"Admin đã xác nhận"}</span></div>`;
   return `<article class="solution-review-item" data-solution-item="${esc(item.targetId)}" data-original-answer="${esc(item.answer||"")}">
-    <div class="solution-review-head"><h3>${esc(item.targetId)} · ${esc(item.type||"")}</h3><span class="answer-key-status ${Number(item.confidence)<0.7?"is-missing":""}">AI tin cậy ${Math.round((Number(item.confidence)||0)*100)}%${showUncertainty?" · Cần kiểm tra":""}</span></div>
-    <div class="solution-review-grid"><section class="solution-review-pane"><h4>ĐỀ VÀ LỜI GIẢI AI</h4><p><strong>${esc(solutionMathText(item.questionText||""))}</strong></p><p><strong>AI chọn:</strong> ${esc(aiAnswer||"Chưa có đáp án")}</p>${item.referenceAnswer?`<p class="muted"><strong>File đáp án đối chiếu:</strong> ${esc(solutionMathText(item.referenceAnswer))}</p>`:""}<p>${esc(solutionMathText(item.explanation||"AI chưa tạo lời giải chi tiết."))}</p><p class="muted tiny"><strong>Rubric AI:</strong><br>${esc(rubricText)}</p>${showUncertainty?`<p class="auth-error">${esc(solutionMathText(uncertainty))}</p>`:""}</section>
-      <section class="solution-review-pane"><h4>${editable?"ĐÁP ÁN ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label><label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify(rubric.map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label></section></div>
-    ${editable?`<div class="solution-review-controls"><button type="button" class="button secondary small" data-solution-decision="incorrect">Sai, tôi đã sửa</button><button type="button" class="button secondary small" data-solution-decision="correct">Đúng</button><span class="answer-key-status" data-solution-decision-label>Chưa xác nhận</span></div>`:`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":"Admin đã xác nhận"}</span></div>`}
+    <div class="solution-review-head"><h3>${esc(item.targetId)} · ${esc(item.type||"")}</h3><span class="answer-key-status ${manualMode?"":Number(item.confidence)<0.7?"is-missing":""}">${manualMode?"Nhập thủ công":`AI tin cậy ${Math.round((Number(item.confidence)||0)*100)}%${showUncertainty?" · Cần kiểm tra":""}`}</span></div>
+    <div class="solution-review-grid">${leftPane}<section class="solution-review-pane"><h4>${editable?"ĐÁP ÁN ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label><label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify(rubric.map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label></section></div>
+    ${reviewControls}
   </article>`;
 }
 function setSolutionReviewReady(){
   const dialog=$("#exam-solution-dialog"),save=dialog?.querySelector("[data-solution-save]");
   if(!dialog||!save)return;
   const items=[...dialog.querySelectorAll("[data-solution-item]")];
-  save.disabled=!items.length||items.some(item=>!item.dataset.decision||!item.querySelector("[data-solution-answer]")?.value.trim());
+  const manualMode=dialog.dataset.solutionMode==="manual";
+  save.disabled=!items.length||items.some(item=>(!manualMode&&!item.dataset.decision)||!item.querySelector("[data-solution-answer]")?.value.trim());
 }
 function renderSolutionState(data){
   const dialog=$("#exam-solution-dialog");if(!dialog)return;
@@ -260,10 +270,13 @@ function renderSolutionState(data){
   if(bar)bar.value=Number(data.progress)||0;if(label)label.textContent=`${Number(data.progress)||0}%`;
   if(error){error.hidden=!data.errorMessage;error.textContent=data.errorMessage||"";}
   const ready=data.status==="review",approved=data.status==="ready";
+  const manualMode=(approved?data.approved?.source:data.generated?.source)==="manual-entry";
+  dialog.dataset.solutionMode=manualMode?"manual":"ai";
+  if(title&&manualMode)title.textContent=`${data.title||"Đề thi"} · Nhập đáp án thủ công`;
   const items=approved?data.approved?.questions:data.generated?.questions;
   if(content){
     if(Array.isArray(items)&&items.length){
-      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được admin xác nhận.":`AI tạo ${data.generated.answerCount}/${data.generated.requiredCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready)).join("")}`;
+      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được admin xác nhận.":manualMode?`Chế độ nhập thủ công: điền đáp án cho ${data.generated.requiredCount} mục theo mã câu. Không gọi AI.`:`AI tạo ${data.generated.answerCount}/${data.generated.requiredCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready,manualMode)).join("")}`;
     }else content.innerHTML="";
   }
   if(retry)retry.hidden=data.status!=="failed"&&data.status!=="not_started";
@@ -351,6 +364,16 @@ async function loadSubmissions() {
   } catch(e) {box.innerHTML='<p class="auth-error">'+esc(e.message)+'</p>';}
 }
 document.addEventListener("click",async e=>{
+  const solutionManual=e.target.closest("[data-solution-manual]");
+  if(solutionManual){
+    const id=solutionManual.dataset.solutionManual;
+    try{
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
+      await openSolutionDialog(id);
+      await loadAnswerKeySections();
+    }catch(error){toastNotice(error.message||"Không thể mở chế độ nhập đáp án thủ công.","error");}
+    return;
+  }
   const solutionOpen=e.target.closest("[data-solution-open]");
   if(solutionOpen){openSolutionDialog(solutionOpen.dataset.solutionOpen);return;}
   const decisionButton=e.target.closest("[data-solution-decision]");
@@ -388,15 +411,16 @@ document.addEventListener("click",async e=>{
     if(!activeSolutionId)return;
     const button=e.target.closest("[data-solution-save]");button.disabled=true;
     try{
+      const manualMode=$("#exam-solution-dialog").dataset.solutionMode==="manual";
       const questions=[...$("#exam-solution-dialog").querySelectorAll("[data-solution-item]")].map(item=>{
         const rubricText=item.querySelector("[data-solution-rubric]").value;
         let rubric=[];try{rubric=JSON.parse(rubricText);}catch{throw new Error(`Rubric ${item.dataset.solutionItem} phải là JSON hợp lệ.`);}
-        return {targetId:item.dataset.solutionItem,decision:item.dataset.decision,answer:item.querySelector("[data-solution-answer]").value,
+        return {targetId:item.dataset.solutionItem,decision:manualMode?"manual":item.dataset.decision,answer:item.querySelector("[data-solution-answer]").value,
           explanation:item.querySelector("[data-solution-explanation]").value,rubric};
       });
       await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/review`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({questions})});
       await loadSolutionState(activeSolutionId);await loadAnswerKeySections();
-      toastNotice("Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
+      toastNotice(manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
     }catch(error){const node=$("[data-solution-error]");node.hidden=false;node.textContent=error.message;}
     finally{setSolutionReviewReady();}
     return;
