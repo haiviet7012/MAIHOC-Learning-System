@@ -383,3 +383,22 @@ body.exam-open{overflow:hidden}
 .hero-art{display:grid;place-items:center;min-height:220px}
 .hero-logo{display:block;width:min(100%,320px);height:auto;border-radius:26px;box-shadow:0 24px 60px #061d3d55;transform:rotate(5deg)}
 @media(max-width:900px){.hero-art{display:none}}
+
+
+/* Admin answer review: explicit decision colors remain visible in dark and light themes. */
+.solution-review-controls.decision-confirmed-correct{
+  border:1px solid #22a06b;background:color-mix(in srgb,#22a06b 12%,var(--surface));border-radius:10px;padding:8px;
+}
+.solution-review-controls.decision-confirmed-incorrect{
+  border:1px solid #f59e0b;background:color-mix(in srgb,#f59e0b 14%,var(--surface));border-radius:10px;padding:8px;
+}
+.solution-review-controls .decision-status-correct{color:#168653;font-weight:800}
+.solution-review-controls .decision-status-incorrect{color:#c77700;font-weight:800}
+.solution-review-controls .decision-button-correct{background:#168653!important;border-color:#168653!important;color:#fff!important}
+.solution-review-controls .decision-button-incorrect{background:#d97706!important;border-color:#d97706!important;color:#fff!important}
+
+.admin-form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;margin:14px 0}
+.admin-form-grid label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.admin-form-grid input{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text)}
+@media(max-width:800px){.admin-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.admin-form-grid{grid-template-columns:minmax(0,1fr)}}

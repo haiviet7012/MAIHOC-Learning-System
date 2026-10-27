@@ -321,8 +321,18 @@ async function loadAdminUsers() { if (state.route !== "admin")
         return;
     $("#admin-user-total").textContent = String(payload.total ?? payload.users?.length ?? 0);
     status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
-    const rows = (payload.users || []).map(u => { const created = u.createdAt ? new Date(u.createdAt.replace(" ", "T") + "Z").toLocaleString("vi-VN") : "—"; return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${u.role === "admin" ? "Admin" : "User"}</span></td><td>${escapeHTML(created)}</td><td>${u.role === "user" ? `<button class="button secondary small" data-delete-user="${u.id}">X\u00f3a</button>` : ""}</td></tr>`; }).join("");
-    container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>`;
+    const rows = (payload.users || []).map(u => {
+      const created = u.createdAt ? new Date(u.createdAt.replace(" ", "T") + "Z").toLocaleString("vi-VN") : "—";
+      const roleLabel = u.role !== "admin" ? "User" : Number(u.adminLevel) >= 2 ? "Admin cao nhất" : "Admin cấp dưới";
+      const canRequestDelete = Number(u.id)!==Number(payload.currentUserId) && Number(u.adminLevel)<2;
+      return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
+    }).join("");
+    let extra = "";
+    if(payload.isSuperAdmin){
+      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Họ và tên<input name="name" required minlength="2" maxlength="80"></label><label>Email<input name="email" type="email" required maxlength="254"></label><label>Mật khẩu tạm thời<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Tạo Admin</button></form></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
+    }
+    container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
+    if(payload.isSuperAdmin) await loadAccountDeletionRequests();
 }
 catch (error) {
     if (state.route !== "admin")
@@ -586,7 +596,7 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Xóa vĩnh viễn tài khoản người dùng này?")) return;
+        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Admin cấp dưới, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -594,7 +604,7 @@ document.addEventListener("click", async (e) => {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.error || "Could not delete user.");
-            toast("Đã xóa tài khoản người dùng.", "success");
+            toast(payload.deleted ? "Đã xóa tài khoản." : "Đã gửi yêu cầu. Tài khoản chưa bị xóa.", "success");
             await loadAdminUsers();
         } catch (error) {
             toast(error.message || "Không thể xóa tài khoản.", "error");
@@ -995,4 +1005,45 @@ refreshAuthUI();
 
 window.addEventListener("maihoc-documents-changed", () => {
     refreshDocuments().then(() => render());
+});
+
+
+async function loadAccountDeletionRequests(){
+  const box=$("#account-deletion-requests");if(!box)return;
+  try{
+    const response=await fetch("/api/admin/account-deletion-requests",{credentials:"same-origin"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không tải được yêu cầu xóa.");
+    const requests=data.requests||[];
+    const pending=requests.filter(r=>r.status==="pending");
+    if(!pending.length){box.innerHTML='<p class="muted">Không có yêu cầu chờ duyệt.</p>';return;}
+    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Admin cấp dưới":"User")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
+  }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
+}
+document.addEventListener("submit",async e=>{
+  if(e.target.id!=="create-subadmin-form")return;
+  e.preventDefault();
+  const form=e.target,button=form.querySelector('button[type="submit"]');button.disabled=true;
+  try{
+    const body=Object.fromEntries(new FormData(form).entries());
+    const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không tạo được Admin.");
+    form.reset();toast("Đã tạo Admin cấp dưới.","success");await loadAdminUsers();
+  }catch(error){toast(error.message||"Không tạo được Admin.","error");}
+  finally{button.disabled=false;}
+});
+document.addEventListener("click",async e=>{
+  const review=e.target.closest("[data-review-deletion]");
+  if(!review)return;
+  const decision=review.dataset.decision;
+  if(decision==="approve"&&!confirm("Chấp thuận sẽ xóa vĩnh viễn tài khoản. Bạn có chắc chắn?"))return;
+  review.disabled=true;
+  try{
+    const response=await fetch("/api/admin/account-deletion-requests/"+encodeURIComponent(review.dataset.reviewDeletion)+"/review",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không xử lý được yêu cầu.");
+    toast(decision==="approve"?"Đã chấp thuận và xóa tài khoản.":"Đã từ chối yêu cầu; tài khoản được giữ nguyên.","success");
+    await loadAccountDeletionRequests();await loadAdminUsers();
+  }catch(error){toast(error.message||"Không xử lý được yêu cầu.","error");review.disabled=false;}
 });

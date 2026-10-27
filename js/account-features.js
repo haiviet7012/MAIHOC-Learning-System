@@ -319,7 +319,7 @@ document.addEventListener("click",event=>{
 });
 document.addEventListener("input",event=>{
   const item=event.target.closest("[data-solution-item]");if(!item)return;
-  if(item.dataset.decision){delete item.dataset.decision;const label=item.querySelector("[data-solution-decision-label]");if(label)label.textContent="Đã sửa nội dung; xác nhận lại Đúng / Sai";item.querySelectorAll("[data-solution-decision]").forEach(button=>button.classList.remove("is-selected"));}
+  if(item.dataset.decision){delete item.dataset.decision;const label=item.querySelector("[data-solution-decision-label]");if(label){label.textContent="Đã sửa nội dung; xác nhận lại Đúng / Sai";label.classList.remove("decision-status-correct","decision-status-incorrect");}const controls=item.querySelector(".solution-review-controls");controls?.classList.remove("decision-confirmed-correct","decision-confirmed-incorrect");item.querySelectorAll("[data-solution-decision]").forEach(button=>button.classList.remove("is-selected","decision-button-correct","decision-button-incorrect"));}
   setSolutionReviewReady();
 });
 async function loadUploadAnswerManager(){
@@ -373,8 +373,21 @@ document.addEventListener("click",async e=>{
     const item=decisionButton.closest("[data-solution-item]");
     item.dataset.decision=decisionButton.dataset.solutionDecision;
     const label=item.querySelector("[data-solution-decision-label]");
-    if(label)label.textContent=decisionButton.dataset.solutionDecision==="correct"?"Đã xác nhận đúng":"Đã xác nhận sai; kiểm tra đáp án đã sửa";
-    item.querySelectorAll("[data-solution-decision]").forEach(button=>button.classList.toggle("is-selected",button===decisionButton));
+    if(label){
+      label.textContent=decisionButton.dataset.solutionDecision==="correct"?"Đã xác nhận đúng":"Đã xác nhận sai; kiểm tra đáp án đã sửa";
+      label.classList.toggle("decision-status-correct",decisionButton.dataset.solutionDecision==="correct");
+      label.classList.toggle("decision-status-incorrect",decisionButton.dataset.solutionDecision==="incorrect");
+    }
+    const controls=item.querySelector(".solution-review-controls");
+    if(controls){
+      controls.classList.toggle("decision-confirmed-correct",decisionButton.dataset.solutionDecision==="correct");
+      controls.classList.toggle("decision-confirmed-incorrect",decisionButton.dataset.solutionDecision==="incorrect");
+    }
+    item.querySelectorAll("[data-solution-decision]").forEach(button=>{
+      button.classList.toggle("is-selected",button===decisionButton);
+      button.classList.toggle("decision-button-correct",button===decisionButton&&decisionButton.dataset.solutionDecision==="correct");
+      button.classList.toggle("decision-button-incorrect",button===decisionButton&&decisionButton.dataset.solutionDecision==="incorrect");
+    });
     const answer=item.querySelector("[data-solution-answer]");
     if(decisionButton.dataset.solutionDecision==="incorrect"&&answer.value===item.dataset.originalAnswer)answer.value="";
     if(decisionButton.dataset.solutionDecision==="correct"&&!answer.value)answer.value=item.dataset.originalAnswer;
