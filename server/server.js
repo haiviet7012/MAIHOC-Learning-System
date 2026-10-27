@@ -14,6 +14,7 @@ import {fileURLToPath} from "node:url";
 import {GoogleGenerativeAI} from "@google/generative-ai";
 
 import nodemailer from "nodemailer";
+import { installStudyRooms } from "./study-rooms/server.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError, answerTargetsForLayout } from "./grading/exam-solution-engine.js";
 
@@ -223,9 +224,10 @@ app.use((req,res,next)=>{
 
 });
 
-app.use(express.json({limit:"1mb"}));
+app.use(express.json({limit:"4mb"}));
 
 app.use(loadCurrentUser);
+installStudyRooms({app,db,requireAuth,requireSameOrigin});
 
 // Do not expose backend source, environment files or the local account database as static assets.
 
