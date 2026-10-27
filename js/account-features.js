@@ -203,6 +203,8 @@ function solutionMathText(value){
   const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎"};
   for(let i=0;i<6;i++){
     const previous=text;
+    text=text.replace(/\\\\overrightarrow\\s*\\{([^{}]*)\\}/g,"→($1)")
+      .replace(/\\\\vec\\s*\\{([^{}]*)\\}/g,"→($1)");
     text=text.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g,"√($1)")
       .replace(/\\(?:text|mathrm|mathbf)\s*\{([^{}]*)\}/g,"$1")
@@ -218,7 +220,7 @@ function solutionMathText(value){
     .replace(/\\(?:left|right|displaystyle|,|;|:|!| )/g,"").replace(/\\([A-Za-z]+)/g,"$1")
     .replace(/\\([{}_$])/g,"$1").replace(/[{}]/g,"").replace(/\s+([,.;])/g,"$1").trim();
 }
-function solutionQuestionMarkup(item,editable){
+function solutionQuestionMarkup(item,editable,manualMode=false){
   const rubric=Array.isArray(item.rubric)?item.rubric:[];
   const rubricText=rubric.map(row=>`${solutionMathText(row.criterion)} (${row.points} điểm)`).join("\n")||"Chưa có rubric chi tiết.";
   const uncertainty=String(item.uncertainty||"").trim();
@@ -238,32 +240,41 @@ function solutionQuestionMarkup(item,editable){
   }else{
     answerEditor=`<input data-solution-answer value="${esc(solutionMathText(answer))}" ${editable?"":"disabled"}>`;
   }
+  const leftPane=manualMode
+    ?`<section class="solution-review-pane"><h4>CÂU HỎI · XEM ĐỀ GỐC</h4><p><strong>${esc(solutionMathText(item.questionText||item.targetId||""))}</strong></p><p class="muted">Mở đề gốc để đối chiếu nội dung câu hỏi, sau đó nhập đáp án ở khung bên phải.</p></section>`
+    :`<section class="solution-review-pane"><h4>ĐỀ VÀ LỜI GIẢI AI</h4><p><strong>${esc(solutionMathText(item.questionText||""))}</strong></p><p><strong>AI chọn:</strong> ${esc(aiAnswer||"Chưa có đáp án")}</p>${item.referenceAnswer?`<p class="muted"><strong>File đáp án đối chiếu:</strong> ${esc(solutionMathText(item.referenceAnswer))}</p>`:""}<p>${esc(solutionMathText(item.explanation||"AI chưa tạo lời giải chi tiết."))}</p><p class="muted tiny"><strong>Rubric AI:</strong><br>${esc(rubricText)}</p>${showUncertainty?`<p class="auth-error">${esc(solutionMathText(uncertainty))}</p>`:""}</section>`;
+  const reviewControls=editable?(manualMode
+    ?`<div class="solution-review-controls"><span class="answer-key-status">Đáp án thủ công sẽ được lưu sau khi bấm “Lưu đáp án chuẩn đã duyệt”.</span></div>`
+    :`<div class="solution-review-controls"><button type="button" class="button secondary small" data-solution-decision="incorrect">Sai, tôi đã sửa</button><button type="button" class="button secondary small" data-solution-decision="correct">Đúng</button><span class="answer-key-status" data-solution-decision-label>Chưa xác nhận</span></div>`)
+    :`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":item.reviewStatus==="manual"?"Admin đã nhập thủ công":"Admin đã xác nhận"}</span></div>`;
   return `<article class="solution-review-item" data-solution-item="${esc(item.targetId)}" data-original-answer="${esc(item.answer||"")}">
-    <div class="solution-review-head"><h3>${esc(item.targetId)} · ${esc(item.type||"")}</h3><span class="answer-key-status ${Number(item.confidence)<0.7?"is-missing":""}">AI tin cậy ${Math.round((Number(item.confidence)||0)*100)}%${showUncertainty?" · Cần kiểm tra":""}</span></div>
-    <div class="solution-review-grid"><section class="solution-review-pane"><h4>ĐỀ VÀ LỜI GIẢI AI</h4><p><strong>${esc(solutionMathText(item.questionText||""))}</strong></p><p><strong>AI chọn:</strong> ${esc(aiAnswer||"Chưa có đáp án")}</p>${item.referenceAnswer?`<p class="muted"><strong>File đáp án đối chiếu:</strong> ${esc(solutionMathText(item.referenceAnswer))}</p>`:""}<p>${esc(solutionMathText(item.explanation||"AI chưa tạo lời giải chi tiết."))}</p><p class="muted tiny"><strong>Rubric AI:</strong><br>${esc(rubricText)}</p>${showUncertainty?`<p class="auth-error">${esc(solutionMathText(uncertainty))}</p>`:""}</section>
-      <section class="solution-review-pane"><h4>${editable?"ĐÁP ÁN ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label><label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify(rubric.map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label></section></div>
-    ${editable?`<div class="solution-review-controls"><button type="button" class="button secondary small" data-solution-decision="incorrect">Sai, tôi đã sửa</button><button type="button" class="button secondary small" data-solution-decision="correct">Đúng</button><span class="answer-key-status" data-solution-decision-label>Chưa xác nhận</span></div>`:`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":"Admin đã xác nhận"}</span></div>`}
+    <div class="solution-review-head"><h3>${esc(item.targetId)} · ${esc(item.type||"")}</h3><span class="answer-key-status ${manualMode?"":Number(item.confidence)<0.7?"is-missing":""}">${manualMode?"Nhập thủ công":`AI tin cậy ${Math.round((Number(item.confidence)||0)*100)}%${showUncertainty?" · Cần kiểm tra":""}`}</span></div>
+    <div class="solution-review-grid">${leftPane}<section class="solution-review-pane"><h4>${editable?"ĐÁP ÁN ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label><label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify(rubric.map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label></section></div>
+    ${reviewControls}
   </article>`;
 }
 function setSolutionReviewReady(){
   const dialog=$("#exam-solution-dialog"),save=dialog?.querySelector("[data-solution-save]");
   if(!dialog||!save)return;
   const items=[...dialog.querySelectorAll("[data-solution-item]")];
-  save.disabled=!items.length||items.some(item=>!item.dataset.decision||!item.querySelector("[data-solution-answer]")?.value.trim());
+  const manualMode=dialog.dataset.solutionMode==="manual";
+  save.disabled=!items.length||items.some(item=>(!manualMode&&!item.dataset.decision)||!item.querySelector("[data-solution-answer]")?.value.trim());
 }
 function renderSolutionState(data){
   const dialog=$("#exam-solution-dialog");if(!dialog)return;
   const title=dialog.querySelector("[data-solution-title]"),status=dialog.querySelector("[data-solution-status]"),bar=dialog.querySelector("[data-solution-progress]"),label=dialog.querySelector("[data-solution-progress-label]"),error=dialog.querySelector("[data-solution-error]"),content=dialog.querySelector("[data-solution-review-content]"),retry=dialog.querySelector("[data-solution-retry]"),save=dialog.querySelector("[data-solution-save]"),download=dialog.querySelector("[data-solution-download]");
   activeSolutionId=data.id;
-  if(title)title.textContent=data.title||"Lời giải đề thi";
+  if(title)title.textContent=manualMode?`${data.title||"Đề thi"} · Nhập đáp án thủ công`:data.title||"Lời giải đề thi";
   if(status)status.textContent=solutionLabel(data.status)+(data.phase&&data.phase!==solutionLabel(data.status)?` · ${data.phase}`:"");
   if(bar)bar.value=Number(data.progress)||0;if(label)label.textContent=`${Number(data.progress)||0}%`;
   if(error){error.hidden=!data.errorMessage;error.textContent=data.errorMessage||"";}
   const ready=data.status==="review",approved=data.status==="ready";
+  const manualMode=(approved?data.approved?.source:data.generated?.source)==="manual-entry";
+  dialog.dataset.solutionMode=manualMode?"manual":"ai";
   const items=approved?data.approved?.questions:data.generated?.questions;
   if(content){
     if(Array.isArray(items)&&items.length){
-      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được admin xác nhận.":`AI tạo ${data.generated.answerCount}/${data.generated.requiredCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready)).join("")}`;
+      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được admin xác nhận.":manualMode?`Chế độ nhập thủ công: điền đáp án cho ${data.generated.requiredCount} mục theo mã câu. Không gọi AI.`:`AI tạo ${data.generated.answerCount}/${data.generated.requiredCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready,manualMode)).join("")}`;
     }else content.innerHTML="";
   }
   if(retry)retry.hidden=data.status!=="failed"&&data.status!=="not_started";
@@ -351,6 +362,16 @@ async function loadSubmissions() {
   } catch(e) {box.innerHTML='<p class="auth-error">'+esc(e.message)+'</p>';}
 }
 document.addEventListener("click",async e=>{
+  const solutionManual=e.target.closest("[data-solution-manual]");
+  if(solutionManual){
+    const id=solutionManual.dataset.solutionManual;
+    try{
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
+      await openSolutionDialog(id);
+      await loadAnswerKeySections();
+    }catch(error){toastNotice(error.message||"Không thể mở chế độ nhập đáp án thủ công.","error");}
+    return;
+  }
   const solutionOpen=e.target.closest("[data-solution-open]");
   if(solutionOpen){openSolutionDialog(solutionOpen.dataset.solutionOpen);return;}
   const decisionButton=e.target.closest("[data-solution-decision]");
@@ -388,15 +409,16 @@ document.addEventListener("click",async e=>{
     if(!activeSolutionId)return;
     const button=e.target.closest("[data-solution-save]");button.disabled=true;
     try{
+      const manualMode=$("#exam-solution-dialog").dataset.solutionMode==="manual";
       const questions=[...$("#exam-solution-dialog").querySelectorAll("[data-solution-item]")].map(item=>{
         const rubricText=item.querySelector("[data-solution-rubric]").value;
         let rubric=[];try{rubric=JSON.parse(rubricText);}catch{throw new Error(`Rubric ${item.dataset.solutionItem} phải là JSON hợp lệ.`);}
-        return {targetId:item.dataset.solutionItem,decision:item.dataset.decision,answer:item.querySelector("[data-solution-answer]").value,
+        return {targetId:item.dataset.solutionItem,decision:manualMode?"manual":item.dataset.decision,answer:item.querySelector("[data-solution-answer]").value,
           explanation:item.querySelector("[data-solution-explanation]").value,rubric};
       });
       await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/review`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({questions})});
       await loadSolutionState(activeSolutionId);await loadAnswerKeySections();
-      toastNotice("Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
+      toastNotice(manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
     }catch(error){const node=$("[data-solution-error]");node.hidden=false;node.textContent=error.message;}
     finally{setSolutionReviewReady();}
     return;
