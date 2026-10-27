@@ -416,3 +416,24 @@ body.exam-open{overflow:hidden}
 .admin-form-grid input{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text)}
 @media(max-width:800px){.admin-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.admin-form-grid{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Keep the header controls geometrically stable when theme colors change. */
+.topbar-actions{align-items:stretch}
+.topbar-actions>.icon-button,
+.topbar-actions>.inline-actions>.icon-button,
+.topbar-actions>.inline-actions>.button{
+  box-sizing:border-box;
+  border-width:1px;
+  border-style:solid;
+  transform:none;
+}
+.topbar-actions>.icon-button:hover,
+.topbar-actions>.inline-actions>.icon-button:hover,
+.topbar-actions>.inline-actions>.button:hover{transform:none}
+#theme-toggle{flex:0 0 142px;width:142px;min-width:142px;justify-content:center;white-space:nowrap}
+#theme-toggle .button-label{display:inline-block;min-width:76px;text-align:left}
+@media(max-width:620px){
+  #theme-toggle{flex-basis:42px;width:42px;min-width:42px;padding:9px;justify-content:center}
+  #theme-toggle .button-label{display:none}
+}
