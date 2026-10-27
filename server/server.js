@@ -281,18 +281,6 @@ app.post("/api/auth/logout",requireSameOrigin,(req,res)=>{
 
 // Admin information is never trusted from client-supplied role fields.
 
-app.get("/api/admin/users",requireAdmin,(req,res)=>{
-
-  const users=db.prepare("SELECT id,name,email,role,created_at FROM users ORDER BY id DESC LIMIT 500").all();
-
-  const total=db.prepare("SELECT COUNT(*) AS count FROM users").get().count;
-
-  res.json({users:users.map(publicUser),total});
-
-});
-
-
-
 function deleteAccountPermanently(id){
   const pendingFiles=db.prepare("SELECT filename FROM document_submissions WHERE user_id=?").all(id);
   const result=db.prepare("DELETE FROM users WHERE id=?").run(id);
