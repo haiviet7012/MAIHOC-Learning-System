@@ -857,6 +857,7 @@ app.post("/api/admin/documents/:id/solution/manual",requireSameOrigin,requireAdm
   if(!document)return res.status(404).json({error:"Không tìm thấy đề."});
   if(!["exam","practice"].includes(document.category))return res.status(400).json({error:"Chỉ có thể nhập đáp án cho đề ôn tập hoặc đề thi thử."});
   const existing=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(document.id);
+  if(activeSolutionJobs.has(document.id)||["queued","reading","solving"].includes(existing?.status))return res.status(409).json({error:"AI đang xử lý đề này. Hãy chờ tác vụ kết thúc rồi chọn nhập đáp án thủ công."});
   if(existing?.status==="ready")return res.status(409).json({error:"Đề đã có bộ đáp án được duyệt. Không thể ghi đè bằng chế độ nhập thủ công."});
   const config=assessmentConfigFor(document.subject,document.category);
   if(!config?.layout?.sections?.length||!config?.grading||!config.layout.sections.filter(section=>Number(section.count)>0).every(section=>section.grading))return res.status(409).json({error:"Thiếu cấu hình câu hỏi hoặc thang điểm trong configs/exam-layouts.json."});
