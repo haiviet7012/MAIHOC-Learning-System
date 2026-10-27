@@ -152,7 +152,7 @@ function createPasswordResetTransport(){
   const smtpUser=String(SMTP_USER||"").trim();
   // App passwords are commonly displayed in groups of four characters.
   // Remove accidental internal spaces while preserving the credential value.
-  const smtpPass=String(SMTP_PASS||"").replace(/\\s+/g,"");
+  const smtpPass=String(SMTP_PASS||"").replace(/\s+/g,"");
   const sender=String(SMTP_FROM||smtpUser).trim();
   if(!host||!smtpUser||!smtpPass)throw new Error("SMTP_CONFIG_MISSING: Không đọc được SMTP_HOST, SMTP_USER hoặc SMTP_PASS. Hãy kiểm tra server/.env.");
   const port=Number(SMTP_PORT||587);
