@@ -348,7 +348,76 @@ async function openSavedExamResult(id) {
         toast(error.message || "Không tải được kết quả bài làm.", "error");
     }
 }
-function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+function userDashboardPage(){
+  return pageHeading("Dashboard","Người dùng đang online")+
+    '<section class="dashboard-panel"><div class="dashboard-panel-head"><div><h2>Ai đang online?</h2><p class="muted">Chỉ hiển thị người dùng thường; tài khoản Admin được ẩn khỏi danh sách.</p></div><button class="button secondary small" data-action="refresh-online-users">Làm mới</button></div><p id="user-online-count" class="muted">Đang tải...</p><div id="user-online-list" class="online-user-list"><p class="muted">Đang kiểm tra trạng thái...</p></div></section>';
+}
+async function loadUserOnlineDashboard(){
+  const count=$("#user-online-count"),list=$("#user-online-list");
+  if(!count||!list||state.route!=="user-dashboard")return;
+  try{
+    const response=await fetch("/api/presence/online-users",{credentials:"same-origin",cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không tải được danh sách online.");
+    if(state.route!=="user-dashboard")return;
+    const users=Array.isArray(data.users)?data.users:[];
+    count.textContent=users.length+" người dùng đang online";
+    if(!users.length){list.innerHTML='<p class="muted">Hiện chưa có người dùng nào khác đang online.</p>';return;}
+    list.replaceChildren(...users.map(user=>{
+      const item=document.createElement("article");item.className="online-user-item";
+      const dot=document.createElement("span");dot.className="online-indicator";dot.setAttribute("aria-label","Đang online");
+      const name=document.createElement("strong");name.textContent=user.name||"Người dùng";
+      const status=document.createElement("span");status.className="online-user-label";status.textContent="Đang online";
+      item.append(dot,name,status);return item;
+    }));
+  }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách online.";}
+}
+async function loadSuperAdminMonitoring(){
+  if(state.route!=="admin"||Number(currentUser?.adminLevel)<2)return;
+  const presence=$("#superadmin-online-list"),count=$("#superadmin-online-count");
+  if(!presence||!count)return;
+  try{
+    const response=await fetch("/api/admin/presence",{credentials:"same-origin",cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không tải được trạng thái online.");
+    if(state.route!=="admin")return;
+    const users=Array.isArray(data.users)?data.users:[];
+    count.textContent=users.length+" tài khoản hoạt động trong 3 phút gần đây";
+    if(!users.length){presence.innerHTML='<p class="muted">Chưa có tài khoản hoạt động gần đây.</p>';return;}
+    const table=document.createElement("table");table.className="admin-table";
+    table.innerHTML="<thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Hoạt động gần nhất</th></tr></thead>";
+    const body=document.createElement("tbody");
+    users.forEach(user=>{
+      const tr=document.createElement("tr");
+      const name=document.createElement("td");name.textContent=user.name+" · "+user.email;
+      const role=document.createElement("td");role.textContent=user.role==="admin"?(Number(user.adminLevel)>=2?"Admin cao nhất":"Admin cấp dưới"):"User";
+      const stateCell=document.createElement("td");stateCell.textContent="Online";
+      const lastSeen=document.createElement("td");lastSeen.textContent=new Date(Number(user.lastSeenAt)).toLocaleString("vi-VN");
+      tr.append(name,role,stateCell,lastSeen);body.append(tr);
+    });
+    table.append(body);presence.replaceChildren(table);
+  }catch(error){count.textContent=error.message||"Không tải được trạng thái online.";}
+  try{
+    const progressResponse=await fetch("/api/admin/progress",{credentials:"same-origin",cache:"no-store"});
+    const payload=await progressResponse.json().catch(()=>({}));
+    if(!progressResponse.ok)throw new Error(payload.error||"Không tải được tiến trình.");
+    const box=$("#superadmin-progress-list");if(!box||state.route!=="admin")return;
+    const rows=payload.progress||[];
+    if(!rows.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập.</p>';return;}
+    const table=document.createElement("table");table.className="admin-table";
+    table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Điểm</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
+    const body=document.createElement("tbody");
+    rows.forEach(row=>{
+      const tr=document.createElement("tr");
+      [row.userName+" ("+row.userEmail+")",row.itemTitle||row.itemId,row.subject+" · "+row.grade,row.status,Number(row.progressPercent)+"%",row.score??"—",row.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);});
+      const resultCell=document.createElement("td");
+      if(row.itemType==="exam"&&row.latestAttemptId){const button=document.createElement("button");button.type="button";button.className="button secondary small";button.dataset.action="view-exam-result";button.dataset.id=String(row.latestAttemptId);button.textContent="Xem kết quả";resultCell.append(button);}else resultCell.textContent="—";
+      tr.append(resultCell);body.append(tr);
+    });
+    table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
+  }catch(error){const box=$("#superadmin-progress-list");if(box)box.textContent=error.message||"Không tải được tiến trình học tập.";}
+}
+function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}${Number(currentUser?.adminLevel)>=2?'<section class="dashboard-panel superadmin-monitoring"><div class="dashboard-panel-head"><div><h2>Giám sát hoạt động</h2><p class="muted">Chỉ Admin cao nhất được xem tiến trình học tập và trạng thái hoạt động.</p></div><button class="button secondary small" data-action="refresh-superadmin-monitoring">Làm mới</button></div><h3>Ai đang online?</h3><p id="superadmin-online-count" class="muted">Đang tải...</p><div id="superadmin-online-list"></div><h3>Tiến trình học tập của người dùng</h3><div id="superadmin-progress-list"><p class="muted">Đang tải...</p></div></section>':""}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin" });
@@ -414,6 +483,8 @@ function render() {
         view.innerHTML = resultPage();
     else if (state.route === "admin")
         view.innerHTML = adminPage();
+    else if (state.route === "user-dashboard")
+        view.innerHTML = userDashboardPage();
     const pdfContainer = view.querySelector("[data-pdf-reader]");
     if (pdfContainer) {
         const pdfExamId = state.examDocId;
@@ -430,8 +501,11 @@ function render() {
         }
     }
     view.focus({ preventScroll: true });
-    if (state.route === "admin")
+    if (state.route === "admin") {
         loadAdminUsers();
+        if(Number(currentUser?.adminLevel)>=2)loadSuperAdminMonitoring();
+    }
+    if(state.route==="user-dashboard")loadUserOnlineDashboard();
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
@@ -660,6 +734,13 @@ document.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]");
     if (action) {
         const a = action.dataset.action;
+        if (a === "user-dashboard") {
+            if(currentUser?.role!=="admin")go("user-dashboard");
+            else toast("Dashboard người dùng chỉ dành cho tài khoản thường.", "error");
+            return;
+        }
+        if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
+        if(a==="refresh-superadmin-monitoring"){loadSuperAdminMonitoring();return;}
         if (a === "admin-dashboard") {
             if (currentUser?.role === "admin")
                 go("admin");
