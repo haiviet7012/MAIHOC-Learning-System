@@ -775,43 +775,7 @@ app.post("/api/exams/:id/submit",requireSameOrigin,requireAuth,async(req,res)=>{
   }
 
   const assessmentConfig=assessmentConfigFor(document.subject,document.category);
-  // Convert section/question labels from approved answer files to configured IDs.
-  if(answerKey?.answers && assessmentConfig?.layout?.sections?.length) {
-    const normalizedAnswers={};
-    for(const [key,value] of Object.entries(answerKey.answers)) {
-      const raw=String(key).trim();
-      let canonical=null;
-      const m=raw.match(/^(?:phan|section|part)\s*([ivx]+|\d+)\s*(?:[-.:_ ]\s*)?(?:cau|question|q)?\s*(\d+)$/i);
-      const tf=raw.match(/^(?:cau|question|q)?\s*(\d+)\s*[-._:]\s*([a-d])$/i);
-      const plain=raw.match(/^(?:cau|question|q)?\s*(\d+)$/i);
-      if(m) {
-        const sectionRef=m[1].toLowerCase();
-        const section=assessmentConfig.layout.sections.find(item=>String(item.sectionId||item.order).toLowerCase()===sectionRef||String(item.order)===sectionRef);
-        if(section)canonical=String(section.sectionId||section.order)+"-"+m[2];
-      } else if(tf) {
-        let offset=0;
-        for(const section of assessmentConfig.layout.sections) {
-          const count=Number(section.count)||0;
-          if(section.type==="true_false" && Number(tf[1])>offset && Number(tf[1])<=offset+count) {
-            canonical=String(section.sectionId||section.order)+"-"+(Number(tf[1])-offset)+tf[2].toLowerCase();break;
-          }
-          offset+=count;
-        }
-      } else if(plain) {
-        let offset=0;
-        for(const section of assessmentConfig.layout.sections) {
-          const count=Number(section.count)||0;
-          if(Number(plain[1])>offset && Number(plain[1])<=offset+count) {
-            canonical=String(section.sectionId||section.order)+"-"+(Number(plain[1])-offset);break;
-          }
-          offset+=count;
-        }
-      }
-      if(canonical && !(canonical in normalizedAnswers))normalizedAnswers[canonical]=value;
-      if(!(raw in normalizedAnswers))normalizedAnswers[raw]=value;
-    }
-    answerKey={...answerKey,answers:{...answerKey.answers,...normalizedAnswers}};
-  }
+
   const grade=!waitingMessage&&answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
   let resultPayload;
   if(waitingMessage){
