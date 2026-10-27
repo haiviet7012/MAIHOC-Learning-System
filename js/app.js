@@ -398,18 +398,18 @@ async function loadSuperAdminMonitoring(){
     const users=Array.isArray(payload.users)?payload.users:[];
     if(!users.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập của người dùng.</p>';return;}
     const table=document.createElement("table");table.className="admin-table";
-    table.innerHTML="<thead><tr><th>Người dùng</th><th>Email</th><th>Số nội dung</th><th>Đã hoàn thành</th><th>Tiến độ trung bình</th><th>Cập nhật gần nhất</th><th>Chi tiết</th></tr></thead>";
+    table.innerHTML="<thead><tr><th>Người dùng</th><th>Email</th><th>Số nội dung</th><th>Đã hoàn thành</th><th>Tiến độ trung bình</th><th>Hoạt động gần nhất</th><th>Chi tiết</th></tr></thead>";
     const body=document.createElement("tbody");
     users.forEach(user=>{
       const tr=document.createElement("tr");
       const name=document.createElement("td");name.textContent=user.name;
       const email=document.createElement("td");email.textContent=user.email;
       const total=document.createElement("td");total.textContent=String(user.totalItems);
-      const complete=document.createElement("td");complete.textContent=String(user.completedItems);
+      const completed=document.createElement("td");completed.textContent=String(user.completedItems);
       const average=document.createElement("td");average.textContent=String(user.averageProgress)+"%";
-      const updated=document.createElement("td");updated.textContent=user.updatedAt?new Date(String(user.updatedAt).replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";
+      const updated=document.createElement("td");updated.textContent=user.latestUpdatedAt?new Date(String(user.latestUpdatedAt).replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";
       const action=document.createElement("td");const link=document.createElement("button");link.type="button";link.className="button secondary small";link.dataset.action="view-user-progress";link.dataset.userId=String(user.id);link.textContent="Xem toàn bộ tiến trình";action.append(link);
-      tr.append(name,email,total,complete,average,updated,action);body.append(tr);
+      tr.append(name,email,total,completed,average,updated,action);body.append(tr);
     });
     table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
   }catch(error){const box=$("#superadmin-progress-list");if(box)box.textContent=error.message||"Không tải được tiến trình học tập.";}
