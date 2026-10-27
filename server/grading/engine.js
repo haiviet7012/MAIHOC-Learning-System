@@ -829,9 +829,22 @@ function sequentialQuestionAliases(questionNumber, statementId = "") {
 
 function resolveAnswer(source, aliases, usedKeys = new Set()) {
   const normalizedAliases = aliases.map(normalizeQuestionKey);
+  const keys = Object.keys(source || {});
+  // First preserve the exact structured question ID mappings (I-1, II-1a, III-2).
   for (const alias of normalizedAliases) {
-    const key = Object.keys(source).find(candidate => !usedKeys.has(candidate) && normalizeQuestionKey(candidate) === alias);
+    const key = keys.find(candidate => !usedKeys.has(candidate) && normalizeQuestionKey(candidate) === alias);
     if (key != null) return { key, value: source[key] };
+  }
+  // Then tolerate common uploaded/approved-key labels such as "Câu 1: A",
+  // "Phần I - Câu 1: A", "I.1", "1a", and question_1 without consuming a key
+  // whose explicit section/statement ID belongs to another part.
+  const canonicalize = value => normalizeQuestionKey(value).replace(/^(?:cau|question|q|stt)/, "");
+  const aliasSet = new Set(normalizedAliases.map(canonicalize));
+  for (const key of keys) {
+    if (usedKeys.has(key)) continue;
+    const normalized = normalizeQuestionKey(key);
+    const candidates = [normalized, normalized.replace(/^(?:cau|question|q|stt)/, "")];
+    if (candidates.some(candidate => aliasSet.has(candidate))) return { key, value: source[key] };
   }
   return null;
 }
