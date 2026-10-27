@@ -136,8 +136,9 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     pruneRooms();
     const room = requireRoom(req.params.roomId, res);
     if (!room) return;
-    const monitor = Boolean(req.body?.monitor);
     const isAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 1;
+    // Admin entry is always treated as an observer and disclosed to everyone in the room.
+    const monitor = Boolean(req.body?.monitor) || isAdmin;
     if (monitor && !isAdmin) return fail(res, 403, "Chỉ Admin mới có quyền giám sát phòng.");
     if (!monitor && room.passwordHash && !verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
       return fail(res, 403, "Mật khẩu phòng không đúng.");
@@ -198,7 +199,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       if (!text && !image) return fail(res, 400, "Tin nhắn không được để trống.");
       if (text.length > 2000) return fail(res, 400, "Tin nhắn tối đa 2.000 ký tự.");
       if (image) {
-        if (!/^data:image\/(png|jpeg|webp|gif);base64,/i.test(image)) return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
+        if (!/^data:image\\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(image)) return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
         const approximateBytes = Math.floor(image.length * 3 / 4);
         if (approximateBytes > IMAGE_MAX_BYTES) return fail(res, 413, "Ảnh tối đa 2 MB.");
       }
