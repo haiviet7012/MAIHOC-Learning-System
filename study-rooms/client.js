@@ -380,9 +380,11 @@ export function mountStudyRooms(container, user) {
           try { await peer.pc.addIceCandidate(event.payload.candidate); } catch (error) { console.warn("Could not add ICE candidate:", error.message); }
         }
       } else if (event.type === "room-closed") {
-        showError(event.payload?.message || "Phòng đã đóng.");
+        const message = event.payload?.message || "Phòng đã đóng.";
         await leaveRoom(false);
-        await loadRooms();
+        if (!disposed) {
+          container.innerHTML = `<section class="study-room-lobby"><header class="study-room-heading"><div><p class="eyebrow">MAI HỌC · HỌC CÙNG NHAU</p><h1>Phòng tự học</h1><p class="muted">${escapeHtml(message)}</p></div></header><p class="study-room-error" data-room-error></p><button type="button" class="button primary" data-room-return-lobby>Quay lại danh sách phòng</button></section>`;
+        }
         return;
       }
     }
@@ -450,6 +452,7 @@ export function mountStudyRooms(container, user) {
         event.target.closest("[data-room-create-cancel]") ||
         event.target.closest("[data-room-refresh]")) return;
     if (event.target.closest("[data-room-login]")) { document.querySelector("#login-open")?.click(); return; }
+    if (event.target.closest("[data-room-return-lobby]")) { await loadRooms(); return; }
     const join = event.target.closest("[data-room-join]");
     if (join) {
       const room = join.dataset.roomJoin;
