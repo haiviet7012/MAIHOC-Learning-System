@@ -172,31 +172,31 @@ async function loadApprovedDocuments(){
 }
 async function loadAnswerKeySections(){
   const dialog=$("#answer-key-dialog");if(!dialog)return;
-  for(const category of ["theory","practice","exam"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML='<p class="muted">\u0110ang t\u1ea3i...</p>';}
+  for(const category of ["theory","practice","exam"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML='<p class="muted">Đang tải...</p>';}
   try{
     const data=await request("/api/admin/answer-keys");
     for(const category of ["theory","practice","exam"]){
       const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(!list)continue;
       const docs=data.sections?.[category]||[];
-      if(!docs.length){list.innerHTML='<p class="muted">Ch\u01b0a c\u00f3 t\u00e0i li\u1ec7u.</p>';continue;}
+      if(!docs.length){list.innerHTML='<p class="muted">Chưa có tài liệu.</p>';continue;}
       list.innerHTML=docs.map(doc=>{
-        let status="";
-        if(category==="theory")status='<span class="answer-key-status">Kh\u00f4ng c\u1ea7n \u0111\u00e1p \u00e1n</span>';
-        else if(doc.hasAnswerKey){
-          status='<span class="answer-key-status is-ready">Đã tải đáp án</span>'+
-            (doc.gradingAvailable?'<span class="answer-key-status is-ready">Đã sẵn sàng chấm</span>':'<span class="answer-key-status is-missing">Chưa thể chấm tự động</span>')+
-            `<a class="text-button" href="/api/admin/documents/${encodeURIComponent(doc.id)}/answer-key" target="_blank" rel="noopener">Xem tệp đáp án gốc</a>`;
-        }else if(doc.solutionStatus==="ready")status='<span class="answer-key-status is-ready">Đã duyệt, sẵn sàng chấm</span>';
-        else status='<span class="answer-key-status is-missing">Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n</span>';
-        const upload=category==="theory"?"":`<label class="button secondary small answer-key-upload-label">${doc.hasAnswerKey?"Thay \u0111\u00e1p \u00e1n":"Upload \u0111\u00e1p \u00e1n"}<input type="file" accept=".pdf,.txt,.json,.csv,.docx" data-answer-key-upload="${esc(doc.id)}" hidden></label>`;
-        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><span class="answer-key-status ${doc.solutionStatus==="ready"?"is-ready":doc.solutionStatus==="failed"?"is-missing":""}">${esc(doc.solutionPhase||"Ch\u01b0a t\u1ea1o l\u1eddi gi\u1ea3i")}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress)}%`:""}</span><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duy\u1ec7t l\u1eddi gi\u1ea3i AI":doc.solutionStatus==="ready"?"Xem b\u1ed9 ch\u1ea5m \u0111\u00e3 duy\u1ec7t":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem ti\u1ebfn tr\u00ecnh":doc.solutionStatus==="failed"?"Xem l\u1ed7i / th\u1eed l\u1ea1i":"T\u1ea1o l\u1eddi gi\u1ea3i AI"}</button>${["ready","queued","reading","solving"].includes(doc.solutionStatus)?"":`<button class="button secondary small" data-solution-manual="${esc(doc.id)}">Nhập đáp án thủ công</button>`}</div>`;
-        return `<article class="answer-key-row"><div class="answer-key-main"><strong>${esc(doc.title)}</strong><span class="muted tiny">L\u1edbp ${esc(doc.grade)}${doc.answerKeyOriginalName?" \u00b7 "+esc(doc.answerKeyOriginalName):""}</span><div class="answer-key-statuses"><a class="text-button" href="/api/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">Xem \u0111\u1ec1</a>${status}${solution}</div></div>${upload}</article>`;
+        let statusLabel="",statusClass="";
+        if(category==="theory"){statusLabel="Không cần đáp án";}
+        else if(["queued","reading","solving"].includes(doc.solutionStatus)){statusLabel=doc.solutionPhase||"AI đang xử lý";statusClass="";}
+        else if(doc.solutionStatus==="review"){statusLabel="Chờ admin duyệt";statusClass="";}
+        else if(doc.solutionStatus==="ready"){statusLabel="Đã duyệt, sẵn sàng chấm";statusClass="is-ready";}
+        else if(doc.solutionStatus==="failed"){statusLabel="AI chưa tạo được đáp án";statusClass="is-missing";}
+        else {statusLabel="Chưa có đáp án";statusClass="is-missing";}
+        const status=`<div class="answer-key-statuses answer-key-status-row"><span class="answer-key-status ${statusClass}">${esc(statusLabel)}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress||0)}%`:""}</span></div>`;
+        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duyệt lời giải AI":doc.solutionStatus==="ready"?"Xem bộ chấm đã duyệt":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem tiến trình":doc.solutionStatus==="failed"?"Thử giải lại":"Giải đề bằng AI"}</button>${["ready","queued","reading","solving"].includes(doc.solutionStatus)?"":`<button class="button secondary small" data-solution-manual="${esc(doc.id)}">Nhập đáp án thủ công</button>`}</div>`;
+        return `<article class="answer-key-row"><div class="answer-key-main"><strong>${esc(doc.title)}</strong><span class="muted tiny">Lớp ${esc(doc.grade)}${doc.originalName?" · "+esc(doc.originalName):""}</span><div class="answer-key-statuses"><a class="text-button" href="/api/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">Xem đề</a></div>${status}${solution}</div></article>`;
       }).join("");
     }
   }catch(error){
     for(const category of ["theory","practice","exam"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML=`<p class="auth-error">${esc(error.message)}</p>`;}
   }
 }
+
 function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
 function solutionMathText(value){
   let text=String(value??"").replace(/\\\\/g,"\n").replace(/\\\(|\\\)|\\\[|\\\]|\$\$?/g,"");
@@ -463,18 +463,7 @@ document.addEventListener("click",async e=>{
   const startExam=e.target.closest('[data-action="start-exam"]');
   if(startExam&&activeUser){const card=startExam.closest(".exam-card");saveProgress({itemType:"exam",itemId:startExam.dataset.id,itemTitle:card?.querySelector("h3")?.textContent||startExam.dataset.id,subject:"Toán",grade:"10",status:"in_progress",progressPercent:0,lastPosition:"0"});}
 });
-document.addEventListener("change",async e=>{
-  const input=e.target.closest("[data-answer-key-upload]");
-  if(!input?.files?.[0])return;
-  const form=new FormData();form.append("answerKey",input.files[0]);
-  input.disabled=true;
-  try{
-    const result=await request(`/api/admin/documents/${encodeURIComponent(input.dataset.answerKeyUpload)}/answer-key`,{method:"POST",body:form});
-    toastNotice(result.gradingAvailable?"Đã lưu đáp án; chấm tự động đã sẵn sàng.":"Đã lưu đáp án. Tệp này chỉ xem được, chưa thể dùng để chấm tự động.",result.gradingAvailable?"success":"error");
-    await loadAnswerKeySections();loadApprovedDocuments();window.dispatchEvent(new Event("maihoc-documents-changed"));
-  }catch(error){toastNotice(error.message,"error");}
-  finally{input.disabled=false;input.value="";}
-});
+
 document.addEventListener("DOMContentLoaded",loadUser);
 fetch("/api/documents").then(r=>r.ok?r.json():[]).then(list=>{if(!Array.isArray(list))return;const key="maihoc-uploaded-docs";const existing=JSON.parse(localStorage.getItem(key)||"[]");const known=new Set(existing.map(d=>d.id));for(const d of list){if(!known.has(d.id))existing.push({...d,sample:false,description:d.originalName||"Tài liệu đã được Admin duyệt"});}localStorage.setItem(key,JSON.stringify(existing));}).catch(()=>{});
 const observer=new MutationObserver(()=>{
