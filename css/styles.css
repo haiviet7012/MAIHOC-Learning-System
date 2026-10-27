@@ -461,3 +461,18 @@ body.exam-open{overflow:hidden}
   border-radius:0!important;
 }
 .file-drop-zone{border-radius:0!important}
+
+
+/* Global square-corner theme: buttons, borders, fields, cards, panels, dialogs and tables. */
+:root{
+  --radius:0px;
+  --radius-sm:0px;
+  --radius-md:0px;
+  --radius-lg:0px;
+  --panel-radius:0px;
+}
+*,
+*::before,
+*::after{
+  border-radius:0!important;
+}
