@@ -99,6 +99,15 @@ export function mountStudyRooms(container, user) {
     } catch (error) { showError(error.message); }
   }
   async function startMedia() {
+    // Admin observers join in receive-only mode unless they explicitly enable a device.
+    if (participant?.isAdminObserver) {
+      localStream = null;
+      micOn = false;
+      cameraOn = false;
+      updateMediaButtons();
+      renderMemberList();
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia) {
       showError("Trình duyệt không hỗ trợ camera/microphone hoặc trang chưa chạy trên HTTPS/localhost.");
       return;
