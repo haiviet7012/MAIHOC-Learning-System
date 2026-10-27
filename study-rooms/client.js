@@ -40,12 +40,80 @@ export function mountStudyRooms(container, user) {
       const data = await api("/api/study-rooms");
       if (disposed || currentRoom) return;
       const ownRoom = (data.rooms || []).find(room => room.creatorId === user?.id);
-      drawLobby(data.rooms || [], Boolean(data.isAdmin), ownRoom);
+      // The lobby timer must update only the room list. Rebuilding the whole
+      // lobby every five seconds closes the create form while a user is typing.
+      const existingLobby = container.querySelector(".study-room-lobby");
+      const existingPanel = container.querySelector("[data-room-create-panel]");
+      const panelWasOpen = Boolean(existingPanel && !existingPanel.hidden);
+      const oldName = existingPanel?.querySelector('input[name="name"]')?.value || "";
+      const oldPassword = existingPanel?.querySelector('input[name="password"]')?.value || "";
+      if (existingLobby && !currentRoom) {
+        updateLobbyRoomList(data.rooms || [], ownRoom);
+        const button = container.querySelector("[data-room-create-toggle]");
+        if (button) {
+          button.disabled = Boolean(ownRoom);
+          button.textContent = ownRoom ? "Bạn đã có phòng" : "＋ Tạo phòng";
+          button.title = ownRoom ? "Bạn cần đóng phòng hiện tại trước" : "";
+        }
+        const ownerNotice = container.querySelector("[data-room-owner-active]");
+        if (ownRoom && !ownerNotice) {
+          const notice = document.createElement("div");
+          notice.className = "study-room-owner-active";
+          notice.dataset.roomOwnerActive = "true";
+          notice.innerHTML = `<strong>Bạn đang là chủ phòng: ${escapeHtml(ownRoom.name)}</strong><span>Đóng phòng hiện tại để tạo phòng mới.</span><button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(ownRoom.id)}">Đóng phòng hiện tại</button>`;
+          existingPanel?.before(notice);
+          bindLobbyClose(notice);
+        } else if (!ownRoom && ownerNotice) ownerNotice.remove();
+        if (existingPanel) {
+          existingPanel.hidden = !panelWasOpen;
+          const nameInput = existingPanel.querySelector('input[name="name"]');
+          const passwordInput = existingPanel.querySelector('input[name="password"]');
+          if (nameInput && !panelWasOpen) nameInput.value = oldName;
+          if (passwordInput && !panelWasOpen) passwordInput.value = oldPassword;
+        }
+      } else {
+        drawLobby(data.rooms || [], Boolean(data.isAdmin), ownRoom);
+      }
     } catch (error) {
       if (!disposed) {
         container.innerHTML = `<section class="study-room-lobby"><header class="study-room-heading"><div><p class="eyebrow">MAI HỌC · HỌC CÙNG NHAU</p><h1>Phòng tự học</h1><p class="muted">Bạn cần đăng nhập để xem hoặc tham gia phòng học.</p></div></header><div class="study-room-error">${escapeHtml(error.message)}</div><button class="button primary" data-room-login>Đăng nhập</button></section>`;
       }
     }
+  }
+  function updateLobbyRoomList(rooms, ownRoom) {
+    const grid = container.querySelector("[data-room-grid]");
+    if (grid) {
+      grid.innerHTML = rooms.length
+        ? rooms.map(roomCard).join("")
+        : '<div class="study-room-empty"><div class="study-room-empty-icon">▣</div><h3>Chưa có phòng nào</h3><p class="muted">Hãy tạo phòng đầu tiên và mời bạn bè tham gia.</p></div>';
+    }
+    const notice = container.querySelector("[data-room-owner-active]");
+    if (notice && ownRoom) {
+      const strong = notice.querySelector("strong");
+      if (strong) strong.textContent = "Bạn đang là chủ phòng: " + ownRoom.name;
+      const close = notice.querySelector("[data-room-close-lobby]");
+      if (close && close.dataset.roomCloseLobby !== ownRoom.id) close.dataset.roomCloseLobby = ownRoom.id;
+    }
+  }
+  function bindLobbyClose(scope = container) {
+    scope.querySelectorAll("[data-room-close-lobby]").forEach(button => {
+      if (button.dataset.boundClose === "true") return;
+      button.dataset.boundClose = "true";
+      button.addEventListener("click", async event => {
+        event.preventDefault();
+        const roomId = button.dataset.roomCloseLobby;
+        if (!confirm("Đóng phòng này cho tất cả mọi người?")) return;
+        button.disabled = true;
+        try {
+          await post(roomUrl(roomId, "/close"), {});
+          await loadRooms();
+        } catch (error) {
+          button.disabled = false;
+          const errorBox = container.querySelector("[data-room-error]");
+          if (errorBox) { errorBox.textContent = error.message; errorBox.hidden = false; }
+        }
+      });
+    });
   }
   function drawLobby(rooms, _isAdmin, ownRoom = null) {
     if (disposed) return;
@@ -55,7 +123,7 @@ export function mountStudyRooms(container, user) {
           <div><p class="eyebrow">MAI HỌC · HỌC CÙNG NHAU</p><h1>Phòng tự học</h1><p class="muted">Tạo phòng riêng cho bạn bè hoặc tham gia phòng đang mở. Tối đa 12 học viên mỗi phòng.</p></div>
           <button type="button" class="button primary" data-room-create-toggle aria-expanded="false" ${ownRoom ? "disabled title=\"Bạn cần đóng phòng hiện tại trước\"" : ""}>${ownRoom ? "Bạn đã có phòng" : "＋ Tạo phòng"}</button>
         </header>
-        ${ownRoom ? `<div class="study-room-owner-active"><strong>Bạn đang là chủ phòng: ${escapeHtml(ownRoom.name)}</strong><span>Đóng phòng hiện tại để tạo phòng mới.</span><button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(ownRoom.id)}">Đóng phòng hiện tại</button></div>` : ""}
+        ${ownRoom ? `<div class="study-room-owner-active" data-room-owner-active><strong>Bạn đang là chủ phòng: ${escapeHtml(ownRoom.name)}</strong><span>Đóng phòng hiện tại để tạo phòng mới.</span><button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(ownRoom.id)}">Đóng phòng hiện tại</button></div>` : ""}
         <div class="study-room-create-panel" data-room-create-panel hidden>
           <form data-room-create-form>
             <label>Tên phòng<input name="name" maxlength="60" minlength="3" required placeholder="Ví dụ: Ôn Toán cùng nhóm bạn"></label>
@@ -88,22 +156,7 @@ export function mountStudyRooms(container, user) {
       event.preventDefault();
       void loadRooms();
     });
-    container.querySelectorAll("[data-room-close-lobby]").forEach(button => {
-      button.addEventListener("click", async event => {
-        event.preventDefault();
-        const roomId = button.dataset.roomCloseLobby;
-        if (!confirm("Đóng phòng này cho tất cả mọi người?")) return;
-        button.disabled = true;
-        try {
-          await post(roomUrl(roomId, "/close"), {});
-          await loadRooms();
-        } catch (error) {
-          button.disabled = false;
-          const errorBox = container.querySelector("[data-room-error]");
-          if (errorBox) { errorBox.textContent = error.message; errorBox.hidden = false; }
-        }
-      });
-    });
+    bindLobbyClose(container);
     container.querySelector("[data-room-create-form]")?.addEventListener("submit", event => {
       event.preventDefault();
       event.stopPropagation();
