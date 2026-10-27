@@ -26,3 +26,13 @@ Module phòng học trực tiếp, được tách riêng để dễ bảo trì:
 ## Tích hợp
 
 Backend được mount trong `server/server.js`, trang được đăng ký qua router `js/app.js`, nút điều hướng nằm trong `index.html`, kiểu dáng module nằm ở `study-rooms/styles.css`.
+
+
+## Chính sách một phòng cho mỗi chủ tài khoản
+
+- Server từ chối tạo phòng mới nếu tài khoản đang là chủ của một phòng còn hoạt động.
+- Chủ phòng hoặc Admin có thể dùng nút **Đóng phòng** ở danh sách hoặc trong phòng.
+- Đóng phòng sẽ thông báo cho thành viên, dừng camera/microphone của trình duyệt ở phía client và đưa họ về sảnh.
+- Khi rời phòng hoặc trang bị đóng, client tắt và stop mọi media track local.
+
+**Giới hạn hiện tại:** danh sách phòng là dữ liệu trong bộ nhớ của Node.js. Khi server khởi động lại, trạng thái phòng được làm mới; để chống lách qua restart và hỗ trợ nhiều tiến trình server, cần chuyển trạng thái phòng vào SQLite/Redis.
