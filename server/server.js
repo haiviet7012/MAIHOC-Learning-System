@@ -320,13 +320,18 @@ app.post("/api/auth/reset-password",requireSameOrigin,async(req,res)=>{
   }
   try{
     const passwordHash=await hashPassword(password);
-    db.transaction(()=>{
+    const consumed=db.transaction(()=>{
+      const deleted=db.prepare("DELETE FROM password_reset_tokens WHERE id=? AND user_id=? AND token_hash=? AND expires_at>=? AND attempts<5")
+        .run(reset.id,user.id,suppliedHash,Date.now());
+      if(!deleted.changes)return false;
       db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash,user.id);
       db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
       db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
       db.prepare("DELETE FROM user_presence WHERE user_id=?").run(user.id);
+      return true;
     })();
-    if(req.user?.id===user.id)res.clearCookie("maihoc_session",{path:"/"});
+    if(!consumed)return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã được sử dụng. Hãy yêu cầu mã mới."});
+    if(req.user?.id===user.id)destroySession(req,res);
     res.json({ok:true,message:"Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới."});
   }catch(error){
     console.error("Password reset completion failed:",error.message);
