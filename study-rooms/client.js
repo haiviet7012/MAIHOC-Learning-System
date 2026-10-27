@@ -144,10 +144,6 @@ export function mountStudyRooms(container, user) {
       void loadRooms();
     });
     bindLobbyClose(container);
-    container.querySelector("[data-room-create-form]")?.addEventListener("submit", event => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
   }
   function roomCard(room) {
     return `<article class="study-room-card">
