@@ -111,7 +111,7 @@ function homePage() {
 </div>
 <section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
 <div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
-<p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
+<p class="footer-note">MAI HỌC · Mai chưa phải là muộn nếu thực sự muốn bắt đầu.</p>`;
 }
 function subjectPickerPage() {
     const subjects = [
