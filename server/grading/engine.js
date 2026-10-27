@@ -672,43 +672,6 @@ export async function normalizeAnswerKeyDocument(buffer, filename = "", layout =
   }
 }
 
-export function serializeAnswerKey(answerKey, format = "json") {
-  if (!answerKey?.answers || typeof answerKey.answers !== "object") {
-    throw new Error("The answer key is not in a supported structured format.");
-  }
-  const normalized = normalizeAnswerKey(Buffer.from(JSON.stringify(answerKey)), "answer-key.json");
-  if (!normalized) throw new Error("The answer key contains no usable answers.");
-  if (format === "json") return JSON.stringify(normalized, null, 2);
-
-  const entries = Object.entries(normalized.answers);
-  if (format === "csv") {
-    const escapeCell = (value) => {
-      const text = String(value ?? "");
-      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    };
-    return [
-      ["question", "answer", "points", "accepted_answers"].join(","),
-      ...entries.map(([question, value]) => {
-        const accepted = Array.isArray(value) ? value : [value];
-        return [
-          question,
-          accepted[0] ?? "",
-          normalized.points?.[question] ?? "",
-          accepted.slice(1).join("|")
-        ].map(escapeCell).join(",");
-      })
-    ].join("\r\n");
-  }
-  if (format === "txt") {
-    return entries.map(([question, value]) => {
-      const accepted = (Array.isArray(value) ? value : [value]).join(" | ");
-      const points = normalized.points?.[question];
-      return `${question}: ${accepted}${points ? `; points=${points}` : ""}`;
-    }).join("\n");
-  }
-  throw new Error("Unsupported normalized answer-key format.");
-}
-
 function gcd(a, b) {
   a = a < 0n ? -a : a;
   b = b < 0n ? -b : b;
