@@ -522,3 +522,8 @@ body.exam-open{overflow:hidden}
 .grade-details-table .is-correct{color:#16815c}
 .grade-details-table .is-wrong{color:var(--danger)}
 @media(max-width:760px){.grade-details-table-wrap{max-width:100%}.grade-details-table th,.grade-details-table td{padding:9px 10px}}
+
+.view:focus,
+.view:focus-visible {
+  outline: none;
+}
