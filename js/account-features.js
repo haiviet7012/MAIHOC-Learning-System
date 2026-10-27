@@ -145,9 +145,10 @@ document.addEventListener("submit",async event=>{
 });
 async function loadUser() {
   try { const data=await request("/api/auth/me"); activeUser=data.user||null; } catch { activeUser=null; }
-  const bell=$("#notifications-open"), upload=$("#upload-open");
+  const bell=$("#notifications-open"), upload=$("#upload-open"), accountCenter=$("#account-center-open");
   if(bell)bell.hidden=!activeUser;
   if(upload)upload.hidden=!activeUser;
+  if(accountCenter)accountCenter.hidden=!activeUser||activeUser.role==="admin";
   if(activeUser){refreshNotifications();const reader=$("#reader-layout");if(reader&&activeReaderRoot!==reader)startReaderTracking(reader);}
 }
 async function refreshNotifications() {
