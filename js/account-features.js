@@ -203,8 +203,8 @@ function solutionMathText(value){
   const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎"};
   for(let i=0;i<6;i++){
     const previous=text;
-    text=text.replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→($1)")
-      .replace(/\\vec\s*\{([^{}]*)\}/g,"→($1)");
+    text=text.replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→$1")
+      .replace(/\\vec\s*\{([^{}]*)\}/g,"→$1");
     text=text.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g,"√($1)")
       .replace(/\\(?:text|mathrm|mathbf)\s*\{([^{}]*)\}/g,"$1")
