@@ -55,10 +55,6 @@
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option></select></label>
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
       <div class="file-upload-field"><span class="file-upload-label">Tệp tài liệu</span><label class="file-drop-zone" data-file-drop-zone tabindex="0"><input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả tệp vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp · PDF, Word, PowerPoint, TXT, ảnh</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
-      <div id="upload-answer-key-field" hidden>
-        <div class="file-upload-field"><span class="file-upload-label">Đáp án tham khảo (không bắt buộc)</span><label class="file-drop-zone compact-drop-zone" data-file-drop-zone tabindex="0"><input name="answerKey" type="file" accept=".pdf,.docx,.txt,.json,.csv"><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả đáp án tham khảo vào đây</strong><span class="file-drop-hint">Admin có thể đối chiếu khi duyệt lời giải AI</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
-        <p class="tiny muted">Với đề ôn tập hoặc thi thử, máy chủ sẽ dùng Gemini tạo lời giải và bộ chấm. Admin cần đối chiếu, xác nhận hoặc sửa đáp án trước khi đề được chấm. File đáp án tham khảo không bắt buộc.</p>
-      </div>
       </section>
       <aside id="upload-answer-manager" class="upload-answer-manager" hidden>
         <h3>Đáp án cho đề đã tải lên</h3>
