@@ -301,11 +301,10 @@ app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
 
 
 const passwordResetRequestAttempts=new Map();
-function consumePasswordResetRateLimit(key,limit,windowMsOrNow,maybeNow){
-  const windowMs=maybeNow===undefined?15*60*1000:windowMsOrNow;
-  const now=maybeNow===undefined?windowMsOrNow:maybeNow;
+const passwordResetCooldowns=new Map();
+function consumePasswordResetRateLimit(key,limit,now){
   let state=passwordResetRequestAttempts.get(key);
-  if(!state||now-state.startedAt>windowMs)state={count:0,startedAt:now};
+  if(!state||now-state.startedAt>15*60*1000)state={count:0,startedAt:now};
   if(state.count>=limit){passwordResetRequestAttempts.set(key,state);return false;}
   state.count++;
   passwordResetRequestAttempts.set(key,state);
@@ -315,29 +314,30 @@ function passwordResetRateLimit(req,res,next){
   const now=Date.now();
   if(passwordResetRequestAttempts.size>5000){
     for(const [key,state] of passwordResetRequestAttempts){
-      const age=now-Number(state.updatedAt||state.startedAt||0);
-      if(age>15*60*1000)passwordResetRequestAttempts.delete(key);
+      if(now-state.startedAt>15*60*1000)passwordResetRequestAttempts.delete(key);
+    }
+  }
+  if(passwordResetCooldowns.size>5000){
+    for(const [key,lastSentAt] of passwordResetCooldowns){
+      if(now-lastSentAt>15*60*1000)passwordResetCooldowns.delete(key);
     }
   }
   const email=String(req.body?.email||"").trim().toLowerCase();
   const resendKey="resend:"+req.ip+":"+email;
-  const previous=passwordResetRequestAttempts.get(resendKey);
-  if(previous&&now-previous.lastSentAt<30*1000){
-    const retryAfter=Math.ceil((30*1000-(now-previous.lastSentAt))/1000);
+  const lastSentAt=passwordResetCooldowns.get(resendKey)||0;
+  if(lastSentAt&&now-lastSentAt<30*1000){
+    const retryAfter=Math.ceil((30*1000-(now-lastSentAt))/1000);
     res.setHeader("Retry-After",String(retryAfter));
     return res.status(429).json({error:`Bạn chỉ có thể gửi lại mã sau ${retryAfter} giây.`,retryAfter});
   }
   const ipAllowed=consumePasswordResetRateLimit("ip:"+req.ip,10,now);
-  const emailAllowed=consumePasswordResetRateLimit("email:"+email,6,15*60*1000,now);
+  const emailAllowed=consumePasswordResetRateLimit("email:"+email,6,now);
   if(!ipAllowed||!emailAllowed)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
   req.passwordResetCooldownKey=resendKey;
   next();
 }
 function markPasswordResetEmailSent(req){
-  if(req.passwordResetCooldownKey){
-    const now=Date.now();
-    passwordResetRequestAttempts.set(req.passwordResetCooldownKey,{lastSentAt:now,startedAt:now,updatedAt:now});
-  }
+  if(req.passwordResetCooldownKey)passwordResetCooldowns.set(req.passwordResetCooldownKey,Date.now());
 }
 
 app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,async(req,res)=>{
