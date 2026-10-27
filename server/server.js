@@ -272,6 +272,40 @@ function loginRateLimit(req,res,next){
 // -------------------- AUTH API --------------------
 
 app.get("/api/auth/me",(req,res)=>res.json({user:req.user||null}));
+db.exec("CREATE TABLE IF NOT EXISTS account_action_tokens (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, purpose TEXT NOT NULL, target_email TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,purpose))");
+const accountActionCooldowns=new Map();
+app.post("/api/account/request-code",requireSameOrigin,requireAuth,async(req,res)=>{
+  const purpose=String(req.body?.purpose||"");
+  const targetEmail=String(req.body?.email||"").trim().toLowerCase();
+  if(!["change-email","delete-account"].includes(purpose))return res.status(400).json({error:"Loại xác minh không hợp lệ."});
+  if(purpose==="change-email"&&(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(targetEmail)||targetEmail.length>254))return res.status(400).json({error:"Gmail mới không hợp lệ."});
+  if(purpose==="change-email"){const existing=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(targetEmail);if(existing&&Number(existing.id)!==Number(req.user.id))return res.status(409).json({error:"Gmail này đã được tài khoản khác sử dụng."});}
+  const key=req.user.id+":"+purpose,remaining=30000-(Date.now()-(accountActionCooldowns.get(key)||0));
+  if(remaining>0)return res.status(429).json({error:"Vui lòng chờ "+Math.ceil(remaining/1000)+" giây trước khi gửi mã mới.",retryAfter:Math.ceil(remaining/1000)});
+  try{
+    const code=String(crypto.randomInt(0,1000000)).padStart(6,"0"),now=Date.now();
+    const tokenHash=crypto.createHash("sha256").update(String(req.user.id)+":"+purpose+":"+targetEmail+":"+code).digest("hex");
+    db.prepare("INSERT INTO account_action_tokens(user_id,purpose,target_email,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,0,?) ON CONFLICT(user_id,purpose) DO UPDATE SET target_email=excluded.target_email,token_hash=excluded.token_hash,expires_at=excluded.expires_at,attempts=0,created_at=excluded.created_at").run(req.user.id,purpose,targetEmail,tokenHash,now+600000,now);
+    const mail=createPasswordResetTransport(),recipient=req.user.email;
+    await mail.transporter.sendMail({from:{name:"MAI HỌC - Xác minh tài khoản",address:mail.SMTP_FROM||mail.SMTP_USER},to:recipient,subject:purpose==="delete-account"?"[MAI HỌC] Xác nhận xóa tài khoản":"[MAI HỌC] Xác nhận đổi Gmail",text:"Mã xác minh MAI HỌC: "+code+"\nMục đích: "+(purpose==="delete-account"?"xóa tài khoản":"đổi Gmail sang "+targetEmail)+". Mã có hiệu lực trong 10 phút.",html:"<p>Mã xác minh MAI HỌC (hiệu lực 10 phút):</p><h1 style=\"letter-spacing:8px\">"+code+"</h1><p>Mục đích: "+(purpose==="delete-account"?"xóa tài khoản":"đổi Gmail sang "+targetEmail)+"</p>"});
+    accountActionCooldowns.set(key,Date.now());res.json({ok:true,message:"Đã gửi mã xác minh đến Gmail hiện tại: "+recipient+". Hãy kiểm tra cả thư rác."});
+  }catch(error){db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);console.error("Account verification email failed:",error?.code,error?.responseCode,error?.message);res.status(502).json({error:passwordResetSmtpFailure(error)});}
+});
+app.post("/api/account/change-password",requireSameOrigin,requireAuth,async(req,res)=>{
+  const currentPassword=String(req.body?.currentPassword||""),newPassword=String(req.body?.newPassword||"");
+  if(newPassword.length<10||newPassword.length>128)return res.status(400).json({error:"Mật khẩu mới phải dài từ 10 đến 128 ký tự."});
+  try{const verified=await authenticateUser(req.user.email,currentPassword);if(!verified||Number(verified.id)!==Number(req.user.id))return res.status(400).json({error:"Mật khẩu hiện tại không chính xác."});const hash=await hashPassword(newPassword);db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash,req.user.id);db.prepare("DELETE FROM sessions WHERE user_id=?").run(req.user.id);destroySession(req,res);res.json({ok:true,message:"Đã đổi mật khẩu. Vui lòng đăng nhập lại."});}catch(error){console.error("Change password failed:",error.message);res.status(500).json({error:"Không thể đổi mật khẩu lúc này."});}
+});
+app.post("/api/account/confirm-action",requireSameOrigin,requireAuth,async(req,res)=>{
+  const purpose=String(req.body?.purpose||""),code=String(req.body?.code||"").trim();
+  if(!["change-email","delete-account"].includes(purpose)||!/^\\d{6}$/.test(code))return res.status(400).json({error:"Mục đích hoặc mã xác minh không hợp lệ."});
+  const token=db.prepare("SELECT target_email,token_hash,expires_at,attempts FROM account_action_tokens WHERE user_id=? AND purpose=?").get(req.user.id,purpose);
+  if(!token||Number(token.expires_at)<Date.now()||Number(token.attempts)>=5){db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});}
+  const supplied=crypto.createHash("sha256").update(String(req.user.id)+":"+purpose+":"+token.target_email+":"+code).digest("hex"),a=Buffer.from(supplied,"hex"),b=Buffer.from(token.token_hash,"hex");
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b)){const attempts=Number(token.attempts)+1;if(attempts>=5)db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);else db.prepare("UPDATE account_action_tokens SET attempts=? WHERE user_id=? AND purpose=?").run(attempts,req.user.id,purpose);return res.status(400).json({error:attempts>=5?"Sai mã quá nhiều lần. Hãy yêu cầu mã mới.":"Mã xác minh không chính xác."});}
+  if(purpose==="change-email"){const target=token.target_email,existing=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(target);if(existing&&Number(existing.id)!==Number(req.user.id))return res.status(409).json({error:"Gmail này đã được tài khoản khác sử dụng."});db.prepare("UPDATE users SET email=? WHERE id=?").run(target,req.user.id);db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);return res.json({ok:true,message:"Đã đổi Gmail.",user:db.prepare("SELECT id,name,email,role,admin_level AS adminLevel FROM users WHERE id=?").get(req.user.id)});}
+  try{db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);if(!deleteAccountPermanently(req.user.id))return res.status(404).json({error:"Không tìm thấy tài khoản."});destroySession(req,res);return res.json({ok:true,deleted:true,message:"Tài khoản đã được xóa."});}catch(error){console.error("Account deletion failed:",error.message);res.status(500).json({error:"Không thể xóa tài khoản lúc này."});}
+});
 app.post("/api/presence/heartbeat",requireSameOrigin,requireAuth,(req,res)=>{
   const now=Date.now();
   db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(req.user.id,now);
