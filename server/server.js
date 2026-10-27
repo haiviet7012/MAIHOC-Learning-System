@@ -317,7 +317,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
   const email=String(req.body?.email||"").trim().toLowerCase();
   const password=String(req.body?.password||"");
   if(name.length<2||name.length>80)return res.status(400).json({error:"Tên admin cần từ 2 đến 80 ký tự."});
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
   if(password.length<12||password.length>128)return res.status(400).json({error:"Mật khẩu admin cần từ 12 đến 128 ký tự."});
   if(db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(email))return res.status(409).json({error:"Email này đã tồn tại."});
   const passwordHash=await hashPassword(password);
