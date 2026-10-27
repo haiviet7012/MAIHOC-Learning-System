@@ -83,3 +83,8 @@
 .study-room-live-head-actions{align-items:center}
 @media(max-width:1100px){.study-room-workspace{grid-template-columns:minmax(0,1fr) 310px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.study-room-workspace{grid-template-columns:1fr}.study-room-chat{height:460px;min-height:420px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-video-tile{min-height:130px}}
+
+.study-room-owner-active{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;margin:0 0 18px;border:1px solid color-mix(in srgb,#d7a347 65%,var(--border));border-radius:12px;background:color-mix(in srgb,#d7a347 10%,var(--surface));font-size:13px}
+.study-room-owner-active strong{color:var(--text)}
+.study-room-owner-active span{color:var(--muted);flex:1}
+.study-room-live-head-actions .button.danger,.study-room-card-bottom .button.danger,.study-room-owner-active .button.danger{background:#a52d39;color:#fff;border-color:#a52d39}
