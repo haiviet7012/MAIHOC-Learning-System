@@ -550,6 +550,8 @@ function render() {
         view.innerHTML = adminPage();
     else if (state.route === "user-dashboard")
         view.innerHTML = userDashboardPage();
+    else if (state.route === "account-center")
+        view.innerHTML = accountCenterPage();
     else if (state.route === "study-rooms")
         view.innerHTML = '<div class="study-room-loading"><p class="muted">Đang mở Phòng tự học…</p></div>';
     else if (state.route === "user-progress-detail")
@@ -1233,6 +1235,41 @@ async function loadAccountDeletionRequests(){
     box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Admin cấp dưới":"User")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
+document.addEventListener("click",async e=>{
+  const button=e.target.closest("[data-account-request-code]");if(!button)return;
+  const purpose=button.dataset.accountRequestCode,form=document.querySelector('[data-account-form="'+purpose+'"]');
+  const email=form?.querySelector('[name="email"]')?.value?.trim()||"";
+  if(purpose==="change-email"&&!email){form?.querySelector('[name="email"]')?.reportValidity();return;}
+  if(purpose==="delete-account"&&!confirm("Gửi mã xác minh để xóa vĩnh viễn tài khoản này?"))return;
+  button.disabled=true;
+  try{
+    const response=await fetch("/api/account/request-code",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({purpose,email})});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Không gửi được mã xác minh.");
+    const message=form?.querySelector("[data-account-message]");if(message){message.hidden=false;message.textContent=data.message||"Đã gửi mã xác minh.";}
+    toast(data.message||"Đã gửi mã xác minh.","success");let remain=30;const label=button.textContent;
+    const timer=setInterval(()=>{remain--;if(!button.isConnected){clearInterval(timer);return;}if(remain<=0){clearInterval(timer);button.textContent=label;button.disabled=false;}else button.textContent="Gửi mã mới ("+remain+"s)";},1000);
+  }catch(error){toast(error.message||"Không gửi được mã xác minh.","error");button.disabled=false;}
+});
+document.addEventListener("submit",async e=>{
+  const form=e.target.closest("[data-account-form]");if(!form)return;e.preventDefault();
+  const purpose=form.dataset.accountForm,button=form.querySelector('button[type="submit"]'),message=form.querySelector("[data-account-message]"),values=Object.fromEntries(new FormData(form).entries());
+  const showMessage=(text,isError=false)=>{if(message){message.hidden=false;message.textContent=text;message.classList.toggle("auth-error",isError);}};
+  if(purpose==="change-password"&&values.newPassword!==values.confirmPassword){showMessage("Mật khẩu nhập lại không khớp.",true);return;}
+  if(purpose==="delete-account"&&(values.confirmation||"").trim()!=="XOA"){showMessage("Hãy nhập chính xác XOA để xác nhận.",true);return;}
+  if(purpose==="delete-account"&&!confirm("Xác nhận xóa tài khoản vĩnh viễn?"))return;
+  if(button)button.disabled=true;
+  try{
+    let endpoint="/api/account/confirm-action",body={purpose,code:values.code};
+    if(purpose==="change-password"){endpoint="/api/account/change-password";body={currentPassword:values.currentPassword,newPassword:values.newPassword};}
+    if(purpose==="change-email")body.email=values.email;
+    const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Không thể cập nhật tài khoản.");
+    showMessage(data.message||"Đã cập nhật tài khoản.");
+    if(purpose==="change-email"){const node=document.querySelector("#account-current-email");if(node)node.textContent=data.user?.email||values.email;form.reset();toast("Đã đổi Gmail thành công.","success");}
+    else if(purpose==="change-password"){form.reset();toast("Đã đổi mật khẩu. Vui lòng đăng nhập lại.","success");setTimeout(()=>document.querySelector("#login-open")?.click(),700);}
+    else{toast("Tài khoản đã được xóa.","success");await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"});window.location.reload();}
+  }catch(error){showMessage(error.message||"Không thể cập nhật tài khoản.",true);}finally{if(button)button.disabled=false;}
+});
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;
   e.preventDefault();
