@@ -107,7 +107,7 @@ document.addEventListener("click",async event=>{
       resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã mới sẽ được gửi.");
       startPasswordResetCooldown(30);
     }catch(error){
-      const seconds=Number(error.retryAfter)||Number(String(error.message).match(/(\\d+) giây/)?.[1])||0;
+      const seconds=Number(error.retryAfter)||Number(String(error.message).match(/(\d+) giây/)?.[1])||0;
       if(seconds>0)startPasswordResetCooldown(seconds);
       resetMessage("reset-password-error",error.message||"Không thể gửi mã mới.",true);
     }finally{
