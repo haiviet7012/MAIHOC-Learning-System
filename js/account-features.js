@@ -55,13 +55,16 @@ async function requestPasswordResetCode(){
   }finally{resetEndpointBusy(form,false);}
 }
 document.addEventListener("click",async event=>{
-  if(event.target.closest("#forgot-password-open")){
-    const login=$("#login-dialog"),dialog=$("#forgot-password-dialog");
+  if(event.target.closest("[data-open-forgot-password]")){
+    const login=$("#login-dialog"),register=$("#register-dialog"),dialog=$("#forgot-password-dialog");
+    const clicked=event.target.closest("[data-open-forgot-password]");
+    const sourceForm=clicked.closest("form");
     if(login?.open)login.close();
+    if(register?.open)register.close();
     $("#forgot-password-form").hidden=false;$("#reset-password-form").hidden=true;
     resetMessage("forgot-password-error","");resetMessage("forgot-password-status","");
     resetMessage("reset-password-error","");resetMessage("reset-password-status","");
-    const email=$("#login-form [name=email]")?.value?.trim()||"";
+    const email=sourceForm?.querySelector('[name="email"]')?.value?.trim()||"";
     $("#forgot-password-form [name=email]").value=email;
     passwordResetEmail=email;
     if(dialog&&!dialog.open)dialog.showModal();
