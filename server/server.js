@@ -214,6 +214,28 @@ function loginRateLimit(req,res,next){
 // -------------------- AUTH API --------------------
 
 app.get("/api/auth/me",(req,res)=>res.json({user:req.user||null}));
+app.post("/api/presence/heartbeat",requireSameOrigin,requireAuth,(req,res)=>{
+  const now=Date.now();
+  db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(req.user.id,now);
+  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
+  res.setHeader("Cache-Control","no-store");
+  res.json({ok:true,lastSeenAt:now});
+});
+app.get("/api/presence/online-users",requireAuth,(req,res)=>{
+  const now=Date.now();
+  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
+  const users=db.prepare("SELECT u.id,u.name,p.last_seen_at AS lastSeenAt FROM user_presence p JOIN users u ON u.id=p.user_id WHERE u.role='user' AND p.user_id<>? AND p.last_seen_at>=? ORDER BY u.name COLLATE NOCASE LIMIT 200").all(req.user.id,now-3*60*1000);
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({users:users.map(user=>({id:user.id,name:user.name,lastSeenAt:user.lastSeenAt}))});
+});
+app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
+  const now=Date.now();
+  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
+  const users=db.prepare("SELECT u.id,u.name,u.email,u.role,u.admin_level AS adminLevel,p.last_seen_at AS lastSeenAt FROM user_presence p JOIN users u ON u.id=p.user_id WHERE p.last_seen_at>=? ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,u.name COLLATE NOCASE").all(now-3*60*1000);
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({users:users.map(user=>({...user,lastSeenAt:Number(user.lastSeenAt)})),total:users.length,windowMs:3*60*1000});
+});
+
 
 
 
@@ -419,7 +441,7 @@ app.delete("/api/notifications",requireSameOrigin,requireAuth,(req,res)=>{
   return res.json({ok:true,deleted:result.changes,unread:0});
 });
 
-app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
+app.get("/api/admin/progress",requireSuperAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
 
 app.get("/api/progress",requireAuth,(req,res)=>{
 

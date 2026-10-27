@@ -531,3 +531,15 @@ body.exam-open{overflow:hidden}
 .view:focus-visible {
   outline: none;
 }
+
+/* Online dashboard and super-admin monitoring panels. */
+.dashboard-panel{border:1px solid var(--border);background:var(--surface);padding:20px;margin:18px 0}
+.dashboard-panel-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.dashboard-panel h2{margin:0 0 4px}
+.dashboard-panel h3{margin:22px 0 8px}
+.online-user-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.online-user-item{display:flex;align-items:center;gap:10px;border:1px solid var(--border);background:var(--surface-2);padding:12px;min-width:0}
+.online-indicator{width:9px;height:9px;display:inline-block;flex:0 0 9px;background:#20a46b;border-radius:50%!important;box-shadow:0 0 0 3px rgba(32,164,107,.16)}
+.online-user-label{margin-left:auto;color:#16815c;font-size:12px;font-weight:700}
+.superadmin-monitoring{margin-top:0}
+.superadmin-monitoring .admin-table-wrap{max-width:100%;overflow:auto}
