@@ -421,16 +421,13 @@ export function mountStudyRooms(container, user) {
     for (const [id] of peers) closePeer(id);
   }
   async function leaveRoom(notify = true) {
-    if (!currentRoom) {
-      await stopLocalMedia();
-      return;
-    }
     const oldRoom = currentRoom;
     const oldToken = participantToken;
+    // Disable and stop camera/microphone immediately, even if leave API fails.
     await stopLocalMedia();
     currentRoom = null; participant = null; participantToken = null; members = []; lastEventId = 0;
     if (pollTimer) clearTimeout(pollTimer);
-    if (notify && oldToken) {
+    if (notify && oldRoom && oldToken) {
       try { await post(roomUrl(oldRoom.id, "/leave"), { token: oldToken }); } catch {}
     }
     if (!disposed) await loadRooms();
@@ -469,7 +466,6 @@ export function mountStudyRooms(container, user) {
       if (!confirm("Đóng phòng này cho tất cả mọi người? Họ sẽ bị ngắt kết nối khỏi phòng.")) return;
       try {
         await post(roomUrl(roomToClose.id, "/close"), { token: participantToken });
-        await stopLocalMedia();
         await leaveRoom(false);
         showError("Phòng đã được đóng.");
       } catch (error) { showError(error.message); }
