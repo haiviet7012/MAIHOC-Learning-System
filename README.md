@@ -19,7 +19,7 @@ Bản MVP đa trang theo luồng Paint đã gửi, ưu tiên môn Toán; các m�
 
 ## Chạy local (khuyến nghị)
 
-Yêu cầu Node.js 18+.
+Yêu cầu Node.js 22.13+ để engine có thể trích xuất đáp án từ PDF.
 
 1. Mở terminal tại thư mục `server` và cài thư viện:
 
@@ -93,3 +93,13 @@ Máy chủ Express đã tích hợp upload giới hạn 20 MB/tệp. Chỉ Admin
 - Biến `ADMIN_EMAIL` nhận email báo có tài liệu chờ duyệt. Cấu hình `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` và `SMTP_FROM` trong `server/.env` để bật email. Với Gmail, dùng App Password, không dùng mật khẩu tài khoản thường.
 - API tiến trình: `GET /api/progress`, `PUT /api/progress`; Admin có thể xem dữ liệu tổng hợp qua `GET /api/admin/progress`. Thông báo: `GET /api/notifications`.
 - Sau khi cập nhật dependency, chạy `cd server` rồi `npm install` để cài thêm `nodemailer` và cập nhật `package-lock.json`.
+
+## Cấu hình bố cục đề
+
+- `configs/exam-layouts.json` lưu bố cục theo tên môn. `assessment.sections` dùng chung cho đề ôn tập và thi thử; có thể khai báo riêng `practice` hoặc `exam` để ghi đè.
+- Mỗi section có `order`, `type` (`multiple_choice`, `true_false`, `essay`), `title` và `count`. Trắc nghiệm có thể khai báo nhãn `options`; đúng/sai có thể khai báo các mệnh đề `statements`.
+- Tiêu chí chấm đặt trong `grading.scale` và `grading` của từng section. Toán đang chấm trên thang 10: 0,25 mỗi câu trắc nghiệm, đúng/sai theo số mệnh đề đúng (0,1 / 0,25 / 0,5 / 1 điểm), và 0,5 mỗi câu trả lời ngắn.
+- Đáp án chuẩn hóa nên dùng ID có mã phần, ví dụ `I-1`, `II-1a`, `III-1`; mệnh đề đúng/sai có thể nhập riêng theo ID hoặc gộp thành object `{"II-1":{"a":"Đúng","b":"Sai"}}`.
+- Nếu PDF đáp án có nhiều mã đề, chọn mã mặc định tại `subjects.<môn>.grading.defaultAnswerVariant`; Toán hiện chọn mã `1001`.
+- Chỉ màn hình đề ôn tập và thi thử áp dụng cấu hình. Màn hình đọc lý thuyết tiếp tục hiển thị tài liệu mà không áp dụng bố cục câu hỏi.
+- Để thêm môn, thêm một khóa dưới `subjects` theo đúng tên môn trong thư viện rồi khai báo các section tương ứng. Nếu cần bố cục khác nhau, dùng khóa `practice` và/hoặc `exam` thay cho `assessment`.

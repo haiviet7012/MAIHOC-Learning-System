@@ -46,6 +46,10 @@ db.exec(`
     filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL,
     file_data BLOB,
     content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    answer_key_data BLOB,
+    answer_key_original_name TEXT,
+    answer_key_content_type TEXT,
+    answer_key_question_ids TEXT,
     status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
     admin_note TEXT, reviewed_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), reviewed_at TEXT
   );
@@ -54,7 +58,24 @@ db.exec(`
     subject TEXT NOT NULL, grade TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
     filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL,
     content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    answer_key_data BLOB,
+    answer_key_original_name TEXT,
+    answer_key_content_type TEXT,
+    answer_key_question_ids TEXT,
     file_data BLOB NOT NULL,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS answer_keys (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    file_data BLOB NOT NULL,
+    source_format TEXT NOT NULL,
+    normalized_json TEXT,
+    question_ids TEXT,
+    grading_available INTEGER NOT NULL DEFAULT 0 CHECK(grading_available IN (0,1)),
+    normalization_error TEXT,
     uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -78,6 +99,29 @@ if (!submissionColumns.has("file_data")) {
 }
 if (!submissionColumns.has("content_type")) {
   db.exec("ALTER TABLE document_submissions ADD COLUMN content_type TEXT NOT NULL DEFAULT 'application/octet-stream'");
+}
+for (const [name, definition] of [
+  ["answer_key_data", "BLOB"],
+  ["answer_key_original_name", "TEXT"],
+  ["answer_key_content_type", "TEXT"],
+  ["answer_key_question_ids", "TEXT"]
+]) {
+  if (!submissionColumns.has(name)) db.exec(`ALTER TABLE document_submissions ADD COLUMN ${name} ${definition}`);
+}
+const documentColumns = new Set(db.pragma("table_info(documents)").map((column) => column.name));
+for (const [name, definition] of [
+  ["answer_key_data", "BLOB"],
+  ["answer_key_original_name", "TEXT"],
+  ["answer_key_content_type", "TEXT"],
+  ["answer_key_question_ids", "TEXT"]
+]) {
+  if (!documentColumns.has(name)) db.exec(`ALTER TABLE documents ADD COLUMN ${name} ${definition}`);
+}
+const progressColumns = new Set(
+  db.pragma("table_info(user_progress)").map((column) => column.name)
+);
+if (!progressColumns.has("item_title")) {
+  db.exec("ALTER TABLE user_progress ADD COLUMN item_title TEXT NOT NULL DEFAULT ''");
 }
 
 const SESSION_COOKIE = "maihoc.sid";

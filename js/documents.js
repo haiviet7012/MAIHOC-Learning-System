@@ -244,6 +244,12 @@ export async function uploadDocument(formData) {
         localOnly: false,
     };
 
+    const response = await fetch(API_URL, {
+        method: "POST",
+        credentials: "same-origin",
+        body: formData,
+    });
+
     if (response.status === 404 || response.status === 405) {
         throw new Error("Document upload is not enabled on this server.");
     }

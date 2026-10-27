@@ -3,18 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
-    "better-sqlite3": "^11.8.1",
-    "nodemailer": "^6.10.1"
+    "nodemailer": "^6.10.1",
+    "pdfjs-dist": "6.4.299"
   },
   "allowScripts": {
     "better-sqlite3@11.10.0": true

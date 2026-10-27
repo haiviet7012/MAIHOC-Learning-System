@@ -13,7 +13,7 @@
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark">M</span><span>MAI<span class="brand-light">HỌC</span></span></button>
+      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">LEARNING SYSTEM</span></span></button>
       <div class="topbar-actions">
         <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
         <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
@@ -48,19 +48,43 @@
     <form id="upload-form" method="dialog">
       <div class="modal-heading"><div><p class="eyebrow">KHO TÀI LIỆU</p><h2>Upload tài liệu</h2></div><button type="button" class="close-button" data-close="upload-dialog" aria-label="Đóng">×</button></div>
       <p class="muted">Tài liệu bạn gửi sẽ được Admin kiểm tra trước khi xuất hiện trong thư viện. Admin có thể tải lên trực tiếp.</p>
+      <div id="upload-dialog-columns" class="upload-dialog-columns">
+      <section class="upload-document-column">
       <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
       <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
-      <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="exercise">Bài tập</option><option value="answer">Đáp án / lời giải</option></select></label>
+      <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option></select></label>
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
-      <label>Tệp tài liệu<input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required></label>
+      <div class="file-upload-field"><span class="file-upload-label">Tệp tài liệu</span><label class="file-drop-zone" data-file-drop-zone tabindex="0"><input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả tệp vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp · PDF, Word, PowerPoint, TXT, ảnh</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
+      <div id="upload-answer-key-field" hidden>
+        <div class="file-upload-field"><span class="file-upload-label">Tệp đáp án (không bắt buộc)</span><label class="file-drop-zone compact-drop-zone" data-file-drop-zone tabindex="0"><input name="answerKey" type="file" accept=".pdf,.docx,.txt,.json,.csv"><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả đáp án vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
+        <p class="tiny muted">Có thể dùng JSON, CSV, TXT, DOCX hoặc PDF có bảng đáp án dạng văn bản. PDF scan sẽ thử OCR nếu máy chủ có Tesseract; tệp chưa đọc được sẽ báo chưa chuẩn hóa thay vì chấm điểm.</p>
+      </div>
+      </section>
+      <aside id="upload-answer-manager" class="upload-answer-manager" hidden>
+        <h3>Đáp án cho đề đã tải lên</h3>
+        <p class="tiny muted">Danh sách đề ôn tập và thi thử. Tệp đáp án được gắn riêng với từng đề.</p>
+        <div class="upload-answer-list" data-upload-answer-list><p class="muted">Mở cửa sổ để tải danh sách.</p></div>
+      </aside>
+    </div>
       <div class="modal-actions"><button type="button" class="button secondary" data-close="upload-dialog">Hủy</button><button class="button primary" type="submit">Tải lên</button></div>
       <p class="tiny muted">Cần đăng nhập để gửi tài liệu. Tệp tối đa 20 MB; tài liệu do User gửi sẽ ở trạng thái chờ duyệt.</p>
     </form>
   </dialog>
 
+  <dialog id="answer-key-dialog" class="modal answer-key-modal">
+    <div class="modal-heading"><div><p class="eyebrow">QUẢN TRỊ ĐÁP ÁN</p><h2>Đáp án đề bài</h2></div><button type="button" class="close-button" data-close="answer-key-dialog" aria-label="Đóng">×</button></div>
+    <p class="muted">Quản lý đáp án theo từng tài liệu. Tệp đáp án và đề bài được lưu trong database.</p>
+    <details class="answer-key-help"><summary>Mẫu đáp án dùng cho chấm tự động</summary><p class="tiny muted">Với Toán, dùng ID có mã phần: I-1 cho trắc nghiệm, II-1a cho mệnh đề a của câu đúng/sai, III-1 cho trả lời ngắn. Ví dụ:</p><pre class="answer-key-example">{"answers":{"I-1":"A","II-1a":"Đúng","II-1b":"Sai","III-1":["2","2.0"]}}</pre><p class="tiny muted">JSON, CSV, TXT và DOCX được chuẩn hóa trước khi lưu. PDF có bảng dạng văn bản được đọc trực tiếp; PDF scan sẽ thử OCR bằng Tesseract nếu máy chủ hỗ trợ. Thang điểm lấy từ configs/exam-layouts.json.</p></details>
+    <div class="answer-key-columns">
+      <section class="answer-key-section"><h3>Lý thuyết</h3><div class="answer-key-list" data-answer-key-list="theory"><p class="muted">Đang tải…</p></div></section>
+      <section class="answer-key-section"><h3>Đề ôn tập</h3><div class="answer-key-list" data-answer-key-list="practice"><p class="muted">Đang tải…</p></div></section>
+      <section class="answer-key-section"><h3>Đề thi thử</h3><div class="answer-key-list" data-answer-key-list="exam"><p class="muted">Đang tải…</p></div></section>
+    </div>
+  </dialog>
+
   <dialog id="notifications-dialog" class="modal compact">
     <div class="modal-heading"><div><p class="eyebrow">TRUNG TÂM THÔNG BÁO</p><h2>Thông báo</h2></div><button type="button" class="close-button" data-close="notifications-dialog" aria-label="Đóng">×</button></div>
-    <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button></div>
+    <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button><button type="button" class="text-button danger-text" id="notifications-delete-all">Xóa tất cả</button></div>
     <div id="notifications-list" class="notifications-list"><p class="muted">Đang tải thông báo…</p></div>
   </dialog>
 

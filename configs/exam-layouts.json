@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "description": "Bố cục câu hỏi cho đề ôn tập và đề thi thử. Chỉ các tài liệu thuộc practice hoặc exam mới dùng cấu hình này.",
+  "subjects": {
+    "Toán": {
+      "grading": {
+        "scale": 10,
+        "defaultAnswerVariant": "1001"
+      },
+      "assessment": {
+        "sections": [
+          {
+            "order": 1,
+            "sectionId": "I",
+            "type": "multiple_choice",
+            "title": "Phần I. Trắc nghiệm",
+            "count": 12,
+            "options": ["A", "B", "C", "D"],
+            "grading": {
+              "pointsPerCorrect": 0.25
+            }
+          },
+          {
+            "order": 2,
+            "sectionId": "II",
+            "type": "true_false",
+            "title": "Phần II. Đúng / Sai",
+            "count": 4,
+            "statements": ["a", "b", "c", "d"],
+            "grading": {
+              "pointsByCorrectStatements": {
+                "0": 0,
+                "1": 0.1,
+                "2": 0.25,
+                "3": 0.5,
+                "4": 1
+              }
+            }
+          },
+          {
+            "order": 3,
+            "sectionId": "III",
+            "type": "essay",
+            "title": "Phần III. Tự luận / Trả lời ngắn",
+            "count": 6,
+            "grading": {
+              "pointsPerCorrect": 0.5
+            }
+          }
+        ]
+      }
+    }
+  }
+}
