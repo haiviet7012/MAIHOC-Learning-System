@@ -756,19 +756,6 @@ document.querySelectorAll("[data-file-drop-zone]").forEach(zone => {
         input.dispatchEvent(new Event("change", { bubbles: true }));
     });
 });
-function updateAnswerKeyUploadField() {
-    $("#upload-answer-key-field").hidden = !["practice", "exam"].includes(uploadCategorySelect.value);
-    if ($("#upload-answer-key-field").hidden) {
-        $("#upload-form").elements.answerKey.value = "";
-        updateFileDropZone($("#upload-form").elements.answerKey);
-    }
-}
-uploadCategorySelect.addEventListener("change", updateAnswerKeyUploadField);
-$("#upload-form").addEventListener("reset", () => setTimeout(() => {
-    updateAnswerKeyUploadField();
-    document.querySelectorAll("[data-file-drop-zone] input[type='file']").forEach(updateFileDropZone);
-}, 0));
-updateAnswerKeyUploadField();
 /* ============================================
    CHỐNG SPAM CLICK KHI UPLOAD TÀI LIỆU
    ============================================ */
@@ -812,11 +799,7 @@ $("#upload-form").addEventListener("submit", async (e) => {
     }
     try {
         const fd = new FormData(form);
-        const answerKeyFile = form.elements.answerKey.files?.[0];
-        if (answerKeyFile && answerKeyFile.size > 20 * 1024 * 1024) {
-            throw new Error("Tệp đáp án vượt quá giới hạn 20 MB.");
-        }
-        if (!answerKeyFile) fd.delete("answerKey");
+        fd.delete("answerKey");
         const result = await uploadDocument(fd);
         // Chỉ đánh dấu đã upload khi server xử lý thành công.
         uploadedFileKeys.add(fileKey);
