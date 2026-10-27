@@ -492,19 +492,17 @@ body.exam-open{overflow:hidden}
   width:min(100%,320px);
   max-height:340px;
   object-fit:contain;
+  border:0!important;
   border-radius:14px!important;
+  clip-path:inset(0 round 14px);
   transform:rotate(5deg) translateY(-2px);
   transform-origin:center;
-  box-shadow:
-    0 12px 26px rgba(3,16,35,.20),
-    0 4px 10px rgba(3,16,35,.12);
-  transition:transform .28s ease,box-shadow .28s ease;
+  filter:drop-shadow(0 10px 15px rgba(3,16,35,.20)) drop-shadow(0 3px 5px rgba(3,16,35,.12));
+  transition:transform .28s ease,filter .28s ease;
 }
 .hero-logo:hover{
   transform:rotate(2deg) translateY(-4px);
-  box-shadow:
-    0 14px 28px rgba(3,16,35,.22),
-    0 5px 12px rgba(3,16,35,.13);
+  filter:drop-shadow(0 12px 17px rgba(3,16,35,.22)) drop-shadow(0 4px 6px rgba(3,16,35,.13));
 }
 @media(max-width:760px){
   .hero{border-radius:16px!important}
