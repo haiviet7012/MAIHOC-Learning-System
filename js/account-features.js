@@ -55,6 +55,11 @@ async function requestPasswordResetCode(){
   }finally{resetEndpointBusy(form,false);}
 }
 document.addEventListener("click",async event=>{
+  if(event.target.closest('[data-close="forgot-password-dialog"]')){
+    const dialog=$("#forgot-password-dialog");
+    if(dialog?.open)dialog.close();
+    return;
+  }
   if(event.target.closest("[data-open-forgot-password]")){
     const login=$("#login-dialog"),register=$("#register-dialog"),dialog=$("#forgot-password-dialog");
     const clicked=event.target.closest("[data-open-forgot-password]");
