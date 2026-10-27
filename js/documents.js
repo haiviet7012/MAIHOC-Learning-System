@@ -247,6 +247,9 @@ export async function uploadDocument(formData) {
     const response = await fetch(API_URL, {
         method: "POST",
         credentials: "same-origin",
+        headers: {
+            Accept: "application/json",
+        },
         body: formData,
     });
 
