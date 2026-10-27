@@ -21,6 +21,7 @@ jobs:
           node --check server/server.js
           node --check server/study-rooms/server.js
           node --check server/grading/engine.js
+          node --test tests/grading-config.test.js
       - name: Check browser modules
         run: |
           node --input-type=module --check < js/app.js
