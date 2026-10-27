@@ -373,7 +373,7 @@ async function loadUserOnlineDashboard(){
   }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách online.";}
 }
 async function loadSuperAdminMonitoring(){
-  if(state.route!=="admin"||Number(currentUser?.adminLevel)<2)return;
+  if(!["admin","user-progress-detail"].includes(state.route)||Number(currentUser?.adminLevel)<2)return;
   const presence=$("#superadmin-online-list"),count=$("#superadmin-online-count");
   if(!presence||!count)return;
   try{
@@ -394,7 +394,7 @@ async function loadSuperAdminMonitoring(){
     const response=await fetch("/api/admin/progress",{credentials:"same-origin",cache:"no-store"});
     const payload=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(payload.error||"Không tải được tiến trình.");
-    const box=$("#superadmin-progress-list");if(!box||state.route!=="admin")return;
+    const box=$("#superadmin-progress-list");if(!box||!["admin","user-progress-detail"].includes(state.route))return;
     const users=Array.isArray(payload.users)?payload.users:[];
     if(!users.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập của người dùng.</p>';return;}
     const table=document.createElement("table");table.className="admin-table";
