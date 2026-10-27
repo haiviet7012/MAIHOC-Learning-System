@@ -328,9 +328,8 @@ function resultPage() {
         ? "<div class=\"result-score\">" + Number(result.score ?? result.earnedPoints).toFixed(2) + "/" + (result.scale ?? result.totalPoints) + "</div><p class=\"muted\">" + (result.percent ?? 0) + "% · " + (result.correctCount ?? 0) + "/" + (result.questionCount ?? rows.length) + " câu đúng · " + (result.earnedPoints ?? result.score ?? 0) + "/" + (result.totalPoints ?? result.scale ?? 0) + " điểm</p>"
         : "<div class=\"result-score\">—/" + (result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)) + "</div><p class=\"muted\">" + escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.") + "</p>";
     const table = hasDetails
-        ? "<div class=\\"grade-details-table-wrap\\"><table class=\\"grade-details-table\\"><thead><tr><th>Câu</th><th>Đáp án bạn chọn</th><th>Đáp án đúng</th><th>Trạng thái</th><th>Điểm</th></tr></thead><tbody>" + detailRows + "</tbody></table></div>"
-        : (!result?.graded ? "<p class=\\"muted\\">Số câu đã trả lời: " + answered + "/" + answerableCount + "</p>" : "");
-
+        ? '<div class="grade-details-table-wrap"><table class="grade-details-table"><thead><tr><th>Câu</th><th>Đáp án bạn chọn</th><th>Đáp án đúng</th><th>Trạng thái</th><th>Điểm</th></tr></thead><tbody>' + detailRows + '</tbody></table></div>'
+        : (!result?.graded ? '<p class="muted">Số câu đã trả lời: ' + answered + '/' + answerableCount + '</p>' : '');
     const owner = saved?.userName ? "<p class=\"muted tiny\">Bài làm của " + escapeHTML(saved.userName) + (saved.userEmail ? " (" + escapeHTML(saved.userEmail) + ")" : "") + (saved.createdAt ? " · " + escapeHTML(saved.createdAt) : "") + "</p>" : "";
     const actions = saved
         ? (currentUser?.role === "admin" ? "<button class=\"button secondary\" data-route=\"admin\">Quay lại tiến trình</button>" : "<button class=\"button secondary\" data-route=\"home\">Về trang học tập</button>")
