@@ -188,7 +188,7 @@ async function loadAnswerKeySections(){
             `<a class="text-button" href="/api/admin/documents/${encodeURIComponent(doc.id)}/answer-key" target="_blank" rel="noopener">Xem tệp đáp án gốc</a>`;
         }else status='<span class="answer-key-status is-missing">Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n</span>';
         const upload=category==="theory"?"":`<label class="button secondary small answer-key-upload-label">${doc.hasAnswerKey?"Thay \u0111\u00e1p \u00e1n":"Upload \u0111\u00e1p \u00e1n"}<input type="file" accept=".pdf,.txt,.json,.csv,.docx" data-answer-key-upload="${esc(doc.id)}" hidden></label>`;
-        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><span class="answer-key-status ${doc.solutionStatus==="ready"?"is-ready":doc.solutionStatus==="failed"?"is-missing":""}">${esc(doc.solutionPhase||"Ch\u01b0a t\u1ea1o l\u1eddi gi\u1ea3i")}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress)}%`:""}</span><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duy\u1ec7t l\u1eddi gi\u1ea3i AI":doc.solutionStatus==="ready"?"Xem b\u1ed9 ch\u1ea5m \u0111\u00e3 duy\u1ec7t":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem ti\u1ebfn tr\u00ecnh":doc.solutionStatus==="failed"?"Xem l\u1ed7i / th\u1eed l\u1ea1i":"T\u1ea1o l\u1eddi gi\u1ea3i AI"}</button></div>`;
+        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><span class="answer-key-status ${doc.solutionStatus==="ready"?"is-ready":doc.solutionStatus==="failed"?"is-missing":""}">${esc(doc.solutionPhase||"Ch\u01b0a t\u1ea1o l\u1eddi gi\u1ea3i")}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress)}%`:""}</span><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duy\u1ec7t l\u1eddi gi\u1ea3i AI":doc.solutionStatus==="ready"?"Xem b\u1ed9 ch\u1ea5m \u0111\u00e3 duy\u1ec7t":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem ti\u1ebfn tr\u00ecnh":doc.solutionStatus==="failed"?"Xem l\u1ed7i / th\u1eed l\u1ea1i":"T\u1ea1o l\u1eddi gi\u1ea3i AI"}</button>${doc.solutionStatus==="ready"?"":`<button class="button secondary small" data-solution-manual="${esc(doc.id)}">Nhập đáp án thủ công</button>`}</div>`;
         return `<article class="answer-key-row"><div class="answer-key-main"><strong>${esc(doc.title)}</strong><span class="muted tiny">L\u1edbp ${esc(doc.grade)}${doc.answerKeyOriginalName?" \u00b7 "+esc(doc.answerKeyOriginalName):""}</span><div class="answer-key-statuses"><a class="text-button" href="/api/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">Xem \u0111\u1ec1</a>${status}${solution}</div></div>${upload}</article>`;
       }).join("");
     }
@@ -203,8 +203,8 @@ function solutionMathText(value){
   const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎"};
   for(let i=0;i<6;i++){
     const previous=text;
-    text=text.replace(/\\\\overrightarrow\\s*\\{([^{}]*)\\}/g,"→($1)")
-      .replace(/\\\\vec\\s*\\{([^{}]*)\\}/g,"→($1)");
+    text=text.replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→($1)")
+      .replace(/\\vec\s*\{([^{}]*)\}/g,"→($1)");
     text=text.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g,"√($1)")
       .replace(/\\(?:text|mathrm|mathbf)\s*\{([^{}]*)\}/g,"$1")
@@ -264,13 +264,14 @@ function renderSolutionState(data){
   const dialog=$("#exam-solution-dialog");if(!dialog)return;
   const title=dialog.querySelector("[data-solution-title]"),status=dialog.querySelector("[data-solution-status]"),bar=dialog.querySelector("[data-solution-progress]"),label=dialog.querySelector("[data-solution-progress-label]"),error=dialog.querySelector("[data-solution-error]"),content=dialog.querySelector("[data-solution-review-content]"),retry=dialog.querySelector("[data-solution-retry]"),save=dialog.querySelector("[data-solution-save]"),download=dialog.querySelector("[data-solution-download]");
   activeSolutionId=data.id;
-  if(title)title.textContent=manualMode?`${data.title||"Đề thi"} · Nhập đáp án thủ công`:data.title||"Lời giải đề thi";
+  if(title)title.textContent=data.title||"Lời giải đề thi";
   if(status)status.textContent=solutionLabel(data.status)+(data.phase&&data.phase!==solutionLabel(data.status)?` · ${data.phase}`:"");
   if(bar)bar.value=Number(data.progress)||0;if(label)label.textContent=`${Number(data.progress)||0}%`;
   if(error){error.hidden=!data.errorMessage;error.textContent=data.errorMessage||"";}
   const ready=data.status==="review",approved=data.status==="ready";
   const manualMode=(approved?data.approved?.source:data.generated?.source)==="manual-entry";
   dialog.dataset.solutionMode=manualMode?"manual":"ai";
+  if(title&&manualMode)title.textContent=`${data.title||"Đề thi"} · Nhập đáp án thủ công`;
   const items=approved?data.approved?.questions:data.generated?.questions;
   if(content){
     if(Array.isArray(items)&&items.length){
