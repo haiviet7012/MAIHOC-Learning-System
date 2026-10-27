@@ -662,3 +662,17 @@ body.exam-open .view.exam-fullscreen .exam-paper-viewer .pdf-document-scroll{max
   body.exam-open .view.exam-fullscreen .split-exam{gap:4px!important}
   body.exam-open .view.exam-fullscreen .splitter{width:4px!important}
 }
+
+/* Timed exam is a distraction-free full viewport: only the theme switch remains visible. */
+body.exam-open .topbar{height:0!important;min-height:0!important;border:0!important;padding:0!important;margin:0!important;overflow:visible!important;background:transparent!important;pointer-events:none!important}
+body.exam-open .view.exam-fullscreen{width:100vw!important;height:100dvh!important;max-height:100dvh!important;margin:0!important;padding:50px 8px 8px!important;overflow:hidden!important}
+body.exam-open .view.exam-fullscreen .split-exam{height:calc(100dvh - 108px)!important;max-height:calc(100dvh - 108px)!important}
+body.exam-native-fullscreen .view.exam-fullscreen{height:100dvh!important;max-height:100dvh!important;padding-top:48px!important}
+body.exam-native-fullscreen .topbar{position:fixed!important;inset:0 0 auto auto!important;width:auto!important}
+body.exam-open .topbar-actions{position:fixed!important;top:8px!important;right:10px!important;z-index:10001!important}
+body.exam-open .topbar-actions>#theme-toggle{pointer-events:auto!important}
+body.exam-open .topbar-actions>#theme-toggle .button-label{display:inline!important}
+@media(max-width:760px){
+ body.exam-open .view.exam-fullscreen{padding:48px 5px 5px!important}
+ body.exam-open .view.exam-fullscreen .split-exam{height:calc(100dvh - 102px)!important;max-height:calc(100dvh - 102px)!important}
+}
