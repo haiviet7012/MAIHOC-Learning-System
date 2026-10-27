@@ -294,6 +294,10 @@ body.exam-open{overflow:hidden}
 .answer-key-section h3{margin:0 0 10px;font-size:15px}
 .answer-key-list{display:grid;align-content:start;gap:9px;max-height:56vh;min-height:100px;overflow:auto;padding-right:3px}
 .answer-key-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface)}
+.answer-key-row{align-items:stretch}
+.answer-key-status-row{margin-top:7px}
+.exam-solution-admin-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:7px}
+.exam-solution-admin-actions .button{margin:0}
 .answer-key-main{display:grid;min-width:0;gap:3px;overflow-wrap:anywhere}
 .answer-key-statuses{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:4px}
 .answer-key-format-label{font-size:11px;color:var(--muted)}
