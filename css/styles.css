@@ -438,17 +438,26 @@ body.exam-open{overflow:hidden}
   #theme-toggle .button-label{display:none}
 }
 
-/* MAIHOC visual pass: square-cornered tabs, panels, cards and dialogs. */
+/* MAIHOC visual pass: use square corners for major tabs, panels and upload controls. */
 :root{--panel-radius:0px}
 .card,.resource-row,.exam-card,.reader-main,.reader-side,.exam-pane,.exam-toolbar,
 .result-panel,.modal,.subject-menu,.subject-picker-bar,.subject-tile,.answer-key-section,
 .answer-key-row,.solution-review-item,.solution-review-pane,.admin-submissions,
 .admin-table-wrap,.admin-progress-scroll,.admin-approved-documents-scroll,
 .upload-answer-manager,.upload-answer-row,.answer-key-help,.answer-key-example,
-.resource-card,.class-card,.stat,.notification-item,.notification-count{
+.resource-card,.class-card,.stat,.notification-item,.notification-count,
+.upload-dialog-columns,.upload-document-column,.file-drop-zone,.file-drop-icon,
+.file-drop-name,.answer-key-list,.answer-key-columns,.answer-key-main{
   border-radius:0!important;
 }
 .answer-key-modal,.exam-solution-dialog,#upload-dialog{
+  border-radius:0!important;
+}
+#upload-dialog input:not([type=checkbox]):not([type=file]),
+#upload-dialog select,#upload-dialog textarea,
+#upload-dialog .button,#upload-dialog .close-button,
+#upload-dialog .pill,#upload-dialog .answer-key-status,
+#upload-dialog .text-button{
   border-radius:0!important;
 }
 .file-drop-zone{border-radius:0!important}
