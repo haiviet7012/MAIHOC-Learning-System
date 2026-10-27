@@ -139,6 +139,20 @@ function createExamSolutionJob(documentId){
   queueExamSolution(documentId);
 }
 
+async function sendPasswordResetEmail(to,code){
+  const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM}=process.env;
+  if(!SMTP_HOST||!SMTP_USER||!SMTP_PASS)throw new Error("Chưa cấu hình SMTP để gửi email xác minh. Hãy điền SMTP_USER và SMTP_PASS trong server/.env.");
+  const port=Number(SMTP_PORT||587);
+  const transporter=nodemailer.createTransport({host:SMTP_HOST,port,secure:port===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
+  await transporter.sendMail({
+    from:SMTP_FROM||SMTP_USER,
+    to,
+    subject:"Mã xác minh đặt lại mật khẩu MAI HỌC",
+    text:`Bạn đã yêu cầu đặt lại mật khẩu MAI HỌC.\n\nMã xác minh của bạn là: ${code}\nMã có hiệu lực trong 10 phút và chỉ dùng một lần.\nNếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.\n\nVì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.`,
+    html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;line-height:1.6"><h2>Đặt lại mật khẩu MAI HỌC</h2><p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản này.</p><p>Mã xác minh có hiệu lực <strong>10 phút</strong>:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px;padding:16px;background:#eef4ff;text-align:center">${code}</p><p>Mã chỉ dùng một lần. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p><p>Vì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.</p></div>`
+  });
+}
+
 async function emailAdmins(subject,textBody){
 
   const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM,ADMIN_EMAIL}=process.env;
@@ -243,6 +257,82 @@ app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
 
 
 
+
+const passwordResetRequestAttempts=new Map();
+function passwordResetRateLimit(req,res,next){
+  const key=`${req.ip}:${String(req.body?.email||"").trim().toLowerCase()}`;
+  const now=Date.now();
+  const state=passwordResetRequestAttempts.get(key)||{count:0,startedAt:now};
+  if(now-state.startedAt>15*60*1000){state.count=0;state.startedAt=now;}
+  if(state.count>=5)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
+  state.count++;
+  passwordResetRequestAttempts.set(key,state);
+  next();
+}
+
+app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,async(req,res)=>{
+  const email=String(req.body?.email||"").trim().toLowerCase();
+  if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:"Vui lòng nhập địa chỉ Gmail hợp lệ."});
+  try{
+    const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE AND role='user'").get(email);
+    const now=Date.now();
+    if(user){
+      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?").run(user.id,now);
+      const code=String(crypto.randomInt(0,1000000)).padStart(6,"0");
+      const tokenHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
+      db.prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?)")
+        .run(user.id,tokenHash,now+10*60*1000,0,now);
+      try{await sendPasswordResetEmail(user.email,code);}
+      catch(error){
+        db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
+        console.error("Password reset email failed:",error.message);
+      }
+    }
+    res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
+  }catch(error){
+    console.error("Password reset request failed:",error.message);
+    res.status(500).json({error:"Chưa thể gửi mã xác minh lúc này. Hãy thử lại sau."});
+  }
+});
+
+app.post("/api/auth/reset-password",requireSameOrigin,async(req,res)=>{
+  const email=String(req.body?.email||"").trim().toLowerCase();
+  const code=String(req.body?.code||"").trim();
+  const password=String(req.body?.password||"");
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
+  if(!/^\d{6}$/.test(code))return res.status(400).json({error:"Mã xác minh phải gồm 6 chữ số."});
+  if(password.length<10||password.length>128)return res.status(400).json({error:"Mật khẩu mới phải dài từ 10 đến 128 ký tự."});
+  const user=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND role='user'").get(email);
+  if(!user)return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});
+  const reset=db.prepare("SELECT id,token_hash,expires_at,attempts FROM password_reset_tokens WHERE user_id=? ORDER BY created_at DESC LIMIT 1").get(user.id);
+  if(!reset||Number(reset.expires_at)<Date.now()||Number(reset.attempts)>=5){
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
+    return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn. Hãy yêu cầu mã mới."});
+  }
+  const suppliedHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
+  const supplied=Buffer.from(suppliedHash,"hex"),expected=Buffer.from(reset.token_hash,"hex");
+  const valid=supplied.length===expected.length&&crypto.timingSafeEqual(supplied,expected);
+  if(!valid){
+    const attempts=Number(reset.attempts)+1;
+    if(attempts>=5)db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
+    else db.prepare("UPDATE password_reset_tokens SET attempts=? WHERE id=?").run(attempts,reset.id);
+    return res.status(400).json({error:attempts>=5?"Bạn đã nhập sai mã quá nhiều lần. Hãy yêu cầu mã mới.":"Mã xác minh không chính xác."});
+  }
+  try{
+    const passwordHash=await hashPassword(password);
+    db.transaction(()=>{
+      db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash,user.id);
+      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
+      db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
+      db.prepare("DELETE FROM user_presence WHERE user_id=?").run(user.id);
+    })();
+    res.clearCookie("maihoc_session",{path:"/"});
+    res.json({ok:true,message:"Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới."});
+  }catch(error){
+    console.error("Password reset completion failed:",error.message);
+    res.status(500).json({error:"Không thể cập nhật mật khẩu lúc này."});
+  }
+});
 
 app.post("/api/auth/register",requireSameOrigin,async(req,res)=>{
 
