@@ -98,6 +98,7 @@
       <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required minlength="1" maxlength="128" placeholder="Nhập mật khẩu"></label>
       <p id="login-error" class="auth-error" role="alert" hidden></p>
       <div class="modal-actions"><button class="button secondary" type="button" data-close="login-dialog">Hủy</button><button class="button primary" type="submit">Đăng nhập</button></div>
+      <p class="tiny muted"><button class="text-button" id="forgot-password-open" data-open-forgot-password type="button">Quên mật khẩu?</button></p>
       <p class="tiny muted">Chưa có tài khoản? <button class="text-button" id="switch-to-register" type="button">Đăng ký tại đây</button></p>
     </form>
   </dialog>
@@ -112,7 +113,28 @@
       <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
       <p id="register-error" class="auth-error" role="alert" hidden></p>
       <div class="modal-actions"><button class="button secondary" type="button" data-close="register-dialog">Hủy</button><button class="button primary" type="submit">Tạo tài khoản</button></div>
-      <p class="tiny muted">Đã có tài khoản? <button class="text-button" id="switch-to-login" type="button">Đăng nhập</button></p>
+      <p class="tiny muted"><button class="text-button" data-open-forgot-password type="button">Quên mật khẩu?</button> · Đã có tài khoản? <button class="text-button" id="switch-to-login" type="button">Đăng nhập</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="forgot-password-dialog" class="modal compact">
+    <form id="forgot-password-form">
+      <div class="modal-heading"><div><p class="eyebrow">KHÔI PHỤC TÀI KHOẢN</p><h2>Quên mật khẩu</h2></div><button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Nhập Gmail đã đăng ký. Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số, có hiệu lực trong 10 phút.</p>
+      <label>Email đăng ký<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <p id="forgot-password-error" class="auth-error" role="alert" hidden></p>
+      <p id="forgot-password-status" class="muted" role="status" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="forgot-password-dialog">Hủy</button><button class="button primary" type="submit">Gửi mã xác minh</button></div>
+    </form>
+    <form id="reset-password-form" hidden>
+      <div class="modal-heading"><div><p class="eyebrow">XÁC MINH EMAIL</p><h2>Đặt mật khẩu mới</h2></div></div>
+      <p class="muted">Nhập mã được gửi đến Gmail và tạo mật khẩu mới.</p>
+      <label>Mã xác minh<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required minlength="6" maxlength="6" placeholder="6 chữ số"></label>
+      <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
+      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      <p id="reset-password-error" class="auth-error" role="alert" hidden></p>
+      <p id="reset-password-status" class="muted" role="status" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" id="reset-resend-code">Gửi mã mới</button><button class="button primary" type="submit">Cập nhật mật khẩu</button></div>
     </form>
   </dialog>
 
