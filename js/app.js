@@ -680,6 +680,10 @@ function finishExam() {
         state.timer = null;
     }
     const submittedAnswers = { ...state.answers };
+    // Snapshot every form value before the asynchronous submit starts.
+    document.querySelectorAll("#answer-form [data-answer]").forEach(field => {
+        submittedAnswers[field.dataset.answer] = field.value;
+    });
     const submitPromise = fetch(`/api/exams/${encodeURIComponent(state.examDocId)}/submit`, {
         method: "POST",
         credentials: "same-origin",
