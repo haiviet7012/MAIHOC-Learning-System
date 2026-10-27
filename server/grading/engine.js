@@ -828,27 +828,27 @@ function sequentialQuestionAliases(questionNumber, statementId = "") {
 }
 
 function resolveAnswer(source, aliases, usedKeys = new Set()) {
-  const normalizedAliases = aliases.map(normalizeQuestionKey);
   const keys = Object.keys(source || {});
-  // First preserve the exact structured question ID mappings (I-1, II-1a, III-2).
+  const normalizedAliases = aliases.map(normalizeQuestionKey);
   for (const alias of normalizedAliases) {
     const key = keys.find(candidate => !usedKeys.has(candidate) && normalizeQuestionKey(candidate) === alias);
     if (key != null) return { key, value: source[key] };
   }
-  // Then support common printed labels while preserving explicit section IDs.
-  // Remove a leading "Câu"/"Question"/"Q" and any trailing separator before comparison.
-  const canonicalize = value => normalizeQuestionKey(value)
+
+  const compact = value => normalizeQuestionKey(value)
     .replace(/^(?:cau|question|q|stt)/, "")
     .replace(/^(?:phan|section|part)(?:i{1,3}|iv|v|\d+)/, "");
-  const aliasSet = new Set(normalizedAliases.map(canonicalize));
+  const aliasesCompact = new Set(normalizedAliases.map(compact));
+  const hasExplicitSection = value => /^(?:phan|section|part)(?:i{1,3}|iv|v|\d+)/.test(normalizeQuestionKey(value));
+
   for (const key of keys) {
     if (usedKeys.has(key)) continue;
-    const normalized = normalizeQuestionKey(key);
-    const candidates = [normalized, normalized.replace(/^(?:cau|question|q|stt)/, "")];
-    // Do not let a plain "1" alias steal keys with a concrete section prefix.
-    if (/^(?:phan|section|part)(?:i{1,3}|iv|v|\d+)/.test(normalized) &&
-        !aliasSet.has(canonicalize(normalized))) continue;
-    if (candidates.some(candidate => aliasSet.has(candidate) || aliasSet.has(canonicalize(candidate)))) return { key, value: source[key] };
+    const normalizedKey = normalizeQuestionKey(key);
+    // Never use a section-scoped key for a sequential question unless the
+    // configured aliases explicitly name that same section.
+    if (hasExplicitSection(key) && !aliasesCompact.has(compact(key))) continue;
+    const candidates = [normalizedKey, normalizedKey.replace(/^(?:cau|question|q|stt)/, ""), compact(key)];
+    if (candidates.some(candidate => aliasesCompact.has(candidate))) return { key, value: source[key] };
   }
   return null;
 }
