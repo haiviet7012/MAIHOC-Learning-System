@@ -287,7 +287,11 @@ export function destroySession(req, res) {
   if (token && /^[a-f0-9]{64}$/i.test(token)) {
     db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
   }
-  if(req.user?.id)db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
+  if(req.user?.id){
+    const remaining=db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND expires_at>?").get(req.user.id,Date.now());
+    if(!Number(remaining?.count))db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
+    else db.prepare("UPDATE user_presence SET last_seen_at=? WHERE user_id=?").run(Date.now(),req.user.id);
+  }
   writeCookie(res, "", 0);
 }
 
