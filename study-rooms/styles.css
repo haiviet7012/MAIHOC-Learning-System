@@ -67,3 +67,19 @@
 .study-room-image-button input{width:1px;height:1px;opacity:0;position:absolute}
 @media(max-width:1050px){.study-room-workspace{grid-template-columns:minmax(0,1fr) 300px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.study-room-workspace{grid-template-columns:1fr}.study-room-grid{grid-template-columns:1fr}.study-room-create-panel form{grid-template-columns:1fr}.study-room-live-head,.study-room-heading{flex-direction:column;align-items:stretch}.study-room-live-head-actions{width:100%}.study-room-chat{min-height:420px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-video-tile{min-height:120px}.study-room-control{padding:10px 12px}.study-room-live-head h1{font-size:27px}}
+
+/* Room layout refinement: wider meeting canvas and prominent right-side chat. */
+.study-room-live{max-width:1600px;width:100%}
+.study-room-live-head{margin-top:8px;padding:8px 0 18px;border-bottom:1px solid var(--border)}
+.study-room-workspace{grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:12px}
+.study-room-stage{padding:14px;background:var(--surface)}
+.study-room-video-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.study-room-video-tile{min-height:200px;aspect-ratio:16/10}
+.study-room-chat{height:min(72vh,760px);min-height:520px}
+.study-room-chat-messages{max-height:none;min-height:0}
+.study-room-participant-panel{display:grid;grid-template-columns:1fr;max-height:220px;overflow-y:auto}
+.study-room-controls{position:sticky;bottom:8px;background:var(--surface);z-index:2;border:1px solid var(--border);border-radius:14px;margin-top:12px;padding:12px;box-shadow:0 8px 24px #0002}
+.study-room-live-head-actions .button.danger,.study-room-card-bottom .button.danger{background:#a52d39;color:white;border-color:#a52d39}
+.study-room-live-head-actions{align-items:center}
+@media(max-width:1100px){.study-room-workspace{grid-template-columns:minmax(0,1fr) 310px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.study-room-workspace{grid-template-columns:1fr}.study-room-chat{height:460px;min-height:420px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-video-tile{min-height:130px}}
