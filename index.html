@@ -56,13 +56,13 @@
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
       <div class="file-upload-field"><span class="file-upload-label">Tệp tài liệu</span><label class="file-drop-zone" data-file-drop-zone tabindex="0"><input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả tệp vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp · PDF, Word, PowerPoint, TXT, ảnh</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
       <div id="upload-answer-key-field" hidden>
-        <div class="file-upload-field"><span class="file-upload-label">Tệp đáp án (không bắt buộc)</span><label class="file-drop-zone compact-drop-zone" data-file-drop-zone tabindex="0"><input name="answerKey" type="file" accept=".pdf,.docx,.txt,.json,.csv"><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả đáp án vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
-        <p class="tiny muted">Có thể dùng JSON, CSV, TXT, DOCX hoặc PDF có bảng đáp án dạng văn bản. PDF scan sẽ thử OCR nếu máy chủ có Tesseract; tệp chưa đọc được sẽ báo chưa chuẩn hóa thay vì chấm điểm.</p>
+        <div class="file-upload-field"><span class="file-upload-label">Đáp án tham khảo (không bắt buộc)</span><label class="file-drop-zone compact-drop-zone" data-file-drop-zone tabindex="0"><input name="answerKey" type="file" accept=".pdf,.docx,.txt,.json,.csv"><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả đáp án tham khảo vào đây</strong><span class="file-drop-hint">Admin có thể đối chiếu khi duyệt lời giải AI</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
+        <p class="tiny muted">Với đề ôn tập hoặc thi thử, máy chủ sẽ dùng Gemini tạo lời giải và bộ chấm. Admin cần đối chiếu, xác nhận hoặc sửa đáp án trước khi đề được chấm. File đáp án tham khảo không bắt buộc.</p>
       </div>
       </section>
       <aside id="upload-answer-manager" class="upload-answer-manager" hidden>
         <h3>Đáp án cho đề đã tải lên</h3>
-        <p class="tiny muted">Danh sách đề ôn tập và thi thử. Tệp đáp án được gắn riêng với từng đề.</p>
+        <p class="tiny muted">Danh sách đề ôn tập và thi thử. Theo dõi tiến trình AI và duyệt bộ đáp án chuẩn tại đây.</p>
         <div class="upload-answer-list" data-upload-answer-list><p class="muted">Mở cửa sổ để tải danh sách.</p></div>
       </aside>
     </div>
@@ -71,10 +71,19 @@
     </form>
   </dialog>
 
+  <dialog id="exam-solution-dialog" class="modal exam-solution-dialog">
+    <div class="modal-heading"><div><p class="eyebrow">LỜI GIẢI AI · DUYỆT BỘ CHẤM</p><h2 data-solution-title>Đang chuẩn bị lời giải</h2></div><button type="button" class="close-button" data-close="exam-solution-dialog" aria-label="Đóng">×</button></div>
+    <p class="muted" data-solution-status>Đang chờ tác vụ…</p>
+    <div class="solution-progress"><progress data-solution-progress max="100" value="0"></progress><span data-solution-progress-label>0%</span></div>
+    <div class="solution-admin-error" data-solution-error hidden></div>
+    <div class="solution-review-content" data-solution-review-content></div>
+    <div class="modal-actions solution-dialog-actions"><button type="button" class="button secondary" data-solution-retry hidden>Thử giải lại</button><a class="button secondary" data-solution-download hidden>Tải file dữ liệu lời giải</a><button type="button" class="button primary" data-solution-save hidden>Lưu đáp án chuẩn đã duyệt</button></div>
+  </dialog>
+
   <dialog id="answer-key-dialog" class="modal answer-key-modal">
     <div class="modal-heading"><div><p class="eyebrow">QUẢN TRỊ ĐÁP ÁN</p><h2>Đáp án đề bài</h2></div><button type="button" class="close-button" data-close="answer-key-dialog" aria-label="Đóng">×</button></div>
-    <p class="muted">Quản lý đáp án theo từng tài liệu. Tệp đáp án và đề bài được lưu trong database.</p>
-    <details class="answer-key-help"><summary>Mẫu đáp án dùng cho chấm tự động</summary><p class="tiny muted">Với Toán, dùng ID có mã phần: I-1 cho trắc nghiệm, II-1a cho mệnh đề a của câu đúng/sai, III-1 cho trả lời ngắn. Ví dụ:</p><pre class="answer-key-example">{"answers":{"I-1":"A","II-1a":"Đúng","II-1b":"Sai","III-1":["2","2.0"]}}</pre><p class="tiny muted">JSON, CSV, TXT và DOCX được chuẩn hóa trước khi lưu. PDF có bảng dạng văn bản được đọc trực tiếp; PDF scan sẽ thử OCR bằng Tesseract nếu máy chủ hỗ trợ. Thang điểm lấy từ configs/exam-layouts.json.</p></details>
+    <p class="muted">Duyệt lời giải AI và quản lý file đáp án tham khảo theo từng đề. Chỉ bộ chấm đã được admin xác nhận mới dùng để chấm tự động.</p>
+    <details class="answer-key-help"><summary>Đáp án tham khảo dạng JSON</summary><p class="tiny muted">Nếu tải file đáp án tham khảo lên, có thể dùng ID theo cấu hình để admin đối chiếu: I-1 cho trắc nghiệm, II-1a cho mệnh đề a của câu đúng/sai, III-1 cho trả lời ngắn.</p><pre class="answer-key-example">{"answers":{"I-1":"A","II-1a":"Đúng","II-1b":"Sai","III-1":["2","2.0"]}}</pre><p class="tiny muted">Đây là nguồn đối chiếu tùy chọn. Bộ chấm chính thức được tạo từ lời giải AI, admin xác nhận, và áp dụng criteria cùng thang điểm trong configs/exam-layouts.json.</p></details>
     <div class="answer-key-columns">
       <section class="answer-key-section"><h3>Lý thuyết</h3><div class="answer-key-list" data-answer-key-list="theory"><p class="muted">Đang tải…</p></div></section>
       <section class="answer-key-section"><h3>Đề ôn tập</h3><div class="answer-key-list" data-answer-key-list="practice"><p class="muted">Đang tải…</p></div></section>

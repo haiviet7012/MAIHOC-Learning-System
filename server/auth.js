@@ -20,6 +20,7 @@ db.exec(`
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),
+    admin_level INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS sessions (
@@ -79,6 +80,34 @@ db.exec(`
     uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS exam_solutions (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','reading','solving','review','ready','failed')),
+    progress INTEGER NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 100),
+    phase TEXT NOT NULL DEFAULT 'queued',
+    model TEXT,
+    source_hash TEXT,
+    generated_json TEXT,
+    approved_json TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    solution_version INTEGER NOT NULL DEFAULT 1,
+    generated_at TEXT,
+    approved_at TEXT,
+    approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS exam_solution_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    solution_version INTEGER NOT NULL,
+    target_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('correct','corrected')),
+    before_json TEXT NOT NULL,
+    after_json TEXT NOT NULL,
+    reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   CREATE TABLE IF NOT EXISTS app_migrations (
     name TEXT PRIMARY KEY,
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -89,7 +118,26 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, read_at, id DESC);
+  CREATE TABLE IF NOT EXISTS account_deletion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_user_id INTEGER NOT NULL,
+    target_name TEXT NOT NULL,
+    target_email TEXT NOT NULL,
+    target_role TEXT NOT NULL,
+    requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    requested_by_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+    reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS account_deletion_requests_status_idx ON account_deletion_requests(status, requested_at);
 `);
+
+const userColumns = new Set(db.pragma("table_info(users)").map((column) => column.name));
+if (!userColumns.has("admin_level")) {
+  db.exec("ALTER TABLE users ADD COLUMN admin_level INTEGER NOT NULL DEFAULT 0");
+}
 
 const submissionColumns = new Set(
   db.pragma("table_info(document_submissions)").map((column) => column.name)
@@ -220,7 +268,7 @@ export function loadCurrentUser(req, res, next) {
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
     if (token && /^[a-f0-9]{64}$/i.test(token)) {
       const session = db.prepare(`
-        SELECT u.id,u.name,u.email,u.role,u.created_at,s.expires_at
+        SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at
         FROM sessions s JOIN users u ON u.id=s.user_id
         WHERE s.token_hash=?
       `).get(hashToken(token));
@@ -243,6 +291,14 @@ export function requireAuth(req, res, next) {
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
   if (req.user.role !== "admin") return res.status(403).json({ error: "Chức năng này chỉ dành cho quản trị viên." });
+  next();
+}
+
+export function requireSuperAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
+  if (req.user.role !== "admin" || Number(req.user.adminLevel) < 2) {
+    return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới có quyền thực hiện thao tác này." });
+  }
   next();
 }
 

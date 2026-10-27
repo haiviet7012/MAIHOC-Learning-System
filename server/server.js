@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import fs from "node:fs";
 
 import path from "node:path";
+import crypto from "node:crypto";
 
 import {fileURLToPath} from "node:url";
 
@@ -14,6 +15,7 @@ import {GoogleGenerativeAI} from "@google/generative-ai";
 
 import nodemailer from "nodemailer";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, serializeAnswerKey, gradeAnswers } from "./grading/engine.js";
+import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 
 import {
 
@@ -64,6 +66,78 @@ fs.mkdirSync(documentsDir,{recursive:true});
 function notifyUser(userId,type,title,message,link=null){db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(userId,type,title,message,link);}
 
 function notifyAdmins(type,title,message,link=null){const admins=db.prepare("SELECT id FROM users WHERE role='admin'").all();for(const a of admins)notifyUser(a.id,type,title,message,link);}
+
+const activeSolutionJobs=new Set();
+function examSolverConfig(){
+  return {provider:"gemini",apiKey:String(process.env.GEMINI_API_KEY||"").trim(),
+    modelName:String(process.env.GEMINI_SOLUTION_MODEL||"gemini-3.8-flash").trim()};
+}
+function updateSolutionJob(documentId,values){
+  const fields=Object.keys(values);if(!fields.length)return;
+  db.prepare(`UPDATE exam_solutions SET ${fields.map(field=>`${field}=?`).join(",")},updated_at=datetime('now') WHERE document_id=?`)
+    .run(...fields.map(field=>values[field]),documentId);
+}
+function queueExamSolution(documentId){
+  const id=String(documentId);
+  if(activeSolutionJobs.has(id))return;
+  activeSolutionJobs.add(id);
+  setImmediate(async()=>{
+    let solver=examSolverConfig();
+    try{
+      const document=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,
+        ak.normalized_json AS reference_answer_json,ak.original_name AS reference_answer_name
+        FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
+      if(!document||!['exam','practice'].includes(document.category))return;
+      const state=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
+      if(!state||!['queued','reading','solving'].includes(state.status))return;
+      if(!solver.apiKey){
+        const message="Thiếu GEMINI_API_KEY. Hãy thêm khóa vào server/.env, khởi động lại máy chủ rồi bấm Tạo lại lời giải.";
+        updateSolutionJob(id,{status:"failed",progress:0,phase:"Thiếu API key",model:solver.modelName,error_code:"missing_api_key",error_message:message});
+        notifyAdmins("exam_solution_failed",`Không thể giải đề bằng ${solver.provider}`,`${document.title}: ${message}`,"admin");
+        return;
+      }
+      const config=assessmentConfigFor(document.subject,document.category);
+      let referenceAnswerKey=null;try{referenceAnswerKey=JSON.parse(document.reference_answer_json||"null");}catch{}
+      updateSolutionJob(id,{status:"reading",progress:10,phase:"Đang đọc đề",error_code:null,error_message:null,model:solver.modelName});
+      const sourceHash=crypto.createHash("sha256").update(Buffer.from(document.file_data)).digest("hex");
+      updateSolutionJob(id,{status:"solving",progress:25,phase:`${solver.provider} đang giải từng câu`,source_hash:sourceHash});
+      const solution=await solveExamDocument({
+        buffer:Buffer.from(document.file_data),filename:document.original_name,title:document.title,
+        layout:config?.layout,grading:config?.grading,
+        referenceAnswerKey,
+        provider:solver.provider,modelName:solver.modelName,baseUrl:solver.baseUrl,
+        apiKey:solver.apiKey
+      });
+      updateSolutionJob(id,{status:"review",progress:100,phase:"Chờ admin đối chiếu và duyệt",model:solution.model,
+        generated_json:JSON.stringify(solution),generated_at:new Date().toISOString(),error_code:null,error_message:null});
+      notifyAdmins("exam_solution_review","Đề đã có lời giải AI chờ duyệt",`${document.title}: AI đã tạo ${solution.answerCount}/${solution.requiredCount} đáp án. Hãy đối chiếu và duyệt trước khi mở chấm.`,"admin");
+    }catch(error){
+      const insufficientBalance=error?.code==="insufficient_balance"||/insufficient balance/i.test(String(error?.message||""));
+      const quota=isAIQuotaError(error)&&!insufficientBalance;
+      const quotaOrBalance=quota||insufficientBalance;
+      const errorCode=error?.code|| (quota?"quota_exhausted":"solution_generation_failed");
+      const networkFailure=/fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(String(error?.message||""));
+      const message=quota
+        ?`${solver.provider} đã hết quota hoặc đang giới hạn lượt gọi. Đề đã được lưu; admin có thể thử lại sau.`
+        :insufficientBalance?`Số dư tài khoản ${solver.provider} API không đủ. Hãy nạp số dư cho tài khoản API rồi bấm Thử giải lại.`
+        :networkFailure?`Máy chủ không kết nối được ${solver.provider} API. Kiểm tra Internet/DNS và kết nối HTTPS cổng 443 trên máy chạy backend, sau đó thử lại. Chi tiết: ${String(error?.message||"").slice(0,500)}`
+        :String(error?.message||`${solver.provider} không thể giải đề lúc này.`).slice(0,1000);
+      updateSolutionJob(id,{status:"failed",progress:0,phase:quota?`${solver.provider} hết quota`:insufficientBalance?`${solver.provider} thiếu số dư`:networkFailure?`Mất kết nối ${solver.provider}`:"Không tạo được lời giải",error_code:errorCode,error_message:message});
+      notifyAdmins(quotaOrBalance?"ai_quota_exhausted":"exam_solution_failed",insufficientBalance?`${solver.provider} không đủ số dư`:quota?`${solver.provider} đã hết quota`:"Không tạo được lời giải AI",`${id}: ${message}`,"admin");
+      if(quotaOrBalance)emailAdmins(`MAI HOC: ${solver.provider} cần kiểm tra số dư API`,`${id}: ${message}`).catch(mailError=>console.warn("Could not email admins about AI quota:",mailError.message));
+      console.error("Exam solution generation failed:",error?.message||error);
+    }finally{activeSolutionJobs.delete(id);}
+  });
+}
+function createExamSolutionJob(documentId){
+  db.prepare(`INSERT INTO exam_solutions(document_id,status,progress,phase,solution_version)
+    VALUES(?,'queued',2,'Đang chờ xử lý',1)
+    ON CONFLICT(document_id) DO UPDATE SET status='queued',progress=2,phase='Đang chờ xử lý',
+      generated_json=NULL,approved_json=NULL,error_code=NULL,error_message=NULL,source_hash=NULL,
+      solution_version=exam_solutions.solution_version+1,generated_at=NULL,approved_at=NULL,approved_by=NULL,updated_at=datetime('now')`)
+    .run(String(documentId));
+  queueExamSolution(documentId);
+}
 
 async function emailAdmins(subject,textBody){
 
@@ -325,15 +399,23 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 app.post("/api/exams/:id/submit",requireSameOrigin,async(req,res)=>{
   const document=db.prepare(`SELECT d.id,d.title,d.subject,d.grade,d.category,
     ak.file_data AS answerKeyData,ak.original_name AS answerKeyOriginalName,ak.normalized_json AS normalizedAnswerKey,
-    ak.normalization_error AS answerKeyNormalizationError
-    FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`)
+    ak.normalization_error AS answerKeyNormalizationError,es.status AS solutionStatus,es.approved_json AS approvedSolution
+    FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
+    LEFT JOIN exam_solutions es ON es.document_id=d.id WHERE d.id=?`)
     .get(String(req.params.id));
   if(!document||!["practice","exam"].includes(document.category))return res.status(404).json({error:"Exam or practice document was not found."});
   const rawAnswers=req.body?.answers;
   if(!rawAnswers||typeof rawAnswers!=="object"||Array.isArray(rawAnswers))return res.status(400).json({error:"Submit answers as a question-to-answer object."});
   const answers=Object.fromEntries(Object.entries(rawAnswers).slice(0,200).map(([question,value])=>[String(question).slice(0,40),String(value??"").slice(0,5000)]));
   let answerKey=null;
-  if(document.normalizedAnswerKey){
+  if(document.approvedSolution){
+    try{const approved=JSON.parse(document.approvedSolution);answerKey={answers:approved.answers,points:approved.points||{}};}catch{}
+  }else if(document.solutionStatus&&document.solutionStatus!=="ready"){
+    return res.json({graded:false,hasAnswerKey:false,solutionStatus:document.solutionStatus,
+      message:document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
+        document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
+        "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn."});
+  }else if(document.normalizedAnswerKey){
     try{answerKey=JSON.parse(document.normalizedAnswerKey);}catch{}
   }else if(document.answerKeyData){
     const config=assessmentConfigFor(document.subject,document.category);
@@ -569,9 +651,12 @@ app.post("/api/documents",requireSameOrigin,requireAuth,upload.fields([{name:"do
       if(answerKeyFile)saveAnswerKeyRecord(id,answerKeyFile,req.user.id,parsedAnswerKey);
     });
     saveDocument();
+    const hasSolutionJob=["exam","practice"].includes(String(b.category||""));
+    if(hasSolutionJob)createExamSolutionJob(id);
     const row=db.prepare(`SELECT d.*,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
       FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
-    return res.status(201).json({document:documentResponse(row),status:"approved",localOnly:false});
+    return res.status(201).json({document:documentResponse(row),status:"approved",localOnly:false,
+      solutionJob:hasSolutionJob?{id,status:"queued",progress:2,phase:"Đang chờ xử lý"}:null});
   }
 
   const result=db.prepare(`INSERT INTO document_submissions
@@ -601,8 +686,11 @@ app.get("/api/admin/answer-keys",requireAdmin,(req,res)=>{
   const rows=db.prepare(`SELECT d.id,d.category,d.title,d.grade,d.original_name AS originalName,
     ak.original_name AS answerKeyOriginalName,ak.content_type AS answerKeyContentType,
     ak.source_format AS answerKeySourceFormat,ak.normalized_json AS normalizedAnswerKey,
-    ak.normalization_error AS normalizationError,ak.grading_available AS gradingAvailable
+    ak.normalization_error AS normalizationError,ak.grading_available AS gradingAvailable,
+    es.status AS solutionStatus,es.progress AS solutionProgress,es.phase AS solutionPhase,
+    es.error_code AS solutionErrorCode,es.error_message AS solutionErrorMessage
     FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
+    LEFT JOIN exam_solutions es ON es.document_id=d.id
     WHERE d.category IN ('theory','practice','exam') ORDER BY d.grade,d.title`).all();
   const sections={theory:[],practice:[],exam:[]};
   for(const row of rows){
@@ -613,10 +701,114 @@ app.get("/api/admin/answer-keys",requireAdmin,(req,res)=>{
       answerKeyContentType:row.answerKeyContentType||null,
       answerKeySourceFormat:row.answerKeySourceFormat||null,
       normalizationError:row.normalizationError||null,
-      gradingAvailable:Boolean(row.gradingAvailable&&row.normalizedAnswerKey)
+      gradingAvailable:Boolean(row.gradingAvailable&&row.normalizedAnswerKey),
+      solutionStatus:row.solutionStatus||"not_started",solutionProgress:Number(row.solutionProgress)||0,
+      solutionPhase:row.solutionPhase||"Chưa tạo lời giải",solutionErrorCode:row.solutionErrorCode||null,
+      solutionErrorMessage:row.solutionErrorMessage||null
     });
   }
   res.json({sections});
+});
+
+app.get("/api/admin/documents/:id/solution",requireAdmin,(req,res)=>{
+  const row=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,ak.original_name AS referenceAnswerName,
+    s.status,s.progress,s.phase,s.model,s.source_hash,s.generated_json,s.approved_json,
+    s.error_code,s.error_message,s.solution_version,s.generated_at,s.approved_at
+    FROM documents d LEFT JOIN exam_solutions s ON s.document_id=d.id
+    LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(String(req.params.id));
+  if(!row)return res.status(404).json({error:"Không tìm thấy đề."});
+  let generated=null,approved=null;
+  try{generated=JSON.parse(row.generated_json||"null");}catch{}
+  try{approved=JSON.parse(row.approved_json||"null");}catch{}
+  res.setHeader("Cache-Control","private, no-store");
+  if(req.query.download==="json"){
+    const output=row.approved_json||row.generated_json;
+    if(!output)return res.status(404).json({error:"Chưa có file lời giải AI."});
+    res.setHeader("Content-Type","application/json; charset=utf-8");
+    res.setHeader("Content-Disposition",`attachment; filename*=UTF-8''${encodeURIComponent(`bo-cham-${row.id}.json`)}`);
+    return res.send(output);
+  }
+  res.json({id:row.id,title:row.title,subject:row.subject,category:row.category,originalName:row.original_name,
+    referenceAnswerName:row.referenceAnswerName||null,
+    status:row.status||"not_started",progress:Number(row.progress)||0,phase:row.phase||"Chưa tạo lời giải",
+    model:row.model||null,sourceHash:row.source_hash||null,generated,approved,errorCode:row.error_code||null,
+    errorMessage:row.error_message||null,version:Number(row.solution_version)||0,generatedAt:row.generated_at||null,approvedAt:row.approved_at||null});
+});
+
+app.post("/api/admin/documents/:id/solution/generate",requireSameOrigin,requireAdmin,(req,res)=>{
+  const document=db.prepare("SELECT id,category FROM documents WHERE id=?").get(String(req.params.id));
+  if(!document)return res.status(404).json({error:"Không tìm thấy đề."});
+  if(!["exam","practice"].includes(document.category))return res.status(400).json({error:"Chỉ tạo lời giải cho đề ôn tập hoặc đề thi."});
+  createExamSolutionJob(document.id);
+  res.status(202).json({ok:true,id:document.id,status:"queued"});
+});
+
+app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdmin,(req,res)=>{
+  const documentId=String(req.params.id);
+  const row=db.prepare(`SELECT d.subject,d.category,s.generated_json,s.solution_version,s.source_hash
+    FROM documents d JOIN exam_solutions s ON s.document_id=d.id WHERE d.id=?`).get(documentId);
+  if(!row)return res.status(404).json({error:"Chưa có tác vụ lời giải cho đề này."});
+  let generated;
+  try{generated=JSON.parse(row.generated_json||"null");}catch{}
+  if(!generated?.questions?.length)return res.status(409).json({error:"AI chưa tạo lời giải để duyệt."});
+  const submitted=req.body?.questions;
+  if(!Array.isArray(submitted)||submitted.length!==generated.questions.length)return res.status(400).json({error:"Cần duyệt từng câu trước khi lưu bộ chấm."});
+  const submittedById=new Map();
+  for(const item of submitted){
+    const id=String(item?.targetId||"");
+    if(!id||submittedById.has(id))return res.status(400).json({error:"Mã câu bị thiếu hoặc trùng."});
+    submittedById.set(id,item);
+  }
+  const config=assessmentConfigFor(row.subject,row.category);
+  if(!config?.grading||!(config.layout?.sections||[]).filter(section=>Number(section.count)>0).every(section=>section.grading))return res.status(409).json({error:"Thiếu criteria chấm điểm bắt buộc trong configs/exam-layouts.json."});
+  const answers={};
+  const reviewed=[];
+  for(const original of generated.questions){
+    const item=submittedById.get(original.targetId);
+    if(!item||!["correct","incorrect"].includes(item.decision))return res.status(400).json({error:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
+    const answer=String(item.answer??"").trim().slice(0,3000);
+    const explanation=String(item.explanation??original.explanation??"").trim().slice(0,12000);
+    if(!answer)return res.status(400).json({error:`Thiếu đáp án chuẩn cho câu ${original.targetId}.`});
+    if(original.type==="multiple_choice"){
+      const section=config?.layout?.sections?.find(section=>String(section.sectionId||section.order)===original.targetId.split("-")[0]);
+      const options=(section?.options||["A","B","C","D"]).map(value=>String(value).toUpperCase());
+      if(!options.includes(answer.toUpperCase()))return res.status(400).json({error:`Đáp án câu ${original.targetId} phải là một lựa chọn ${options.join(", ")}.`});
+      answers[original.targetId]=answer.toUpperCase();
+    }else if(original.type==="true_false"){
+      const truth=answer.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+      if(["dung","true","d","t"].includes(truth))answers[original.targetId]="true";
+      else if(["sai","false","s","f"].includes(truth))answers[original.targetId]="false";
+      else return res.status(400).json({error:`Đáp án ${original.targetId} phải là Đúng hoặc Sai.`});
+    }else answers[original.targetId]=answer;
+    const rubric=Array.isArray(item.rubric)?item.rubric.slice(0,20).map(criterion=>({
+      criterion:String(criterion.criterion||"").trim().slice(0,1000),points:Math.max(0,Math.min(10,Number(criterion.points)||0))
+    })).filter(criterion=>criterion.criterion):original.rubric||[];
+    if(original.type==="essay"){
+      const rubricTotal=rubric.reduce((sum,criterion)=>sum+criterion.points,0);
+      const expectedPoints=Number(original.maximumPoints)||0;
+      if(!rubric.length||Math.abs(rubricTotal-expectedPoints)>0.01)return res.status(400).json({error:`Rubric ${original.targetId} phải phân bổ đủ ${expectedPoints} điểm theo config.`});
+    }
+    const uncertainty=String(original.uncertainty||"").trim();
+    reviewed.push({...original,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
+      uncertainty:/^(none|null|undefined|n\/a)$/i.test(uncertainty)?"":uncertainty,
+      reviewStatus:item.decision==="correct"?"approved":"corrected"});
+  }
+  const approved={schemaVersion:1,source:"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
+    version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,questions:reviewed,
+    reviewedAt:new Date().toISOString(),reviewedBy:req.user.id};
+  const review=db.transaction(()=>{
+    const insertAudit=db.prepare(`INSERT INTO exam_solution_reviews(document_id,solution_version,target_id,decision,before_json,after_json,reviewed_by)
+      VALUES(?,?,?,?,?,?,?)`);
+    const reviewMap=new Map(reviewed.map(item=>[item.targetId,item]));
+    for(const before of generated.questions){
+      const after=reviewMap.get(before.targetId);
+      insertAudit.run(documentId,approved.version,before.targetId,after.reviewStatus==="approved"?"correct":"corrected",
+        JSON.stringify(before),JSON.stringify(after),req.user.id);
+    }
+    updateSolutionJob(documentId,{status:"ready",progress:100,phase:"Đã duyệt, sẵn sàng chấm",approved_json:JSON.stringify(approved),approved_at:approved.reviewedAt,approved_by:req.user.id,error_code:null,error_message:null});
+  });
+  review();
+  res.json({ok:true,status:"ready",version:approved.version,scale:approved.scale,questionCount:reviewed.length});
 });
 
 app.post("/api/admin/documents/:id/answer-key",requireSameOrigin,requireAdmin,upload.single("answerKey"),async(req,res)=>{
@@ -725,7 +917,9 @@ app.post("/api/admin/submissions/:id/review",requireSameOrigin,requireAdmin,asyn
   }
 
   let approvedFilename=null;
+  let approvedDocumentId=null;
   if(decision==="approved"){
+    approvedDocumentId=`submission-${id}`;
     approvedFilename=storedFilename(submission.original_name);
     const source=path.join(pendingDir,submission.filename);
     if(fs.existsSync(source)){
@@ -740,16 +934,15 @@ app.post("/api/admin/submissions/:id/review",requireSameOrigin,requireAdmin,asyn
       db.prepare("UPDATE document_submissions SET status=?,admin_note=?,reviewed_by=?,reviewed_at=datetime('now') WHERE id=?")
         .run(decision,note,req.user.id,id);
       if(decision==="approved"){
-        const documentId=`submission-${id}`;
         db.prepare(`INSERT INTO documents
           (id,subject,grade,category,title,filename,original_name,size,content_type,file_data,uploaded_by)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
-            documentId,submission.subject,submission.grade,submission.category,
+          approvedDocumentId,submission.subject,submission.grade,submission.category,
             submission.title,approvedFilename,submission.original_name,submission.size,
             submission.content_type||contentTypeFor(submission.original_name),fileData,submission.user_id
           );
         if(submission.answer_key_data){
-          saveAnswerKeyRecord(documentId,{
+          saveAnswerKeyRecord(approvedDocumentId,{
             buffer:Buffer.from(submission.answer_key_data),
             originalname:submission.answer_key_original_name||"answer-key.txt"
           },submission.user_id,normalizedSubmissionAnswerKey);
@@ -771,6 +964,7 @@ app.post("/api/admin/submissions/:id/review",requireSameOrigin,requireAdmin,asyn
 
   const pendingFile=path.join(pendingDir,submission.filename);
   if(fs.existsSync(pendingFile))fs.unlinkSync(pendingFile);
+  if(decision==="approved"&&["exam","practice"].includes(submission.category))createExamSolutionJob(approvedDocumentId);
   return res.json({ok:true,status:decision});
 });
 
@@ -819,5 +1013,9 @@ importLegacyDocuments();
 normalizeLegacyDocumentCategories();
 await migrateLegacyAnswerKeys();
 await normalizeStoredPdfAnswerKeys();
+for(const job of db.prepare("SELECT document_id FROM exam_solutions WHERE status IN ('queued','reading','solving')").all()){
+  updateSolutionJob(job.document_id,{status:"queued",progress:2,phase:"Tiếp tục tác vụ sau khi máy chủ khởi động lại"});
+  queueExamSolution(job.document_id);
+}
 
 app.listen(port,()=>console.log(`MAI HOC is running at http://localhost:${port}`));

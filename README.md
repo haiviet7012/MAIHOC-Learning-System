@@ -36,7 +36,7 @@ Yêu cầu Node.js 22.13+ để engine có thể trích xuất đáp án từ PD
 
    Trên Windows PowerShell có thể dùng `Copy-Item .env.example .env`.
 
-3. Trong `server/.env`, cấu hình `ADMIN_EMAIL` và `ADMIN_PASSWORD`. Mật khẩu Admin cần ít nhất 12 ký tự. Có thể điền `GEMINI_API_KEY` nếu muốn bật đánh giá độ khó bằng AI. Không commit hoặc chia sẻ file `.env`.
+3. Trong `server/.env`, cấu hình `ADMIN_EMAIL` và `ADMIN_PASSWORD`. Mật khẩu Admin cần ít nhất 12 ký tự. Engine giải đề dùng Gemini: đặt `GEMINI_API_KEY=<API key của bạn>` và `GEMINI_SOLUTION_MODEL=gemini-3.8-flash`. Không commit hoặc chia sẻ file `.env`.
 
 4. Khởi chạy máy chủ:
 

@@ -602,7 +602,7 @@ function decodeXmlText(value) {
     .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
-function extractDocxText(buffer) {
+export function extractDocxText(buffer) {
   const bytes = Buffer.from(buffer);
   const searchStart = Math.max(0, bytes.length - 0xffff - 22);
   let directoryEnd = -1;

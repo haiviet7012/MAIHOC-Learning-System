@@ -200,6 +200,12 @@ function assessmentLayoutFor(doc) {
     const subjectConfig = subjectKey ? examLayoutConfig.subjects[subjectKey] : null;
     return subjectConfig?.[doc.category] || subjectConfig?.assessment || null;
 }
+function gradingScaleFor(doc) {
+    const normalizeKey=value=>String(value||"").normalize("NFD").replace(/\p{M}/gu,"").replace(/[Ä‘Ä]/g,"d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g,"");
+    const subjectKey=Object.keys(examLayoutConfig?.subjects||{}).find(key=>normalizeKey(key)===normalizeKey(doc?.subject));
+    const scale=Number(examLayoutConfig?.subjects?.[subjectKey]?.grading?.scale);
+    return scale>0?scale:10;
+}
 function answerFields(questions, waitingForSource = false, layout = null) {
     if (!questions.length) {
         return `<p class="muted">${waitingForSource ? "\u0110ang \u0111\u1ecdc c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p\u2026" : "Ch\u01b0a tr\u00edch xu\u1ea5t \u0111\u01b0\u1ee3c c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p."}</p>`;
@@ -296,11 +302,13 @@ function examPage() {
 }function resultPage() {
     const d = findDoc(state.examDocId);
     const answered = Object.values(state.answers).filter(value => String(value).trim()).length;
+    const layout = assessmentLayoutFor(d);
+    const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(state.answers).length;
     const result = state.gradeResult;
     const details = result?.graded
         ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent}% \u00b7 ${result.correctCount}/${result.questionCount} ${"c\u00e2u \u0111\u00fang"} \u00b7 ${result.earnedPoints}/${result.totalPoints} ${"\u0111i\u1ec3m"}</p><div class="grade-details">${result.results.map(item => `<div class="grade-detail"><span>${"C\u00e2u"} ${escapeHTML(item.question)}</span><strong class="${item.correct ? "is-correct" : "is-wrong"}">${item.correct ? "\u0110\u00fang" : "Ch\u01b0a \u0111\u00fang"} \u00b7 ${item.earnedPoints}/${item.totalPoints}</strong></div>`).join("")}</div>`
-        : `<div class="result-score">${answered}/${Object.keys(state.answers).length}</div><p class="muted">${escapeHTML(result?.message || "B\u00e0i \u0111\u00e3 n\u1ed9p. Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n m\u00e1y \u0111\u1ecdc \u0111\u01b0\u1ee3c \u0111\u1ec3 ch\u1ea5m t\u1ef1 \u0111\u1ed9ng.")}</p>`;
-    return `${pageHeading("K\u1ebft qu\u1ea3 b\u00e0i l\u00e0m", d?.title || "\u0110\u1ec1 thi")}<div class="result-panel"><span class="pill">\u0110\u00c3 N\u1ed8P B\u00c0I</span>${details}<h2>${result?.graded ? "Chi ti\u1ebft ch\u1ea5m \u0111i\u1ec3m" : "S\u1ed1 c\u00e2u \u0111\u00e3 tr\u1ea3 l\u1eddi"}</h2><div class="modal-actions"><button class="button secondary" data-route="exam-select">Ch\u1ecdn \u0111\u1ec1 kh\u00e1c</button><button class="button primary" data-route="subject">V\u1ec1 m\u00f4n To\u00e1n</button></div></div>`;
+        : `<div class="result-score">—/${gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "B\u00e0i \u0111\u00e3 n\u1ed9p. Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n m\u00e1y \u0111\u1ecdc \u0111\u01b0\u1ee3c \u0111\u1ec3 ch\u1ea5m t\u1ef1 \u0111\u1ed9ng.")}</p>`;
+    return `${pageHeading("K\u1ebft qu\u1ea3 b\u00e0i l\u00e0m", d?.title || "\u0110\u1ec1 thi")}<div class="result-panel"><span class="pill">\u0110\u00c3 N\u1ed8P B\u00c0I</span>${details}<h2>${result?.graded ? "Chi ti\u1ebft ch\u1ea5m \u0111i\u1ec3m" : "T\u00ecnh tr\u1ea1ng b\u00e0i l\u00e0m"}</h2>${result?.graded?"":`<p class="muted">S\u1ed1 c\u00e2u \u0111\u00e3 tr\u1ea3 l\u1eddi: ${answered}/${answerableCount}</p>`}<div class="modal-actions"><button class="button secondary" data-route="exam-select">Ch\u1ecdn \u0111\u1ec1 kh\u00e1c</button><button class="button primary" data-route="subject">V\u1ec1 m\u00f4n To\u00e1n</button></div></div>`;
 }
 function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
@@ -804,8 +812,11 @@ $("#upload-form").addEventListener("submit", async (e) => {
         uploadedFileKeys.add(fileKey);
         closeDialog("upload-dialog");
         form.reset();
+        if(result.solutionJob)window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job",{detail:result.solutionJob}));
         toast(result.localOnly
             ? "Đã thêm tài liệu vào phiên trình duyệt hiện tại."
+            : result.solutionJob
+                ? "Đề đã tải lên. Gemini đang giải; cửa sổ tiến trình đã mở."
             : result.status === "pending"
                 ? "Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo."
                 : "Tài liệu đã được tải lên máy chủ.", "success");

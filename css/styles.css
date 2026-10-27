@@ -265,6 +265,16 @@ body.exam-open{overflow:hidden}
 .reader-fullscreen .document-text{flex:1;min-height:0;max-height:none;overflow:auto}
 .document-text{max-height:70vh;overflow:auto}
 .answer-key-modal{width:min(1180px,calc(100% - 28px));max-height:92vh}
+.exam-solution-dialog{width:min(1320px,calc(100% - 28px));max-height:94vh}
+.solution-progress{display:flex;align-items:center;gap:12px;margin:12px 0 18px}.solution-progress progress{flex:1;width:100%;height:12px;accent-color:var(--primary)}.solution-progress span{min-width:42px;font-variant-numeric:tabular-nums;font-weight:700}
+.solution-review-content{display:grid;gap:14px;max-height:62vh;overflow:auto;padding:2px 4px 2px 0}
+.solution-review-item{padding:15px;border:1px solid var(--border);border-radius:13px;background:var(--bg)}
+.solution-review-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.solution-review-head h3{margin:0;font-size:15px}
+.solution-review-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.solution-review-pane{min-width:0;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.solution-review-pane h4{margin:0 0 8px;font-size:12px;color:var(--muted)}.solution-review-pane p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0}
+.solution-review-pane label{display:grid;gap:5px;margin:8px 0;font-size:12px;font-weight:600}.solution-review-pane input,.solution-review-pane textarea{width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}.solution-review-pane textarea{min-height:74px;resize:vertical}
+.solution-review-pane .solution-answer-choice-group{display:grid;gap:8px;margin-top:3px}.solution-answer-choice-group-four{grid-template-columns:repeat(4,minmax(0,1fr))}.solution-answer-choice-group-two{grid-template-columns:repeat(2,minmax(0,1fr))}.solution-answer-choice{min-height:42px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;font-weight:700;cursor:pointer}.solution-answer-choice:hover:not(:disabled){border-color:var(--primary)}.solution-answer-choice.is-selected{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 18%,var(--surface));color:var(--primary)}.solution-answer-choice:disabled{cursor:default;opacity:1}
+.solution-review-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px}.solution-review-controls .answer-key-status{flex:0 0 auto;white-space:nowrap}.solution-review-controls .is-selected{outline:2px solid var(--primary);outline-offset:1px}.solution-admin-error{margin:10px 0;padding:12px;border:1px solid #d38b28;border-radius:10px;background:#d38b2818;color:var(--text)}
+.solution-dialog-actions{position:sticky;bottom:-1px;padding:12px 0 2px;background:var(--surface)}
 .answer-key-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}
 .answer-key-section{min-width:0;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--bg)}
 .answer-key-section h3{margin:0 0 10px;font-size:15px}
@@ -332,7 +342,8 @@ body.exam-open{overflow:hidden}
 .true-false-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
 .true-false-row label{display:flex;align-items:center;gap:5px;white-space:nowrap}
 .exam-text-paper iframe{display:block;width:100%;height:100%;min-height:360px;border:0}
-@media(max-width:900px){.upload-dialog-columns.has-answer-manager{grid-template-columns:1fr}.upload-answer-list{max-height:30vh}}
+@media(max-width:900px){.upload-dialog-columns.has-answer-manager{grid-template-columns:1fr}.upload-answer-list{max-height:30vh}.solution-review-grid{grid-template-columns:1fr}.solution-review-content{max-height:56vh}}
+@media(max-width:520px){.solution-answer-choice-group-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.true-false-row{grid-template-columns:minmax(0,1fr) auto auto;gap:7px}.upload-answer-row{grid-template-columns:1fr}.upload-answer-status{display:flex;flex-wrap:wrap;align-items:center}}
 
 /* Let every exam workspace use the available page width. Practice remains in
