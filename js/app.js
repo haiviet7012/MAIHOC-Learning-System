@@ -448,7 +448,27 @@ catch (error) {
     status.classList.add("auth-error");
     container.innerHTML = "";
 } }
+let presenceHeartbeatTimer=null;
+let presenceHeartbeatBusy=false;
+async function sendPresenceHeartbeat(){
+  if(!currentUser||presenceHeartbeatBusy)return;
+  presenceHeartbeatBusy=true;
+  try{
+    await fetch("/api/presence/heartbeat",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}",cache:"no-store"});
+  }catch{}
+  finally{presenceHeartbeatBusy=false;}
+}
+function syncPresenceHeartbeat(){
+  const button=$("#user-dashboard-open");
+  if(button)button.hidden=!currentUser||currentUser.role==="admin";
+  if(!currentUser){if(presenceHeartbeatTimer){clearInterval(presenceHeartbeatTimer);presenceHeartbeatTimer=null;}return;}
+  void sendPresenceHeartbeat();
+  if(!presenceHeartbeatTimer)presenceHeartbeatTimer=setInterval(sendPresenceHeartbeat,45000);
+}
+window.addEventListener("focus",()=>{void sendPresenceHeartbeat();});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)void sendPresenceHeartbeat();});
 function render() {
+    syncPresenceHeartbeat();
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
@@ -1013,6 +1033,7 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
+    syncPresenceHeartbeat();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
