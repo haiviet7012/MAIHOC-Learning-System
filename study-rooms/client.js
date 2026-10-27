@@ -486,17 +486,17 @@ export function mountStudyRooms(container, user) {
 
   container.addEventListener("submit", async event => {
     if (event.target.matches("[data-room-create-form]")) {
-      event.preventDefault(); clearError();
+      event.preventDefault(); event.stopPropagation(); clearError();
       const form = event.target;
+      if (!form.reportValidity()) return;
       const values = new FormData(form);
       const button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
+      if (button) button.disabled = true;
       try {
         const data = await post("/api/study-rooms", { name: values.get("name"), password: values.get("password") });
-        await loadRooms();
         await enterRoom(data.roomId, String(values.get("password") || ""), false);
       } catch (error) { showError(error.message); }
-      finally { button.disabled = false; }
+      finally { if (button) button.disabled = false; }
       return;
     }
     if (event.target.matches("[data-room-chat-form]")) {
