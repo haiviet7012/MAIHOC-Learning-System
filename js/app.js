@@ -540,6 +540,8 @@ function render() {
         view.innerHTML = adminPage();
     else if (state.route === "user-dashboard")
         view.innerHTML = userDashboardPage();
+    else if (state.route === "user-progress-detail")
+        view.innerHTML = userProgressDetailPage();
     const pdfContainer = view.querySelector("[data-pdf-reader]");
     if (pdfContainer) {
         const pdfExamId = state.examDocId;
@@ -562,6 +564,7 @@ function render() {
     }
     if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
     if(state.route==="user-dashboard")loadUserOnlineDashboard();
+    if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
@@ -797,6 +800,15 @@ document.addEventListener("click", async (e) => {
         }
         if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
         if(a==="refresh-superadmin-monitoring"){loadSuperAdminMonitoring();return;}
+        if(a==="view-user-progress"){
+            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
+            const id=Number(action.dataset.userId);
+            state.selectedProgressUser={id,name:"",email:""};
+            go("user-progress-detail");
+            loadUserProgressDetail(id);
+            return;
+        }
+        if(a==="back-user-progress"){go("admin");return;}
         if(a==="view-user-progress"){
             if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
             const id=Number(action.dataset.userId);
