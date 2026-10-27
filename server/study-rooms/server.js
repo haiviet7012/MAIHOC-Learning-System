@@ -5,6 +5,8 @@ const MAX_STUDENTS = 12;
 const ROOM_IDLE_TTL = 3 * 60 * 1000;
 const MEMBER_STALE_MS = 45 * 1000;
 const EVENT_LIMIT = 500;
+const EVENT_MAX_BYTES = 8 * 1024 * 1024;
+const CHAT_HISTORY_MAX_BYTES = 4 * 1024 * 1024;
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 function fail(res, status, error) {
@@ -65,8 +67,14 @@ function addEvent(room, type, payload, member, targetParticipantId = null) {
     targetParticipantId,
     createdAt: Date.now()
   };
+  const eventBytes = Buffer.byteLength(JSON.stringify(event));
   room.events.push(event);
-  if (room.events.length > EVENT_LIMIT) room.events.splice(0, room.events.length - EVENT_LIMIT);
+  room.eventBytes = (room.eventBytes || 0) + eventBytes;
+  while (room.events.length > EVENT_LIMIT || room.eventBytes > EVENT_MAX_BYTES) {
+    const removed = room.events.shift();
+    if (!removed) break;
+    room.eventBytes -= Buffer.byteLength(JSON.stringify(removed));
+  }
   return event;
 }
 function pruneRooms(now = Date.now()) {
@@ -125,7 +133,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       id, name, creatorId: req.user.id, creatorName: req.user.name,
       passwordHash: password ? hashRoomPassword(password) : null,
       createdAt: now, lastActivityAt: now, members: new Map(),
-      events: [], eventSequence: 0, chatHistory: []
+      events: [], eventSequence: 0, eventBytes: 0, chatHistory: [], chatHistoryBytes: 0
     };
     addEvent(room, "system", { message: `${req.user.name} đã tạo phòng học.` }, null);
     rooms.set(id, room);
@@ -204,8 +212,14 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
         if (approximateBytes > IMAGE_MAX_BYTES) return fail(res, 413, "Ảnh tối đa 2 MB.");
       }
       const chat = { id: crypto.randomBytes(10).toString("hex"), text, image: image || null, participantId: member.participantId, name: member.name, isAdminObserver: member.isAdminObserver, createdAt: Date.now() };
+      const chatBytes = Buffer.byteLength(JSON.stringify(chat));
       room.chatHistory.push(chat);
-      if (room.chatHistory.length > 100) room.chatHistory.shift();
+      room.chatHistoryBytes = (room.chatHistoryBytes || 0) + chatBytes;
+      while (room.chatHistory.length > 100 || room.chatHistoryBytes > CHAT_HISTORY_MAX_BYTES) {
+        const removed = room.chatHistory.shift();
+        if (!removed) break;
+        room.chatHistoryBytes -= Buffer.byteLength(JSON.stringify(removed));
+      }
       const event = addEvent(room, "chat", chat, member);
       return res.json({ ok: true, eventId: event.id });
     }
