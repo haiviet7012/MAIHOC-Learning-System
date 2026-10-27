@@ -52,7 +52,7 @@ export function mountStudyRooms(container, user) {
       <section class="study-room-lobby">
         <header class="study-room-heading">
           <div><p class="eyebrow">MAI HỌC · HỌC CÙNG NHAU</p><h1>Phòng tự học</h1><p class="muted">Tạo phòng riêng cho bạn bè hoặc tham gia phòng đang mở. Tối đa 12 học viên mỗi phòng.</p></div>
-          <button class="button primary" data-room-create-toggle>＋ Tạo phòng</button>
+          <button type="button" class="button primary" data-room-create-toggle aria-expanded="false">＋ Tạo phòng</button>
         </header>
         <div class="study-room-create-panel" data-room-create-panel hidden>
           <form data-room-create-form>
@@ -61,11 +61,35 @@ export function mountStudyRooms(container, user) {
             <div class="study-room-form-actions"><button type="button" class="button secondary" data-room-create-cancel>Hủy</button><button class="button primary" type="submit">Tạo phòng</button></div>
           </form>
         </div>
-        <div class="study-room-toolbar"><h2>Phòng đang hoạt động</h2><button class="button secondary small" data-room-refresh>↻ Làm mới</button></div>
+        <div class="study-room-toolbar"><h2>Phòng đang hoạt động</h2><button type="button" class="button secondary small" data-room-refresh>↻ Làm mới</button></div>
         <div class="study-room-grid" data-room-grid>${rooms.length ? rooms.map(roomCard).join("") : '<div class="study-room-empty"><div class="study-room-empty-icon">▣</div><h3>Chưa có phòng nào</h3><p class="muted">Hãy tạo phòng đầu tiên và mời bạn bè tham gia.</p></div>'}</div>
         <p class="study-room-error" data-room-error hidden></p>
         <p class="study-room-privacy-note">Camera và microphone chỉ bật khi bạn cho phép trên trình duyệt. Phòng có Admin giám sát sẽ hiển thị thông báo cho người tham gia.</p>
       </section>`;
+    const createPanel = container.querySelector("[data-room-create-panel]");
+    const createButton = container.querySelector("[data-room-create-toggle]");
+    createButton?.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!createPanel) return;
+      createPanel.hidden = !createPanel.hidden;
+      createButton.setAttribute("aria-expanded", String(!createPanel.hidden));
+      clearError();
+      if (!createPanel.hidden) createPanel.querySelector('input[name="name"]')?.focus();
+    });
+    container.querySelector("[data-room-create-cancel]")?.addEventListener("click", event => {
+      event.preventDefault();
+      if (createPanel) createPanel.hidden = true;
+      createButton?.setAttribute("aria-expanded", "false");
+    });
+    container.querySelector("[data-room-refresh]")?.addEventListener("click", event => {
+      event.preventDefault();
+      void loadRooms();
+    });
+    container.querySelector("[data-room-create-form]")?.addEventListener("submit", event => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
   }
   function roomCard(room) {
     return `<article class="study-room-card">
@@ -393,10 +417,11 @@ export function mountStudyRooms(container, user) {
   }
 
   container.addEventListener("click", async event => {
-    const createToggle = event.target.closest("[data-room-create-toggle]");
-    if (createToggle) { const panel = container.querySelector("[data-room-create-panel]"); panel.hidden = !panel.hidden; clearError(); return; }
-    if (event.target.closest("[data-room-create-cancel]")) { const panel = container.querySelector("[data-room-create-panel]"); if (panel) panel.hidden = true; return; }
-    if (event.target.closest("[data-room-refresh]")) { await loadRooms(); return; }
+    // Lobby controls are bound directly in drawLobby so they continue working
+    // even when the global app click handler intercepts other controls.
+    if (event.target.closest("[data-room-create-toggle]") ||
+        event.target.closest("[data-room-create-cancel]") ||
+        event.target.closest("[data-room-refresh]")) return;
     if (event.target.closest("[data-room-login]")) { document.querySelector("#login-open")?.click(); return; }
     const join = event.target.closest("[data-room-join]");
     if (join) {
@@ -494,12 +519,17 @@ export function mountStudyRooms(container, user) {
   });
 
   loadRooms();
-  roomRefreshTimer = setInterval(() => { if (!currentRoom && !disposed) loadRooms(); }, 10000);
+  roomRefreshTimer = setInterval(() => { if (!currentRoom && !disposed && !document.hidden) void loadRooms(); }, 5000);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  function onVisibilityChange() {
+    if (!document.hidden && !currentRoom && !disposed) void loadRooms();
+  }
 
   return async function disposeStudyRooms() {
     disposed = true;
     clearTimeout(pollTimer);
     clearInterval(roomRefreshTimer);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     await leaveRoom();
   };
 }
