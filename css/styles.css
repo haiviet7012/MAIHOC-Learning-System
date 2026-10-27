@@ -605,3 +605,7 @@ body.exam-open{overflow:hidden}
 #forgot-password-dialog .auth-error{overflow-wrap:anywhere}
 #forgot-password-dialog [name="code"]{letter-spacing:.22em;font-variant-numeric:tabular-nums}
 #forgot-password-dialog [role="status"]{overflow-wrap:anywhere}
+
+/* Reset-password dialog close control */
+#reset-password-form .modal-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+#reset-password-form .close-button{flex:none;margin-left:auto}
