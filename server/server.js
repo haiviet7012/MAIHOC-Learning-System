@@ -441,7 +441,22 @@ app.delete("/api/notifications",requireSameOrigin,requireAuth,(req,res)=>{
   return res.json({ok:true,deleted:result.changes,unread:0});
 });
 
-app.get("/api/admin/progress",requireSuperAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
+app.get("/api/admin/progress",requireSuperAdmin,(req,res)=>{
+  const rows=db.prepare("SELECT p.id,p.user_id AS userId,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id WHERE u.role='user' ORDER BY p.updated_at DESC").all();
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({progress:rows});
+});
+
+app.get("/api/admin/users/:id/progress",requireSuperAdmin,(req,res)=>{
+  const userId=Number(req.params.id);
+  if(!Number.isSafeInteger(userId)||userId<1)return res.status(400).json({error:"User ID không hợp lệ."});
+  const user=db.prepare("SELECT id,name,email,created_at AS createdAt FROM users WHERE id=? AND role='user'").get(userId);
+  if(!user)return res.status(404).json({error:"Không tìm thấy người dùng thường."});
+  const progress=db.prepare("SELECT id,item_type AS itemType,item_id AS itemId,item_title AS itemTitle,subject,grade,status,progress_percent AS progressPercent,score,answers_json AS answers,last_position AS lastPosition,started_at AS startedAt,updated_at AS updatedAt,CASE WHEN item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=user_progress.user_id AND a.document_id=user_progress.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress WHERE user_id=? ORDER BY updated_at DESC").all(userId);
+  const counts=db.prepare("SELECT COUNT(*) AS totalItems,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completedItems,ROUND(AVG(progress_percent),1) AS averageProgress FROM user_progress WHERE user_id=?").get(userId);
+  res.setHeader("Cache-Control","private, no-store");
+  res.json({user,progress,summary:{totalItems:counts.totalItems||0,completedItems:counts.completedItems||0,averageProgress:counts.averageProgress??0}});
+});
 
 app.get("/api/progress",requireAuth,(req,res)=>{
 
