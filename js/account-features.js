@@ -25,6 +25,86 @@ function toastNotice(message, type="success") {
   const region=$("#toast-region"); if(!region)return;
   const el=document.createElement("div");el.className="toast "+type;el.textContent=message;region.append(el);setTimeout(()=>el.remove(),3800);
 }
+let passwordResetEmail="";
+let passwordResetSendCooldown=false;
+function resetMessage(id,message,isError=false){
+  const node=$("#"+id);if(!node)return;
+  node.textContent=message;node.hidden=!message;
+  node.classList.toggle("auth-error",Boolean(isError));
+}
+function resetEndpointBusy(form,busy){
+  const button=form?.querySelector('button[type="submit"]');
+  if(button){button.disabled=busy;button.dataset.originalText ||= button.textContent;if(busy)button.textContent="Đang xử lý...";else button.textContent=button.dataset.originalText;}
+}
+async function requestPasswordResetCode(){
+  const email=String(passwordResetEmail||$("#forgot-password-form [name=email]")?.value||"").trim().toLowerCase();
+  if(!email){resetMessage("forgot-password-error","Vui lòng nhập Gmail đã đăng ký.",true);return false;}
+  const form=$("#forgot-password-form");resetEndpointBusy(form,true);
+  resetMessage("forgot-password-error","");resetMessage("forgot-password-status","");
+  try{
+    const result=await request("/api/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+    passwordResetEmail=email;
+    const emailInput=$("#reset-password-form [name=email]");
+    if(emailInput)emailInput.value=email;
+    $("#forgot-password-form").hidden=true;
+    $("#reset-password-form").hidden=false;
+    resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó.");
+    return true;
+  }catch(error){
+    resetMessage("forgot-password-error",error.message||"Không thể gửi mã xác minh.",true);return false;
+  }finally{resetEndpointBusy(form,false);}
+}
+document.addEventListener("click",async event=>{
+  if(event.target.closest("#forgot-password-open")){
+    const login=$("#login-dialog"),dialog=$("#forgot-password-dialog");
+    if(login?.open)login.close();
+    $("#forgot-password-form").hidden=false;$("#reset-password-form").hidden=true;
+    resetMessage("forgot-password-error","");resetMessage("forgot-password-status","");
+    resetMessage("reset-password-error","");resetMessage("reset-password-status","");
+    const email=$("#login-form [name=email]")?.value?.trim()||"";
+    $("#forgot-password-form [name=email]").value=email;
+    passwordResetEmail=email;
+    if(dialog&&!dialog.open)dialog.showModal();
+    return;
+  }
+  if(event.target.closest("#reset-resend-code")){
+    const button=event.target.closest("#reset-resend-code");
+    button.disabled=true;
+    try{
+      const result=await request("/api/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:passwordResetEmail})});
+      resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã mới sẽ được gửi.");
+      resetMessage("reset-password-error","");
+    }catch(error){resetMessage("reset-password-error",error.message||"Không thể gửi mã mới.",true);}
+    finally{button.disabled=false;}
+  }
+});
+document.addEventListener("submit",async event=>{
+  const forgotForm=event.target.closest("#forgot-password-form");
+  if(forgotForm){
+    event.preventDefault();
+    passwordResetEmail=String(new FormData(forgotForm).get("email")||"").trim().toLowerCase();
+    await requestPasswordResetCode();
+    return;
+  }
+  const resetForm=event.target.closest("#reset-password-form");
+  if(resetForm){
+    event.preventDefault();
+    resetMessage("reset-password-error","");resetMessage("reset-password-status","");
+    const values=new FormData(resetForm);
+    const code=String(values.get("code")||"").trim();
+    const password=String(values.get("password")||"");
+    const confirmPassword=String(values.get("confirmPassword")||"");
+    if(password!==confirmPassword){resetMessage("reset-password-error","Mật khẩu nhập lại không trùng khớp.",true);return;}
+    const button=resetForm.querySelector('button[type="submit"]');resetEndpointBusy(resetForm,true);
+    try{
+      const result=await request("/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:passwordResetEmail,code,password})});
+      resetMessage("reset-password-status",result.message||"Đã đổi mật khẩu. Hãy đăng nhập lại.");
+      resetForm.reset();
+      setTimeout(()=>{const dialog=$("#forgot-password-dialog");if(dialog?.open)dialog.close();const login=$("#login-dialog");if(login&&!login.open)login.showModal();const loginEmail=$("#login-form [name=email]");if(loginEmail)loginEmail.value=passwordResetEmail;},1200);
+    }catch(error){resetMessage("reset-password-error",error.message||"Không thể đặt lại mật khẩu.",true);}
+    finally{resetEndpointBusy(resetForm,false);}
+  }
+});
 async function loadUser() {
   try { const data=await request("/api/auth/me"); activeUser=data.user||null; } catch { activeUser=null; }
   const bell=$("#notifications-open"), upload=$("#upload-open");
