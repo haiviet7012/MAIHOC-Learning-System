@@ -30,6 +30,11 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
+  CREATE TABLE IF NOT EXISTS user_presence (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    last_seen_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS user_presence_last_seen_idx ON user_presence(last_seen_at);
   CREATE TABLE IF NOT EXISTS user_progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -271,6 +276,7 @@ export function createSession(userId, res) {
   const now = Date.now();
   db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)")
     .run(hashToken(token), userId, now + SESSION_MS, now);
+  db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(userId,now);
   // Periodically purge expired rows without a separate job.
   db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
   writeCookie(res, token, Math.floor(SESSION_MS / 1000));
@@ -281,6 +287,7 @@ export function destroySession(req, res) {
   if (token && /^[a-f0-9]{64}$/i.test(token)) {
     db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
   }
+  if(req.user?.id)db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
   writeCookie(res, "", 0);
 }
 
@@ -296,6 +303,7 @@ export function loadCurrentUser(req, res, next) {
       if (session && session.expires_at > Date.now()) {
         req.user = publicUser(session);
         req.sessionTokenHash = hashToken(token);
+        db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(session.id,Date.now());
       } else if (session) {
         db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
         writeCookie(res, "", 0);
