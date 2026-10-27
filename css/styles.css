@@ -437,3 +437,18 @@ body.exam-open{overflow:hidden}
   #theme-toggle{flex-basis:42px;width:42px;min-width:42px;padding:9px;justify-content:center}
   #theme-toggle .button-label{display:none}
 }
+
+/* MAIHOC visual pass: square-cornered tabs, panels, cards and dialogs. */
+:root{--panel-radius:0px}
+.card,.resource-row,.exam-card,.reader-main,.reader-side,.exam-pane,.exam-toolbar,
+.result-panel,.modal,.subject-menu,.subject-picker-bar,.subject-tile,.answer-key-section,
+.answer-key-row,.solution-review-item,.solution-review-pane,.admin-submissions,
+.admin-table-wrap,.admin-progress-scroll,.admin-approved-documents-scroll,
+.upload-answer-manager,.upload-answer-row,.answer-key-help,.answer-key-example,
+.resource-card,.class-card,.stat,.notification-item,.notification-count{
+  border-radius:0!important;
+}
+.answer-key-modal,.exam-solution-dialog,#upload-dialog{
+  border-radius:0!important;
+}
+.file-drop-zone{border-radius:0!important}
