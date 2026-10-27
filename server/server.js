@@ -259,14 +259,25 @@ app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
 
 
 const passwordResetRequestAttempts=new Map();
-function passwordResetRateLimit(req,res,next){
-  const key=`${req.ip}:${String(req.body?.email||"").trim().toLowerCase()}`;
-  const now=Date.now();
-  const state=passwordResetRequestAttempts.get(key)||{count:0,startedAt:now};
-  if(now-state.startedAt>15*60*1000){state.count=0;state.startedAt=now;}
-  if(state.count>=5)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
+function consumePasswordResetRateLimit(key,limit,now){
+  let state=passwordResetRequestAttempts.get(key);
+  if(!state||now-state.startedAt>15*60*1000)state={count:0,startedAt:now};
+  if(state.count>=limit){passwordResetRequestAttempts.set(key,state);return false;}
   state.count++;
   passwordResetRequestAttempts.set(key,state);
+  return true;
+}
+function passwordResetRateLimit(req,res,next){
+  const now=Date.now();
+  if(passwordResetRequestAttempts.size>5000){
+    for(const [key,state] of passwordResetRequestAttempts){
+      if(now-state.startedAt>15*60*1000)passwordResetRequestAttempts.delete(key);
+    }
+  }
+  const email=String(req.body?.email||"").trim().toLowerCase();
+  const ipAllowed=consumePasswordResetRateLimit("ip:"+req.ip,10,now);
+  const emailAllowed=consumePasswordResetRateLimit("email:"+email,3,now);
+  if(!ipAllowed||!emailAllowed)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
   next();
 }
 
