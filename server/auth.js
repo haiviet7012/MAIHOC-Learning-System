@@ -290,7 +290,7 @@ export function requireAuth(req, res, next) {
 }
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Chức năng này chỉ dành cho quản trị viên." });
+  if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1) return res.status(403).json({ error: "Tài khoản Admin này chưa được Admin cao nhất cấp quyền." });
   next();
 }
 
