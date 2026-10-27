@@ -543,3 +543,10 @@ body.exam-open{overflow:hidden}
 .online-user-label{margin-left:auto;color:#16815c;font-size:12px;font-weight:700}
 .superadmin-monitoring{margin-top:0}
 .superadmin-monitoring .admin-table-wrap{max-width:100%;overflow:auto}
+
+/* Super-admin progress overview is grouped by user, with a dedicated detailed view. */
+.user-progress-detail-page{margin-top:12px}
+.superadmin-monitoring .admin-progress-scroll{max-width:100%;overflow:auto}
+.superadmin-monitoring .admin-table{min-width:900px}
+.user-progress-summary{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.user-progress-summary .stat{min-width:150px}
