@@ -537,10 +537,16 @@ body.exam-open{overflow:hidden}
 .dashboard-panel-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
 .dashboard-panel h2{margin:0 0 4px}
 .dashboard-panel h3{margin:22px 0 8px}
+.online-user-list-shell{max-height:min(65vh,680px);overflow-y:auto;border:1px solid var(--border);padding:10px;background:var(--bg)}
 .online-user-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .online-user-item{display:flex;align-items:center;gap:10px;border:1px solid var(--border);background:var(--surface-2);padding:12px;min-width:0}
-.online-indicator{width:9px;height:9px;display:inline-block;flex:0 0 9px;background:#20a46b;border-radius:50%!important;box-shadow:0 0 0 3px rgba(32,164,107,.16)}
+.online-indicator{width:9px;height:9px;display:inline-block;flex:0 0 9px;background:#98a2b3;border-radius:50%!important;box-shadow:0 0 0 3px rgba(152,162,179,.16)}
+.online-indicator.is-online{background:#20a46b;box-shadow:0 0 0 3px rgba(32,164,107,.16)}
+.online-indicator.is-offline{background:#98a2b3;box-shadow:0 0 0 3px rgba(152,162,179,.16)}
+.online-user-item.is-offline{opacity:.82}
 .online-user-label{margin-left:auto;color:#16815c;font-size:12px;font-weight:700}
+.online-user-label.is-online{color:#16815c}
+.online-user-label.is-offline{color:var(--muted)}
 .superadmin-monitoring{margin-top:0}
 .superadmin-monitoring .admin-table-wrap{max-width:100%;overflow:auto}
 
