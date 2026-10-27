@@ -27,9 +27,16 @@ import {
 
 
 
-dotenv.config();
-
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
+
+// Always load server/.env relative to this file, not process.cwd().
+// This prevents SMTP settings from silently disappearing when npm start
+// is launched from the repository root or another working directory.
+const envPath=path.join(__dirname,".env");
+const envResult=dotenv.config({path:envPath});
+if(envResult.error&&envResult.error.code!=="ENOENT"){
+  console.error("Could not load server/.env:",envResult.error.message);
+}
 
 const root=path.resolve(__dirname,"..");
 
@@ -141,17 +148,30 @@ function createExamSolutionJob(documentId){
 
 function createPasswordResetTransport(){
   const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM}=process.env;
-  if(!SMTP_HOST||!SMTP_USER||!SMTP_PASS)throw new Error("Chưa cấu hình SMTP để gửi email xác minh. Hãy điền SMTP_USER và SMTP_PASS trong server/.env.");
+  const host=String(SMTP_HOST||"").trim();
+  const smtpUser=String(SMTP_USER||"").trim();
+  // App passwords are commonly displayed in groups of four characters.
+  // Remove accidental internal spaces while preserving the credential value.
+  const smtpPass=String(SMTP_PASS||"").replace(/\\s+/g,"");
+  const sender=String(SMTP_FROM||smtpUser).trim();
+  if(!host||!smtpUser||!smtpPass)throw new Error("SMTP_CONFIG_MISSING: Không đọc được SMTP_HOST, SMTP_USER hoặc SMTP_PASS. Hãy kiểm tra server/.env.");
   const port=Number(SMTP_PORT||587);
-  if(!Number.isInteger(port)||port<1||port>65535)throw new Error("SMTP_PORT phải là số cổng hợp lệ, ví dụ 587 hoặc 465.");
-  const smtpUser=SMTP_USER.trim();
-  const smtpPass=SMTP_PASS.trim();
-  if(!smtpUser||!smtpPass)throw new Error("SMTP_USER và SMTP_PASS không được để trống.");
-  const transporter=nodemailer.createTransport({host:SMTP_HOST.trim(),port,secure:port===465,auth:{user:smtpUser,pass:smtpPass}});
-  return {SMTP_FROM:(SMTP_FROM||smtpUser).trim(),SMTP_USER:smtpUser,transporter};
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error("SMTP_PORT_INVALID: SMTP_PORT phải là số cổng hợp lệ, ví dụ 587 hoặc 465.");
+  const transporter=nodemailer.createTransport({host,port,secure:port===465,auth:{user:smtpUser,pass:smtpPass}});
+  return {SMTP_FROM:sender,SMTP_USER:smtpUser,transporter};
 }
-async function sendPasswordResetEmail(to,code){
-  const {SMTP_FROM,SMTP_USER,transporter}=createPasswordResetTransport();
+function passwordResetSmtpFailure(error){
+  const code=String(error?.code||"").toUpperCase();
+  const responseCode=Number(error?.responseCode)||0;
+  if(responseCode===535||code==="EAUTH")return "Gmail từ chối xác thực (535/EAUTH). Kiểm tra SMTP_USER đúng Gmail và SMTP_PASS là App Password 16 ký tự của chính tài khoản đó.";
+  if(code==="ENOTFOUND"||code==="EAI_AGAIN")return "Không phân giải được địa chỉ SMTP. Kiểm tra SMTP_HOST và kết nối DNS/Internet.";
+  if(code==="ETIMEDOUT"||code==="ECONNECTION"||code==="ECONNREFUSED"||code==="ESOCKET")return "Không thể kết nối đến máy chủ SMTP. Kiểm tra Internet, tường lửa và SMTP_HOST/SMTP_PORT.";
+  if(String(error?.message||"").includes("SMTP_CONFIG_MISSING"))return error.message;
+  if(String(error?.message||"").includes("SMTP_PORT_INVALID"))return error.message;
+  return "Gửi email xác minh thất bại. Hãy xem mã lỗi SMTP trong cửa sổ PowerShell đang chạy npm start.";
+}
+async function sendPasswordResetEmail(to,code,mailTransport=createPasswordResetTransport()){
+  const {SMTP_FROM,SMTP_USER,transporter}=mailTransport;
   await transporter.sendMail({
     from:SMTP_FROM||SMTP_USER,
     to,
@@ -296,8 +316,8 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
     // Check SMTP before looking up the account, so users can see configuration/connectivity failures
     // without disclosing whether a given email address is registered.
     // Validate SMTP configuration/connectivity before issuing any reset code.
-    const {transporter}=createPasswordResetTransport();
-    await transporter.verify();
+    const mailTransport=createPasswordResetTransport();
+    await mailTransport.transporter.verify();
 
     const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     // Keep the same generic response for registered and unknown addresses.
@@ -312,17 +332,27 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
     db.prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?)")
       .run(user.id,tokenHash,now+10*60*1000,0,now);
     try{
-      await sendPasswordResetEmail(user.email,code);
+      await sendPasswordResetEmail(user.email,code,mailTransport);
     }catch(error){
       db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-      console.error("Password reset email failed:",error.message);
+      console.error("Password reset email failed:",{
+        code:error?.code||null,
+        responseCode:error?.responseCode||null,
+        command:error?.command||null,
+        message:error?.message||String(error)
+      });
       // Do not return a misleading generic success when delivery failed.
-      return res.status(502).json({error:"Máy chủ chưa gửi được email xác minh. Hãy kiểm tra cấu hình SMTP trong server/.env và xem thông báo lỗi ở cửa sổ chạy npm start."});
+      return res.status(502).json({error:passwordResetSmtpFailure(error)});
     }
     return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
   }catch(error){
-    console.error("Password reset request failed:",error.message);
-    res.status(500).json({error:"Chưa thể gửi mã xác minh. Hãy kiểm tra SMTP_HOST, SMTP_PORT, SMTP_USER và SMTP_PASS trong server/.env; lỗi chi tiết được ghi ở cửa sổ chạy npm start."});
+    console.error("Password reset request failed:",{
+      code:error?.code||null,
+      responseCode:error?.responseCode||null,
+      command:error?.command||null,
+      message:error?.message||String(error)
+    });
+    res.status(500).json({error:passwordResetSmtpFailure(error)});
   }
 });
 
