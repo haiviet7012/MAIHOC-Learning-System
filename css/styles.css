@@ -598,3 +598,10 @@ body.exam-open{overflow:hidden}
   #notifications-dialog .notifications-list{max-height:calc(100dvh - 205px)}
   #notifications-dialog .notification-toolbar{justify-content:flex-start}
 }
+
+/* Password reset forms: keep code/password inputs readable on narrow screens. */
+#forgot-password-dialog.modal{width:min(480px,calc(100vw - 28px));max-width:calc(100vw - 28px)}
+#forgot-password-dialog form[hidden]{display:none}
+#forgot-password-dialog .auth-error{overflow-wrap:anywhere}
+#forgot-password-dialog [name="code"]{letter-spacing:.22em;font-variant-numeric:tabular-nums}
+#forgot-password-dialog [role="status"]{overflow-wrap:anywhere}
