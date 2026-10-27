@@ -10,9 +10,11 @@ import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js";
+import { mountStudyRooms } from "../study-rooms/client.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
+let studyRoomsCleanup = null;
 let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
@@ -506,6 +508,11 @@ function syncPresenceHeartbeat(){
 window.addEventListener("focus",()=>{void sendPresenceHeartbeat();});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)void sendPresenceHeartbeat();});
 function render() {
+    if (state.route !== "study-rooms" && studyRoomsCleanup) {
+        const cleanup = studyRoomsCleanup;
+        studyRoomsCleanup = null;
+        void cleanup();
+    }
     syncPresenceHeartbeat();
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
@@ -543,6 +550,8 @@ function render() {
         view.innerHTML = adminPage();
     else if (state.route === "user-dashboard")
         view.innerHTML = userDashboardPage();
+    else if (state.route === "study-rooms")
+        view.innerHTML = '<div class="study-room-loading"><p class="muted">Đang mở Phòng tự học…</p></div>';
     else if (state.route === "user-progress-detail")
         view.innerHTML = userProgressDetailPage();
     const pdfContainer = view.querySelector("[data-pdf-reader]");
@@ -568,6 +577,10 @@ function render() {
     if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
     if(state.route==="user-dashboard")loadUserOnlineDashboard();
     if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
+    if (state.route === "study-rooms") {
+        if (studyRoomsCleanup) void studyRoomsCleanup();
+        studyRoomsCleanup = mountStudyRooms(view, currentUser);
+    }
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
