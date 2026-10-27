@@ -14,7 +14,7 @@ import {fileURLToPath} from "node:url";
 import {GoogleGenerativeAI} from "@google/generative-ai";
 
 import nodemailer from "nodemailer";
-import { normalizeAnswerKey, normalizeAnswerKeyDocument, serializeAnswerKey, gradeAnswers } from "./grading/engine.js";
+import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 
 import {
@@ -905,21 +905,7 @@ app.get("/api/admin/documents/:id/answer-key",requireAdmin,(req,res)=>{
   res.end(row.file_data);
 });
 
-app.get("/api/admin/documents/:id/answer-key/normalized",requireAdmin,(req,res)=>{
-  const format=String(req.query.format||"json").toLowerCase();
-  if(!["json","csv","txt"].includes(format))return res.status(400).json({error:"Choose JSON, CSV, or TXT format."});
-  const row=db.prepare("SELECT normalized_json FROM answer_keys WHERE document_id=?").get(String(req.params.id));
-  if(!row?.normalized_json)return res.status(404).json({error:"This answer key has no normalized grading data."});
-  let normalized;
-  try{normalized=JSON.parse(row.normalized_json);}catch{return res.status(500).json({error:"The stored grading data is invalid."});}
-  let output;
-  try{output=serializeAnswerKey(normalized,format);}catch(error){return res.status(400).json({error:error.message});}
-  const mime={json:"application/json; charset=utf-8",csv:"text/csv; charset=utf-8",txt:"text/plain; charset=utf-8"}[format];
-  res.setHeader("Content-Type",mime);
-  res.setHeader("Content-Disposition",`attachment; filename*=UTF-8''${encodeURIComponent(`answer-key-${req.params.id}.${format}`)}`);
-  res.setHeader("Cache-Control","private, no-store");
-  res.end(output);
-});
+
 
 app.delete("/api/admin/documents/:id",requireSameOrigin,requireAdmin,(req,res)=>{
   const document=db.prepare("SELECT id,filename FROM documents WHERE id=?").get(req.params.id);
