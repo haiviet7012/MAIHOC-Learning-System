@@ -611,3 +611,54 @@ body.exam-open{overflow:hidden}
 #reset-password-form .close-button{flex:none;margin-left:auto}
 
 .account-center-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}.account-center-grid>.dashboard-panel{min-width:0}.account-center-form{display:grid;gap:13px;margin-top:18px}.account-center-form label{display:grid;gap:7px;font-size:13px;font-weight:600}.account-center-form input{width:100%;padding:12px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:8px}.account-form-message{padding:10px 12px;border:1px solid var(--border);border-radius:8px}.account-danger-zone{border-color:#b94455}.account-danger-zone .button.danger{background:#a52d39;color:#fff;border:1px solid #a52d39}@media(max-width:760px){.account-center-grid{grid-template-columns:1fr}}
+
+
+/* Timed exam: use the entire viewport and leave only the light/dark control visible. */
+body.exam-open{overflow:hidden!important}
+body.exam-open .topbar{
+  position:fixed!important;inset:0 0 auto auto!important;width:auto!important;min-height:0!important;
+  height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;
+  z-index:10000!important;pointer-events:none!important;
+}
+body.exam-open .topbar>.brand,
+body.exam-open .topbar .topbar-actions>*:not(#theme-toggle),
+body.exam-open .topbar .subject-menu{display:none!important}
+body.exam-open .topbar .topbar-actions{
+  position:fixed!important;top:10px!important;right:12px!important;display:flex!important;
+  width:auto!important;margin:0!important;padding:0!important;pointer-events:none!important;
+}
+body.exam-open #theme-toggle{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  min-height:38px!important;padding:8px 12px!important;background:var(--surface)!important;
+  border:1px solid var(--border)!important;color:var(--text)!important;pointer-events:auto!important;
+  box-shadow:0 4px 18px rgba(0,0,0,.22)!important;
+}
+body.exam-open #theme-toggle .button-label{display:inline!important}
+body.exam-open .view.exam-fullscreen{
+  box-sizing:border-box!important;width:100vw!important;max-width:none!important;height:100dvh!important;
+  min-height:0!important;max-height:100dvh!important;overflow:hidden!important;
+  margin:0!important;padding:8px!important;padding-top:54px!important;
+}
+body.exam-open .view.exam-fullscreen>.breadcrumb,
+body.exam-open .view.exam-fullscreen>.page-heading{display:none!important}
+body.exam-open .view.exam-fullscreen .exam-toolbar{
+  margin:0 0 8px!important;padding:8px 12px!important;gap:10px!important;min-height:0!important;
+}
+body.exam-open .view.exam-fullscreen .exam-toolbar>div:first-child{min-width:0;flex:1 1 auto}
+body.exam-open .view.exam-fullscreen .exam-toolbar strong{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70vw;
+}
+body.exam-open .view.exam-fullscreen .split-exam{
+  height:calc(100dvh - 112px)!important;min-height:0!important;max-height:calc(100dvh - 112px)!important;
+}
+body.exam-open .view.exam-fullscreen .exam-pane{min-height:0!important;padding:14px!important}
+body.exam-open .view.exam-fullscreen .exam-paper-viewer,
+body.exam-open .view.exam-fullscreen .exam-paper-viewer .pdf-reader,
+body.exam-open .view.exam-fullscreen .exam-paper-viewer .pdf-document-scroll{max-height:100%!important}
+@media(max-width:760px){
+  body.exam-open .view.exam-fullscreen{padding:6px!important;padding-top:52px!important}
+  body.exam-open .view.exam-fullscreen .split-exam{height:calc(100dvh - 108px)!important;max-height:calc(100dvh - 108px)!important}
+  body.exam-open .view.exam-fullscreen .exam-pane{padding:9px!important}
+  body.exam-open .view.exam-fullscreen .split-exam{gap:4px!important}
+  body.exam-open .view.exam-fullscreen .splitter{width:4px!important}
+}
