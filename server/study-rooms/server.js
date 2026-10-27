@@ -52,6 +52,7 @@ function publicRoom(room) {
     maxParticipants: MAX_STUDENTS,
     createdAt: room.createdAt,
     creatorName: room.creatorName,
+    creatorId: room.creatorId,
     isFull: studentMembers(room).length >= MAX_STUDENTS,
     adminObserving: [...room.members.values()].some(member => member.isAdminObserver)
   };
@@ -85,7 +86,7 @@ function pruneRooms(now = Date.now()) {
         addEvent(room, "participant-left", { participantId }, member);
       }
     }
-    if (!room.members.size && now - room.lastActivityAt > ROOM_IDLE_TTL) rooms.delete(id);
+    if (now - room.lastActivityAt > ROOM_IDLE_TTL && !room.members.size) rooms.delete(id);
   }
 }
 function requireUser(req, res, next) {
@@ -126,6 +127,10 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     if (name.length < 3 || name.length > 60) return fail(res, 400, "Tên phòng phải từ 3 đến 60 ký tự.");
     if (password.length > 72) return fail(res, 400, "Mật khẩu phòng tối đa 72 ký tự.");
     pruneRooms();
+    const existingRoom = [...rooms.values()].find(room => room.creatorId === req.user.id);
+    if (existingRoom) {
+      return fail(res, 409, "Bạn đã có một phòng học đang hoạt động. Hãy đóng phòng cũ trước khi tạo phòng mới.");
+    }
     let id = makeRoomId();
     while (rooms.has(id)) id = makeRoomId();
     const now = Date.now();
@@ -249,16 +254,17 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     res.json({ ok: true });
   });
 
-  app.delete("/api/study-rooms/:roomId", sameOrigin, auth, (req, res) => {
+  const closeRoomHandler = (req, res) => {
     const room = rooms.get(String(req.params.roomId || "").toUpperCase());
     if (!room) return res.json({ ok: true });
-    const member = [...room.members.values()].find(value => value.userId === req.user.id && !value.isAdminObserver);
     const isAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 1;
     if (!isAdmin && room.creatorId !== req.user.id) return fail(res, 403, "Chỉ người tạo phòng hoặc Admin mới có thể đóng phòng.");
-    addEvent(room, "room-closed", { message: "Phòng đã được đóng bởi chủ phòng hoặc Admin." }, member || null);
+    addEvent(room, "room-closed", { message: "Phòng đã được đóng bởi chủ phòng hoặc Admin." }, null);
     rooms.delete(room.id);
     res.json({ ok: true });
-  });
+  };
+  app.delete("/api/study-rooms/:roomId", sameOrigin, auth, closeRoomHandler);
+  app.post("/api/study-rooms/:roomId/close", sameOrigin, auth, closeRoomHandler);
 
   console.info("Study Rooms module loaded (12 students per room).");
 }
