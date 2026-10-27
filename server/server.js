@@ -139,11 +139,14 @@ function createExamSolutionJob(documentId){
   queueExamSolution(documentId);
 }
 
-async function sendPasswordResetEmail(to,code){
+function createPasswordResetTransport(){
   const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM}=process.env;
   if(!SMTP_HOST||!SMTP_USER||!SMTP_PASS)throw new Error("Chưa cấu hình SMTP để gửi email xác minh. Hãy điền SMTP_USER và SMTP_PASS trong server/.env.");
   const port=Number(SMTP_PORT||587);
-  const transporter=nodemailer.createTransport({host:SMTP_HOST,port,secure:port===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
+  return {SMTP_FROM:SMTP_FROM||SMTP_USER,transporter:nodemailer.createTransport({host:SMTP_HOST,port,secure:port===465,auth:{user:SMTP_USER,pass:SMTP_PASS}})};
+}
+async function sendPasswordResetEmail(to,code){
+  const {SMTP_FROM,transporter}=createPasswordResetTransport();
   await transporter.sendMail({
     from:SMTP_FROM||SMTP_USER,
     to,
@@ -285,6 +288,10 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
   const email=String(req.body?.email||"").trim().toLowerCase();
   if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:"Vui lòng nhập địa chỉ email hợp lệ."});
   try{
+    // Check SMTP before looking up the account, so users can see configuration/connectivity failures
+    // without disclosing whether a given email address is registered.
+    const {transporter}=createPasswordResetTransport();
+    await transporter.verify();
     const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     const now=Date.now();
     if(user){
