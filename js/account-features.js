@@ -322,7 +322,7 @@ async function loadAdminProgress(){
  try{
    const data=await request("/api/admin/progress");
    const rows=data.progress||[];
-   if(!rows.length){box.innerHTML="<p class=\\"muted\\">Chưa có tiến trình được ghi nhận.</p>";return;}
+   if(!rows.length){box.innerHTML='<p class="muted">Chưa có tiến trình được ghi nhận.</p>';return;}
    const table=document.createElement("table");table.className="admin-table";
    table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
    const body=document.createElement("tbody");
