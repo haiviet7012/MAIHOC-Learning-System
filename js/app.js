@@ -735,8 +735,8 @@ document.addEventListener("click", async (e) => {
     if (action) {
         const a = action.dataset.action;
         if (a === "user-dashboard") {
-            if(currentUser?.role!=="admin")go("user-dashboard");
-            else toast("Dashboard người dùng chỉ dành cho tài khoản thường.", "error");
+            if(currentUser&&currentUser.role!=="admin")go("user-dashboard");
+            else toast("Dashboard chỉ dành cho người dùng thường.", "error");
             return;
         }
         if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
@@ -1000,6 +1000,7 @@ function applyAuthUI() {
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
     $("#admin-open").hidden = currentUser?.role !== "admin";
+    $("#user-dashboard-open").hidden = !signedIn || currentUser?.role === "admin";
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
 }
 async function refreshAuthUI() {
