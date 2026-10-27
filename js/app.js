@@ -349,8 +349,8 @@ async function openSavedExamResult(id) {
     }
 }
 function userDashboardPage(){
-  return pageHeading("Dashboard","Người dùng đang online")+
-    '<section class="dashboard-panel"><div class="dashboard-panel-head"><div><h2>Ai đang online?</h2><p class="muted">Chỉ hiển thị người dùng thường; tài khoản Admin được ẩn khỏi danh sách.</p></div><button class="button secondary small" data-action="refresh-online-users">Làm mới</button></div><p id="user-online-count" class="muted">Đang tải...</p><div id="user-online-list" class="online-user-list"><p class="muted">Đang kiểm tra trạng thái...</p></div></section>';
+  return pageHeading("Dashboard","Trạng thái hoạt động của người dùng")+
+    '<section class="dashboard-panel"><div class="dashboard-panel-head"><div><h2>Người dùng khác</h2><p class="muted">Danh sách chỉ gồm tài khoản người dùng thường. Admin và tiến trình học của người khác không được hiển thị.</p></div><button class="button secondary small" data-action="refresh-online-users">Làm mới</button></div><p id="user-online-count" class="muted">Đang tải...</p><div class="online-user-list-shell"><div id="user-online-list" class="online-user-list"><p class="muted">Đang kiểm tra trạng thái...</p></div></div></section>';
 }
 async function loadUserOnlineDashboard(){
   const count=$("#user-online-count"),list=$("#user-online-list");
@@ -358,19 +358,22 @@ async function loadUserOnlineDashboard(){
   try{
     const response=await fetch("/api/presence/online-users",{credentials:"same-origin",cache:"no-store"});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tải được danh sách online.");
+    if(!response.ok)throw new Error(data.error||"Không tải được danh sách người dùng.");
     if(state.route!=="user-dashboard")return;
     const users=Array.isArray(data.users)?data.users:[];
-    count.textContent=users.length+" người dùng đang online";
-    if(!users.length){list.innerHTML='<p class="muted">Hiện chưa có người dùng nào khác đang online.</p>';return;}
+    const onlineCount=users.filter(user=>user.status==="online").length;
+    const offlineCount=users.length-onlineCount;
+    count.textContent=users.length+" người dùng khác · "+onlineCount+" online · "+offlineCount+" offline";
+    if(!users.length){list.innerHTML='<p class="muted">Chưa có người dùng thường nào khác đăng ký.</p>';return;}
     list.replaceChildren(...users.map(user=>{
-      const item=document.createElement("article");item.className="online-user-item";
-      const dot=document.createElement("span");dot.className="online-indicator";dot.setAttribute("aria-label","Đang online");
-      const name=document.createElement("strong");name.textContent=user.name||"Người dùng";
-      const status=document.createElement("span");status.className="online-user-label";status.textContent="Đang online";
+      const online=user.status==="online";
+      const item=document.createElement("article");item.className="online-user-item "+(online?"is-online":"is-offline");
+      const dot=document.createElement("span");dot.className="online-indicator "+(online?"is-online":"is-offline");dot.setAttribute("aria-hidden","true");
+      const name=document.createElement("strong");name.className="online-user-name";name.textContent=user.name||"Người dùng";
+      const status=document.createElement("span");status.className="online-user-label "+(online?"is-online":"is-offline");status.textContent=online?"Online":"Offline";
       item.append(dot,name,status);return item;
     }));
-  }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách online.";}
+  }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách người dùng.";}
 }
 async function loadSuperAdminMonitoring(){
   if(!["admin","user-progress-detail"].includes(state.route)||Number(currentUser?.adminLevel)<2)return;

@@ -222,11 +222,16 @@ app.post("/api/presence/heartbeat",requireSameOrigin,requireAuth,(req,res)=>{
   res.json({ok:true,lastSeenAt:now});
 });
 app.get("/api/presence/online-users",requireAuth,(req,res)=>{
-  const now=Date.now();
-  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
-  const users=db.prepare("SELECT u.id,u.name,p.last_seen_at AS lastSeenAt FROM user_presence p JOIN users u ON u.id=p.user_id WHERE u.role='user' AND p.user_id<>? AND p.last_seen_at>=? ORDER BY u.name COLLATE NOCASE LIMIT 200").all(req.user.id,now-3*60*1000);
+  const now=Date.now(),onlineWindow=3*60*1000;
+  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-24*60*60*1000);
+  const users=db.prepare("SELECT u.id,u.name,p.last_seen_at AS lastSeenAt FROM users u LEFT JOIN user_presence p ON p.user_id=u.id WHERE u.role='user' AND u.id<>? ORDER BY u.name COLLATE NOCASE LIMIT 500").all(req.user.id);
   res.setHeader("Cache-Control","private, no-store");
-  res.json({users:users.map(user=>({id:user.id,name:user.name,lastSeenAt:user.lastSeenAt}))});
+  res.json({users:users.map(user=>({
+    id:Number(user.id),
+    name:user.name,
+    status:Number(user.lastSeenAt||0)>=now-onlineWindow?"online":"offline",
+    lastSeenAt:user.lastSeenAt==null?null:Number(user.lastSeenAt)
+  }))});
 });
 app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
   const now=Date.now();
