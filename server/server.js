@@ -308,7 +308,7 @@ function deleteAccountPermanently(id){
 app.get("/api/admin/users",requireAdmin,(req,res)=>{
   const users=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT 500").all();
   const total=db.prepare("SELECT COUNT(*) AS count FROM users").get().count;
-  res.json({users:users.map(publicUser),total,isSuperAdmin:Number(req.user.adminLevel)>=2});
+  res.json({users:users.map(publicUser),total,currentUserId:req.user.id,isSuperAdmin:Number(req.user.adminLevel)>=2});
 });
 
 // Only the configured super admin can appoint subordinate admins.
