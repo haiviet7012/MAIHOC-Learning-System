@@ -295,26 +295,34 @@ app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,as
   try{
     // Check SMTP before looking up the account, so users can see configuration/connectivity failures
     // without disclosing whether a given email address is registered.
+    // Validate SMTP configuration/connectivity before issuing any reset code.
     const {transporter}=createPasswordResetTransport();
     await transporter.verify();
+
     const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
-    const now=Date.now();
-    if(user){
-      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?").run(user.id,now);
-      const code=String(crypto.randomInt(0,1000000)).padStart(6,"0");
-      const tokenHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
-      db.prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?)")
-        .run(user.id,tokenHash,now+10*60*1000,0,now);
-      try{await sendPasswordResetEmail(user.email,code);}
-      catch(error){
-        db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-        console.error("Password reset email failed:",error.message);
-      }
+    // Keep the same generic response for registered and unknown addresses.
+    if(!user){
+      return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
     }
-    res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
+
+    const now=Date.now();
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?").run(user.id,now);
+    const code=String(crypto.randomInt(0,1000000)).padStart(6,"0");
+    const tokenHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
+    db.prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?)")
+      .run(user.id,tokenHash,now+10*60*1000,0,now);
+    try{
+      await sendPasswordResetEmail(user.email,code);
+    }catch(error){
+      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
+      console.error("Password reset email failed:",error.message);
+      // Do not return a misleading generic success when delivery failed.
+      return res.status(502).json({error:"Máy chủ chưa gửi được email xác minh. Hãy kiểm tra cấu hình SMTP trong server/.env và xem thông báo lỗi ở cửa sổ chạy npm start."});
+    }
+    return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
   }catch(error){
     console.error("Password reset request failed:",error.message);
-    res.status(500).json({error:"Chưa thể gửi mã xác minh lúc này. Hãy thử lại sau."});
+    res.status(500).json({error:"Chưa thể gửi mã xác minh. Hãy kiểm tra SMTP_HOST, SMTP_PORT, SMTP_USER và SMTP_PASS trong server/.env; lỗi chi tiết được ghi ở cửa sổ chạy npm start."});
   }
 });
 
