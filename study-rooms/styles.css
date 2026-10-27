@@ -1,0 +1,69 @@
+/* Study Rooms module */
+.study-room-lobby,.study-room-live{max-width:1440px;margin:0 auto}
+.study-room-heading,.study-room-live-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:18px 0 26px}
+.study-room-heading h1,.study-room-live-head h1{margin:5px 0 8px;font-size:clamp(28px,3vw,40px)}
+.study-room-heading .muted,.study-room-live-head .muted{margin:0;max-width:780px}
+.study-room-create-panel{padding:20px;margin:0 0 24px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:var(--shadow)}
+.study-room-create-panel form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.study-room-create-panel label{display:grid;gap:7px;font-size:13px;font-weight:700}
+.study-room-create-panel input,.study-room-chat-form textarea{width:100%;padding:12px;border-radius:11px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit}
+.study-room-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px}
+.study-room-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:22px 0 14px}
+.study-room-toolbar h2{margin:0;font-size:21px}
+.study-room-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.study-room-card,.study-room-empty{padding:20px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:var(--shadow);min-width:0}
+.study-room-card h3{font-size:20px;margin:18px 0 5px;overflow-wrap:anywhere}
+.study-room-card p{font-size:13px}
+.study-room-card-top,.study-room-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.study-room-lock,.study-room-count,.study-room-roomid{font-size:11px;color:var(--muted);font-weight:700}
+.study-room-count{padding:5px 8px;border-radius:99px;background:var(--surface-2)}
+.study-room-card-bottom{margin-top:20px}
+.study-room-roomid strong{font-size:13px;color:var(--text);letter-spacing:1px}
+.study-room-empty{grid-column:1/-1;text-align:center;padding:42px 20px}
+.study-room-empty-icon{font-size:38px;color:var(--primary)}
+.study-room-admin-notice,.study-room-admin-banner{padding:11px 14px;border:1px solid #d7a347;border-radius:12px;background:color-mix(in srgb,#e6a23c 12%,var(--surface));color:var(--text);font-size:13px}
+.study-room-privacy-note{margin-top:22px;color:var(--muted);font-size:12px}
+.study-room-error{padding:10px 12px;margin:12px 0;background:color-mix(in srgb,#c43c48 10%,var(--surface));border:1px solid #c43c48;border-radius:10px;color:var(--danger);font-size:13px}
+.study-room-live-head{align-items:center}
+.study-room-live-head-actions{display:flex;gap:8px;flex-wrap:wrap}
+.study-room-workspace{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:stretch}
+.study-room-stage,.study-room-chat{border:1px solid var(--border);border-radius:18px;background:var(--surface);overflow:hidden;min-width:0}
+.study-room-stage{padding:14px}
+.study-room-video-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.study-room-video-tile{position:relative;min-height:170px;aspect-ratio:16/10;background:#091322;border-radius:14px;overflow:hidden}
+.study-room-video-tile video{display:block;width:100%;height:100%;object-fit:cover}
+.study-room-video-label{position:absolute;bottom:0;left:0;right:0;padding:26px 10px 9px;background:linear-gradient(transparent,#000b);color:#fff;font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.study-room-video-label span{font-weight:400;opacity:.8}
+.study-room-video-tile.is-camera-off video{opacity:.08}
+.study-room-camera-off{position:absolute;inset:0;display:grid;place-items:center;color:#e9eef7;font-size:12px}
+.study-room-controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;padding:18px 0;border-bottom:1px solid var(--border)}
+.study-room-control{display:flex;align-items:center;gap:8px;padding:11px 15px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.study-room-control.is-off,.study-room-control.danger{background:#a52d39;color:#fff;border-color:#a52d39}
+.study-room-control.is-raised{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+.study-room-participant-panel{padding:18px 2px 4px}
+.study-room-participant-panel h3{margin:0 0 12px;font-size:15px}
+.study-room-member{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border)}
+.study-room-avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--surface-2);color:var(--primary);font-weight:700;flex:none}
+.study-room-member-name{display:flex;flex:1;flex-wrap:wrap;gap:4px;align-items:center;min-width:0;font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.study-room-member-status{font-size:12px;white-space:nowrap}
+.study-room-member.is-raised .study-room-avatar{background:#ffe3a1;color:#6a4600}
+.study-room-admin-chip{padding:2px 6px;border-radius:6px;background:#fff0ce;color:#7a4c00;font-size:10px;font-weight:800}
+.study-room-chat{display:flex;flex-direction:column;min-height:490px}
+.study-room-chat-heading{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--border)}
+.study-room-chat-heading h2{margin:0;font-size:16px}
+.study-room-chat-heading span{font-size:10px;color:#1e8a58;font-weight:800}
+.study-room-chat-messages{display:flex;flex:1;flex-direction:column;gap:12px;padding:14px;overflow-y:auto;max-height:620px;min-height:240px}
+.study-room-message{max-width:95%;align-self:flex-start;padding:10px 12px;border-radius:12px;background:var(--surface-2);overflow-wrap:anywhere}
+.study-room-message.is-self{align-self:flex-end;background:color-mix(in srgb,var(--accent) 14%,var(--surface-2))}
+.study-room-message-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:var(--muted)}
+.study-room-message-meta strong{color:var(--text)}
+.study-room-message-meta time{margin-left:auto}
+.study-room-message p{margin:5px 0 0;font-size:13px;white-space:pre-wrap}
+.study-room-chat-image-link img{display:block;max-width:210px;max-height:210px;margin-top:8px;object-fit:contain;border-radius:8px}
+.study-room-chat-form{padding:12px;border-top:1px solid var(--border)}
+.study-room-chat-form textarea{resize:vertical;min-height:60px;font-size:13px}
+.study-room-chat-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+.study-room-image-button{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;color:var(--primary)}
+.study-room-image-button input{width:1px;height:1px;opacity:0;position:absolute}
+@media(max-width:1050px){.study-room-workspace{grid-template-columns:minmax(0,1fr) 300px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.study-room-workspace{grid-template-columns:1fr}.study-room-grid{grid-template-columns:1fr}.study-room-create-panel form{grid-template-columns:1fr}.study-room-live-head,.study-room-heading{flex-direction:column;align-items:stretch}.study-room-live-head-actions{width:100%}.study-room-chat{min-height:420px}.study-room-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.study-room-video-tile{min-height:120px}.study-room-control{padding:10px 12px}.study-room-live-head h1{font-size:27px}}
