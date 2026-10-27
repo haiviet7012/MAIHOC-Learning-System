@@ -319,7 +319,7 @@ document.addEventListener("click",event=>{
 });
 document.addEventListener("input",event=>{
   const item=event.target.closest("[data-solution-item]");if(!item)return;
-  if(item.dataset.decision){delete item.dataset.decision;const label=item.querySelector("[data-solution-decision-label]");if(label)label.textContent="Đã sửa nội dung; xác nhận lại Đúng / Sai";item.querySelectorAll("[data-solution-decision]").forEach(button=>button.classList.remove("is-selected"));}
+  if(item.dataset.decision){delete item.dataset.decision;const label=item.querySelector("[data-solution-decision-label]");if(label){label.textContent="Đã sửa nội dung; xác nhận lại Đúng / Sai";label.classList.remove("decision-status-correct","decision-status-incorrect");}const controls=item.querySelector(".solution-review-controls");controls?.classList.remove("decision-confirmed-correct","decision-confirmed-incorrect");item.querySelectorAll("[data-solution-decision]").forEach(button=>button.classList.remove("is-selected","decision-button-correct","decision-button-incorrect"));}
   setSolutionReviewReady();
 });
 async function loadUploadAnswerManager(){
