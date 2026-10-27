@@ -11,7 +11,7 @@ import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js";
 const view = $("#view");
-const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
+const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
 let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
@@ -299,16 +299,54 @@ function examPage() {
     const waitingForSource = (isPdf || isText || isDocx) && !questions.length;
     const summary = questions.length ? questionSummary(questions) : waitingForSource ? "\u0110ang \u0111\u1ecdc c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p\u2026" : questionSummary(questions);
     return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} \u00b7 ${isTimedExam ? "L\u00e0m b\u00e0i trong t\u1ed1i \u0111a 90 ph\u00fat" : "L\u00e0m b\u00e0i t\u1ef1 luy\u1ec7n"}</div></div><div id="timer" class="timer" ${isTimedExam ? "" : "hidden"}>90:00</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
-}function resultPage() {
-    const d = findDoc(state.examDocId);
-    const answered = Object.values(state.answers).filter(value => String(value).trim()).length;
+}function formatExamAnswer(value) {
+    if (Array.isArray(value)) return value.map(item => String(item ?? "").trim()).filter(Boolean).join(" / ") || "—";
+    if (value && typeof value === "object") return Object.entries(value).map(([key,item]) => key + ": " + formatExamAnswer(item)).join(" · ") || "—";
+    const text = String(value ?? "").trim();
+    return text || "—";
+}
+function resultPage() {
+    const saved = state.route === "saved-result" ? state.savedExamResult : null;
+    const d = saved ? { title: saved.title, subject: saved.subject, grade: saved.grade, category: saved.category } : findDoc(state.examDocId);
+    const result = saved ? saved.result : state.gradeResult;
+    const answers = saved ? (saved.answers || {}) : state.answers;
+    const answered = Object.values(answers).filter(value => String(value).trim()).length;
     const layout = assessmentLayoutFor(d);
-    const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(state.answers).length;
-    const result = state.gradeResult;
-    const details = result?.graded
-        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent}% \u00b7 ${result.correctCount}/${result.questionCount} ${"c\u00e2u \u0111\u00fang"} \u00b7 ${result.earnedPoints}/${result.totalPoints} ${"\u0111i\u1ec3m"}</p><div class="grade-details">${result.results.map(item => `<div class="grade-detail"><span>${"C\u00e2u"} ${escapeHTML(item.question)}</span><strong class="${item.correct ? "is-correct" : "is-wrong"}">${item.correct ? "\u0110\u00fang" : "Ch\u01b0a \u0111\u00fang"} \u00b7 ${item.earnedPoints}/${item.totalPoints}</strong></div>`).join("")}</div>`
-        : `<div class="result-score">—/${gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "B\u00e0i \u0111\u00e3 n\u1ed9p. Ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n m\u00e1y \u0111\u1ecdc \u0111\u01b0\u1ee3c \u0111\u1ec3 ch\u1ea5m t\u1ef1 \u0111\u1ed9ng.")}</p>`;
-    return `${pageHeading("K\u1ebft qu\u1ea3 b\u00e0i l\u00e0m", d?.title || "\u0110\u1ec1 thi")}<div class="result-panel"><span class="pill">\u0110\u00c3 N\u1ed8P B\u00c0I</span>${details}<h2>${result?.graded ? "Chi ti\u1ebft ch\u1ea5m \u0111i\u1ec3m" : "T\u00ecnh tr\u1ea1ng b\u00e0i l\u00e0m"}</h2>${result?.graded?"":`<p class="muted">S\u1ed1 c\u00e2u \u0111\u00e3 tr\u1ea3 l\u1eddi: ${answered}/${answerableCount}</p>`}<div class="modal-actions"><button class="button secondary" data-route="exam-select">Ch\u1ecdn \u0111\u1ec1 kh\u00e1c</button><button class="button primary" data-route="subject">V\u1ec1 m\u00f4n To\u00e1n</button></div></div>`;
+    const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    const detailRows = rows.map(item => {
+        const statements = Array.isArray(item.statements) ? item.statements : null;
+        const userAnswer = item.userAnswer ?? (statements ? statements.map(row => String(row.statement) + ": " + formatExamAnswer(row.userAnswer)).join(" · ") : "—");
+        const expectedAnswer = item.expectedAnswer ?? (statements ? statements.map(row => String(row.statement) + ": " + formatExamAnswer(row.expectedAnswer)).join(" · ") : "—");
+        return "<tr><td>" + escapeHTML(item.question) + "</td><td>" + escapeHTML(formatExamAnswer(userAnswer)) + "</td><td>" + escapeHTML(formatExamAnswer(expectedAnswer)) + "</td><td><strong class=\"" + (item.correct ? "is-correct" : "is-wrong") + "\">" + (item.correct ? "Đúng" : "Chưa đúng") + "</strong></td><td>" + escapeHTML(item.earnedPoints ?? 0) + "/" + escapeHTML(item.totalPoints ?? 0) + "</td></tr>";
+    }).join("");
+    const hasDetails = detailRows.length > 0;
+    const scoreBlock = result?.graded
+        ? "<div class=\"result-score\">" + Number(result.score ?? result.earnedPoints).toFixed(2) + "/" + (result.scale ?? result.totalPoints) + "</div><p class=\"muted\">" + (result.percent ?? 0) + "% · " + (result.correctCount ?? 0) + "/" + (result.questionCount ?? rows.length) + " câu đúng · " + (result.earnedPoints ?? result.score ?? 0) + "/" + (result.totalPoints ?? result.scale ?? 0) + " điểm</p>"
+        : "<div class=\"result-score\">—/" + (result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)) + "</div><p class=\"muted\">" + escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.") + "</p>";
+    const table = hasDetails
+        ? "<div class=\"grade-details-table-wrap\"><table class=\"grade-details-table\"><thead><tr><th>Câu</th><th>Đáp án bạn chọn</th><th>Đáp án đúng</th><th>Trạng thái</th><th>Điểm</th></tr></thead><tbody>" + detailRows + "</tbody></table></div>"
+        : (!result?.graded ? "<p class=\"muted\">Số câu đã trả lời: " + answered + "/" + answerableCount + "</p>" : "");
+    const owner = saved?.userName ? "<p class=\"muted tiny\">Bài làm của " + escapeHTML(saved.userName) + (saved.userEmail ? " (" + escapeHTML(saved.userEmail) + ")" : "") + (saved.createdAt ? " · " + escapeHTML(saved.createdAt) : "") + "</p>" : "";
+    const actions = saved
+        ? (currentUser?.role === "admin" ? "<button class=\"button secondary\" data-route=\"admin\">Quay lại tiến trình</button>" : "<button class=\"button secondary\" data-route=\"home\">Về trang học tập</button>")
+        : "<button class=\"button secondary\" data-route=\"exam-select\">Chọn đề khác</button><button class=\"button primary\" data-route=\"subject\">Về môn Toán</button>";
+    return pageHeading("Kết quả bài làm", d?.title || "Đề thi") + "<div class=\"result-panel\"><span class=\"pill\">ĐÃ NỘP BÀI</span>" + owner + scoreBlock + "<h2>" + (hasDetails ? "Đối chiếu đáp án từng câu" : (result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm")) + "</h2>" + table + "<div class=\"modal-actions\">" + actions + "</div></div>";
+}
+
+async function openSavedExamResult(id) {
+    try {
+        const endpoint = currentUser?.role === "admin"
+            ? "/api/admin/exam-results/" + encodeURIComponent(id)
+            : "/api/exam-results/" + encodeURIComponent(id);
+        const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Không tải được kết quả bài làm.");
+        state.savedExamResult = data;
+        go("saved-result");
+    } catch (error) {
+        toast(error.message || "Không tải được kết quả bài làm.", "error");
+    }
 }
 function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
@@ -372,7 +410,7 @@ function render() {
         view.innerHTML = readerPage();
     else if (state.route === "exam")
         view.innerHTML = examPage();
-    else if (state.route === "result")
+    else if (state.route === "result" || state.route === "saved-result")
         view.innerHTML = resultPage();
     else if (state.route === "admin")
         view.innerHTML = adminPage();
@@ -693,6 +731,10 @@ document.addEventListener("click", async (e) => {
         }
         if (a === "evaluate") {
             doEvaluate(action.dataset.id);
+            return;
+        }
+        if (a === "view-exam-result") {
+            openSavedExamResult(action.dataset.id);
             return;
         }
         if (a === "submit-exam") {
