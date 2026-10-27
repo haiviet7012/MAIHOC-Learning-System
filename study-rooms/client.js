@@ -90,10 +90,12 @@ export function mountStudyRooms(container, user) {
       members = joined.members || [];
       lastEventId = Number(joined.lastEventId) || 0;
       renderRoom(joined.messages || []);
+      // Start room heartbeats before the browser opens the device permission prompt.
+      poll();
       await startMedia();
+      await syncLocalTracksToPeers();
       await sendEvent("media-state", { micOn, cameraOn });
       await refreshMembersAndConnect();
-      poll();
     } catch (error) { showError(error.message); }
   }
   async function startMedia() {
@@ -262,6 +264,18 @@ export function mountStudyRooms(container, user) {
       if (["failed", "closed"].includes(pc.connectionState)) closePeer(member.participantId);
     };
     return entry;
+  }
+  async function syncLocalTracksToPeers() {
+    for (const entry of peers.values()) {
+      for (const track of localStream?.getTracks() || []) {
+        const sender = entry.pc.getSenders().find(item => item.track?.kind === track.kind)
+          || entry.pc.getTransceivers().find(item => item.receiver.track.kind === track.kind)?.sender;
+        if (sender && sender.track !== track) {
+          try { await sender.replaceTrack(track); }
+          catch (error) { console.warn("Could not attach local media track:", error.message); }
+        }
+      }
+    }
   }
   async function refreshMembersAndConnect() {
     renderMemberList();
