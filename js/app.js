@@ -798,6 +798,15 @@ document.addEventListener("click", async (e) => {
         if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
         if(a==="refresh-superadmin-monitoring"){loadSuperAdminMonitoring();return;}
         if(a==="view-user-progress"){
+            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
+            const id=Number(action.dataset.userId);
+            state.selectedProgressUser={id,name:"",email:""};
+            go("user-progress-detail");
+            loadUserProgressDetail(id);
+            return;
+        }
+        if(a==="back-user-progress"){go("admin");return;}
+        if(a==="view-user-progress"){
             if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.", "error");return;}
             state.selectedProgressUser={id:Number(action.dataset.userId),name:"Người dùng",email:""};
             go("user-progress-detail");
