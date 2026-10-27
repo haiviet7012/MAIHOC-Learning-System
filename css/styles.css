@@ -495,3 +495,18 @@ body{background-color:var(--bg)}
 @media(prefers-reduced-motion:reduce){
   body{transition:none}
 }
+
+
+/* The main page frame must not paint a focus ring or border during reload/navigation. */
+html,body,#app,.app-shell,#view,.view{
+  border:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+}
+#view:focus,#view:focus-visible,.view:focus,.view:focus-visible{
+  outline:0!important;
+  box-shadow:none!important;
+}
+html,body,#app,.app-shell,#view,.view{
+  background-color:var(--bg);
+}
