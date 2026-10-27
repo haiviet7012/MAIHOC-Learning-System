@@ -197,7 +197,7 @@ function writeCookie(res, token, maxAgeSeconds) {
 
 export function publicUser(user) {
   if (!user) return null;
-  return { id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.created_at };
+  return { id: user.id, name: user.name, email: user.email, role: user.role, adminLevel: Number(user.admin_level || 0), createdAt: user.created_at };
 }
 
 export async function hashPassword(password) {
@@ -310,9 +310,12 @@ export async function createInitialAdmin() {
   if (!email || !password) throw new Error("Cần cấu hình cả ADMIN_EMAIL và ADMIN_PASSWORD để tạo Admin ban đầu.");
   if (password.length < 12) throw new Error("ADMIN_PASSWORD cần có ít nhất 12 ký tự.");
   const existing = db.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE").get(email);
-  if (existing) return;
+  if (existing) {
+    db.prepare("UPDATE users SET role='admin', admin_level=2 WHERE id=?").run(existing.id);
+    return;
+  }
   const passwordHash = await hashPassword(password);
-  db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,'admin')").run(name, email, passwordHash);
+  db.prepare("INSERT INTO users (name,email,password_hash,role,admin_level) VALUES (?,?,?,'admin',2)").run(name, email, passwordHash);
   console.log("Đã tạo tài khoản Admin ban đầu từ cấu hình môi trường.");
 }
 
