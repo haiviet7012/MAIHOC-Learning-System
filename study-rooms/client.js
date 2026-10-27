@@ -40,14 +40,8 @@ export function mountStudyRooms(container, user) {
       const data = await api("/api/study-rooms");
       if (disposed || currentRoom) return;
       const ownRoom = (data.rooms || []).find(room => room.creatorId === user?.id);
-      // The lobby timer must update only the room list. Rebuilding the whole
-      // lobby every five seconds closes the create form while a user is typing.
       const existingLobby = container.querySelector(".study-room-lobby");
-      const existingPanel = container.querySelector("[data-room-create-panel]");
-      const panelWasOpen = Boolean(existingPanel && !existingPanel.hidden);
-      const oldName = existingPanel?.querySelector('input[name="name"]')?.value || "";
-      const oldPassword = existingPanel?.querySelector('input[name="password"]')?.value || "";
-      if (existingLobby && !currentRoom) {
+      if (existingLobby) {
         updateLobbyRoomList(data.rooms || [], ownRoom);
         const button = container.querySelector("[data-room-create-toggle]");
         if (button) {
@@ -60,17 +54,10 @@ export function mountStudyRooms(container, user) {
           const notice = document.createElement("div");
           notice.className = "study-room-owner-active";
           notice.dataset.roomOwnerActive = "true";
-          notice.innerHTML = `<strong>Bạn đang là chủ phòng: ${escapeHtml(ownRoom.name)}</strong><span>Đóng phòng hiện tại để tạo phòng mới.</span><button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(ownRoom.id)}">Đóng phòng hiện tại</button>`;
-          existingPanel?.before(notice);
+          notice.innerHTML = `<strong>Phòng bạn tạo: ${escapeHtml(ownRoom.name)}</strong><span>Đóng phòng hiện tại để tạo phòng mới.</span><button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(ownRoom.id)}">Đóng phòng hiện tại</button>`;
+          existingLobby.insertBefore(notice, existingLobby.querySelector("[data-room-create-panel]"));
           bindLobbyClose(notice);
         } else if (!ownRoom && ownerNotice) ownerNotice.remove();
-        if (existingPanel) {
-          existingPanel.hidden = !panelWasOpen;
-          const nameInput = existingPanel.querySelector('input[name="name"]');
-          const passwordInput = existingPanel.querySelector('input[name="password"]');
-          if (nameInput && !panelWasOpen) nameInput.value = oldName;
-          if (passwordInput && !panelWasOpen) passwordInput.value = oldPassword;
-        }
       } else {
         drawLobby(data.rooms || [], Boolean(data.isAdmin), ownRoom);
       }
@@ -589,8 +576,6 @@ export function mountStudyRooms(container, user) {
         const data = await post("/api/study-rooms", { name: values.get("name"), password: values.get("password") });
         await enterRoom(data.roomId, String(values.get("password") || ""), false);
       } catch (error) {
-        showError(error.message);
-        await loadRooms();
         showError(error.message);
       }
       finally { if (button) button.disabled = false; }
