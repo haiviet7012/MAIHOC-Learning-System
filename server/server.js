@@ -272,9 +272,9 @@ function passwordResetRateLimit(req,res,next){
 
 app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,async(req,res)=>{
   const email=String(req.body?.email||"").trim().toLowerCase();
-  if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:"Vui lòng nhập địa chỉ Gmail hợp lệ."});
+  if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:"Vui lòng nhập địa chỉ email hợp lệ."});
   try{
-    const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE AND role='user'").get(email);
+    const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     const now=Date.now();
     if(user){
       db.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?").run(user.id,now);
@@ -302,7 +302,7 @@ app.post("/api/auth/reset-password",requireSameOrigin,async(req,res)=>{
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
   if(!/^\d{6}$/.test(code))return res.status(400).json({error:"Mã xác minh phải gồm 6 chữ số."});
   if(password.length<10||password.length>128)return res.status(400).json({error:"Mật khẩu mới phải dài từ 10 đến 128 ký tự."});
-  const user=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND role='user'").get(email);
+  const user=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(email);
   if(!user)return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});
   const reset=db.prepare("SELECT id,token_hash,expires_at,attempts FROM password_reset_tokens WHERE user_id=? ORDER BY created_at DESC LIMIT 1").get(user.id);
   if(!reset||Number(reset.expires_at)<Date.now()||Number(reset.attempts)>=5){
@@ -326,7 +326,7 @@ app.post("/api/auth/reset-password",requireSameOrigin,async(req,res)=>{
       db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
       db.prepare("DELETE FROM user_presence WHERE user_id=?").run(user.id);
     })();
-    res.clearCookie("maihoc_session",{path:"/"});
+    if(req.user?.id===user.id)res.clearCookie("maihoc_session",{path:"/"});
     res.json({ok:true,message:"Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới."});
   }catch(error){
     console.error("Password reset completion failed:",error.message);
