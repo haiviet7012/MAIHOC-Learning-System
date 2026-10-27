@@ -300,19 +300,42 @@ app.get("/api/admin/users",requireAdmin,(req,res)=>{
 });
 
 // Only the configured super admin can appoint subordinate admins.
+// Existing user accounts are promoted in place; the account password and learning data remain unchanged.
 app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=>{
-  const name=String(req.body?.name||"").trim();
   const email=String(req.body?.email||"").trim().toLowerCase();
+  const name=String(req.body?.name||"").trim();
   const password=String(req.body?.password||"");
-  if(name.length<2||name.length>80)return res.status(400).json({error:"Tên admin cần từ 2 đến 80 ký tự."});
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
-  if(password.length<12||password.length>128)return res.status(400).json({error:"Mật khẩu admin cần từ 12 đến 128 ký tự."});
-  if(db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(email))return res.status(409).json({error:"Email này đã tồn tại."});
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
+
+  const existing=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE").get(email);
+  if(existing){
+    if(Number(existing.admin_level)>=2)return res.status(409).json({error:"Email này thuộc Admin cấp cao nhất; không thể thêm lại."});
+    if(existing.role==="admin"&&Number(existing.admin_level)>=1)return res.status(409).json({error:"Tài khoản này đã là Admin cấp dưới."});
+    const promote=db.transaction(()=>{
+      db.prepare("UPDATE users SET role='admin',admin_level=1 WHERE id=? AND admin_level<2").run(existing.id);
+      const updated=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(existing.id);
+      notifyAdmins("admin_promoted","Đã nâng quyền tài khoản thành Admin cấp dưới",`Tài khoản ${updated.name} (${updated.email}) đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.`,"admin");
+      return updated;
+    });
+    const updated=promote();
+    return res.json({ok:true,action:"promoted",user:publicUser(updated),message:"Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."});
+  }
+
+  if(name.length<2||name.length>80)return res.status(400).json({error:"Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự."});
+  if(password.length<12||password.length>128)return res.status(400).json({error:"Với email chưa có tài khoản, mật khẩu tạm thời cần từ 12 đến 128 ký tự."});
   const passwordHash=await hashPassword(password);
-  const result=db.prepare("INSERT INTO users(name,email,password_hash,role,admin_level) VALUES(?,?,?,'admin',1)").run(name,email,passwordHash);
+  let result;
+  try{
+    result=db.prepare("INSERT INTO users(name,email,password_hash,role,admin_level) VALUES(?,?,?,'admin',1)").run(name,email,passwordHash);
+  }catch(error){
+    if(String(error.code||"").includes("CONSTRAINT")){
+      return res.status(409).json({error:"Tài khoản vừa được tạo hoặc thay đổi đồng thời. Hãy tải lại danh sách rồi thử lại."});
+    }
+    throw error;
+  }
   const created=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(result.lastInsertRowid);
-  notifyAdmins("admin_created","Đã tạo Admin cấp dưới",`Tài khoản ${name} (${email}) đã được tạo.`,"admin");
-  res.status(201).json({ok:true,user:publicUser(created)});
+  notifyAdmins("admin_created","Đã tạo Admin cấp dưới",`Tài khoản ${name} (${email}) đã được tạo mới.`,"admin");
+  res.status(201).json({ok:true,action:"created",user:publicUser(created),message:"Đã tạo tài khoản Admin cấp dưới mới."});
 });
 
 // A subordinate admin may only request deletion. No account is deleted until super-admin approval.
