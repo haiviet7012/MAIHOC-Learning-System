@@ -264,8 +264,15 @@ body.exam-open{overflow:hidden}
 .reader-fullscreen .reader-main{display:flex;flex-direction:column}
 .reader-fullscreen .document-text{flex:1;min-height:0;max-height:none;overflow:auto}
 .document-text{max-height:70vh;overflow:auto}
-.answer-key-modal{width:80vw;max-width:1600px;max-height:92vh}
-@media(max-width:900px){.answer-key-modal{width:calc(100% - 28px)}}
+.answer-key-modal{width:calc(100vw - 36px);max-width:none;height:calc(100vh - 36px);max-height:calc(100vh - 36px);margin:auto;padding:26px;overflow:auto}
+.answer-key-modal::backdrop{background:#07172be0;backdrop-filter:blur(4px)}
+@media(max-width:900px){.answer-key-modal{width:calc(100vw - 20px);height:calc(100vh - 20px);max-height:calc(100vh - 20px);padding:18px}}
+/* The approved-document library stays compact and scrolls within its own panel. */
+#approved-documents .admin-approved-documents-scroll{max-height:clamp(390px,68vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+#approved-documents .admin-approved-documents-scroll .admin-table{min-width:760px}
+#approved-documents .admin-approved-documents-scroll .admin-table thead th{position:sticky;top:0;z-index:2}
+#approved-documents .admin-approved-documents-scroll .admin-table tbody tr{height:58px}
+@media(max-width:620px){#approved-documents .admin-approved-documents-scroll{max-height:65vh}#approved-documents .admin-approved-documents-scroll .admin-table tbody tr{height:auto;min-height:52px}}
 /* Keep the admin progress table to about ten rows; scroll within the panel for more. */
 .admin-progress-scroll{max-height:clamp(390px,68vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .admin-progress-scroll .admin-table{min-width:980px}
