@@ -278,7 +278,7 @@ app.post("/api/account/request-code",requireSameOrigin,requireAuth,async(req,res
   const purpose=String(req.body?.purpose||"");
   const targetEmail=String(req.body?.email||"").trim().toLowerCase();
   if(!["change-email","delete-account"].includes(purpose))return res.status(400).json({error:"Loại xác minh không hợp lệ."});
-  if(purpose==="change-email"&&(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(targetEmail)||targetEmail.length>254))return res.status(400).json({error:"Gmail mới không hợp lệ."});
+  if(purpose==="change-email"&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)||targetEmail.length>254))return res.status(400).json({error:"Gmail mới không hợp lệ."});
   if(purpose==="change-email"){const existing=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(targetEmail);if(existing&&Number(existing.id)!==Number(req.user.id))return res.status(409).json({error:"Gmail này đã được tài khoản khác sử dụng."});}
   const key=req.user.id+":"+purpose,remaining=30000-(Date.now()-(accountActionCooldowns.get(key)||0));
   if(remaining>0)return res.status(429).json({error:"Vui lòng chờ "+Math.ceil(remaining/1000)+" giây trước khi gửi mã mới.",retryAfter:Math.ceil(remaining/1000)});
@@ -298,7 +298,7 @@ app.post("/api/account/change-password",requireSameOrigin,requireAuth,async(req,
 });
 app.post("/api/account/confirm-action",requireSameOrigin,requireAuth,async(req,res)=>{
   const purpose=String(req.body?.purpose||""),code=String(req.body?.code||"").trim();
-  if(!["change-email","delete-account"].includes(purpose)||!/^\\d{6}$/.test(code))return res.status(400).json({error:"Mục đích hoặc mã xác minh không hợp lệ."});
+  if(!["change-email","delete-account"].includes(purpose)||!/^\d{6}$/.test(code))return res.status(400).json({error:"Mục đích hoặc mã xác minh không hợp lệ."});
   const token=db.prepare("SELECT target_email,token_hash,expires_at,attempts FROM account_action_tokens WHERE user_id=? AND purpose=?").get(req.user.id,purpose);
   if(!token||Number(token.expires_at)<Date.now()||Number(token.attempts)>=5){db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});}
   const supplied=crypto.createHash("sha256").update(String(req.user.id)+":"+purpose+":"+token.target_email+":"+code).digest("hex"),a=Buffer.from(supplied,"hex"),b=Buffer.from(token.token_hash,"hex");
