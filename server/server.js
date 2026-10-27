@@ -305,7 +305,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
   const email=String(req.body?.email||"").trim().toLowerCase();
   const name=String(req.body?.name||"").trim();
   const password=String(req.body?.password||"");
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
 
   const existing=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE").get(email);
   if(existing){
