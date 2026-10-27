@@ -16,7 +16,9 @@ async function request(url, options={}) {
     const fallback=contentType.includes("json")
       ? `Yêu cầu thất bại (HTTP ${response.status}).`
       : `Máy chủ trả về HTTP ${response.status} thay vì JSON. Hãy khởi động lại server để nạp API lời giải AI.`;
-    throw new Error(data.error||fallback);
+    const error=new Error(data.error||fallback);
+    error.retryAfter=Number(data.retryAfter)||Number(response.headers.get("Retry-After"))||0;
+    throw error;
   }
   if(!contentType.includes("json"))throw new Error(`API trả về dữ liệu không hợp lệ (HTTP ${response.status}); hãy kiểm tra server.`);
   return data;
@@ -27,6 +29,25 @@ function toastNotice(message, type="success") {
 }
 let passwordResetEmail="";
 let passwordResetSendCooldown=false;
+let passwordResetCooldownUntil=0;
+let passwordResetCooldownTimer=null;
+function updateResendButton(){
+  const button=$("#reset-resend-code");
+  if(!button)return;
+  const remaining=Math.max(0,Math.ceil((passwordResetCooldownUntil-Date.now())/1000));
+  button.disabled=remaining>0||button.dataset.busy==="true";
+  button.textContent=remaining>0?`Gửi mã mới (${remaining}s)`:"Gửi mã mới";
+  if(remaining>0){
+    if(passwordResetCooldownTimer)clearTimeout(passwordResetCooldownTimer);
+    passwordResetCooldownTimer=setTimeout(updateResendButton,250);
+  }else{
+    passwordResetCooldownTimer=null;
+  }
+}
+function startPasswordResetCooldown(seconds=30){
+  passwordResetCooldownUntil=Date.now()+seconds*1000;
+  updateResendButton();
+}
 function resetMessage(id,message,isError=false){
   const node=$("#"+id);if(!node)return;
   node.textContent=message;node.hidden=!message;
@@ -49,6 +70,7 @@ async function requestPasswordResetCode(){
     $("#forgot-password-form").hidden=true;
     $("#reset-password-form").hidden=false;
     resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó.");
+    startPasswordResetCooldown(30);
     return true;
   }catch(error){
     resetMessage("forgot-password-error",error.message||"Không thể gửi mã xác minh.",true);return false;
@@ -77,13 +99,21 @@ document.addEventListener("click",async event=>{
   }
   if(event.target.closest("#reset-resend-code")){
     const button=event.target.closest("#reset-resend-code");
-    button.disabled=true;
+    if(Date.now()<passwordResetCooldownUntil){updateResendButton();return;}
+    button.dataset.busy="true";updateResendButton();
+    resetMessage("reset-password-error","");
     try{
       const result=await request("/api/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:passwordResetEmail})});
       resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã mới sẽ được gửi.");
-      resetMessage("reset-password-error","");
-    }catch(error){resetMessage("reset-password-error",error.message||"Không thể gửi mã mới.",true);}
-    finally{button.disabled=false;}
+      startPasswordResetCooldown(30);
+    }catch(error){
+      const seconds=Number(error.retryAfter)||Number(String(error.message).match(/(\\d+) giây/)?.[1])||0;
+      if(seconds>0)startPasswordResetCooldown(seconds);
+      resetMessage("reset-password-error",error.message||"Không thể gửi mã mới.",true);
+    }finally{
+      button.dataset.busy="false";
+      updateResendButton();
+    }
   }
 });
 document.addEventListener("submit",async event=>{
