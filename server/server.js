@@ -758,20 +758,60 @@ app.post("/api/exams/:id/submit",requireSameOrigin,requireAuth,async(req,res)=>{
 
   let answerKey=null;
   let waitingMessage=null;
-  if(document.solutionStatus&&document.solutionStatus!=="ready"){
+  const isUsableAnswerKey=value=>Boolean(value&&typeof value==="object"&&!Array.isArray(value)
+    &&value.answers&&typeof value.answers==="object"&&!Array.isArray(value.answers)&&Object.keys(value.answers).length>0);
+
+  // Prefer an Admin-approved solution. Older approved records may store the
+  // answer rows in questions[] even if the answers map is absent.
+  if(document.approvedSolution){
+    try{
+      const approved=JSON.parse(document.approvedSolution);
+      let approvedAnswers=approved?.answers;
+      if(!approvedAnswers||typeof approvedAnswers!=="object"||Array.isArray(approvedAnswers)||!Object.keys(approvedAnswers).length){
+        approvedAnswers=Object.fromEntries((Array.isArray(approved?.questions)?approved.questions:[])
+          .filter(item=>item&&item.targetId&&item.answer!=null&&String(item.answer).trim()!=="")
+          .map(item=>[String(item.targetId),item.answer]));
+      }
+      const candidate={answers:approvedAnswers,points:approved?.points||{}};
+      if(isUsableAnswerKey(candidate))answerKey=candidate;
+    }catch(error){console.warn("Could not read approved exam solution:",error.message);}
+  }
+
+  // A usable normalized upload is next in priority. Empty or malformed
+  // legacy normalized_json must not prevent rebuilding from the stored file.
+  if(!answerKey&&document.normalizedAnswerKey){
+    try{
+      const parsed=JSON.parse(document.normalizedAnswerKey);
+      if(isUsableAnswerKey(parsed))answerKey=parsed;
+    }catch(error){console.warn("Could not parse normalized answer key:",error.message);}
+  }
+
+  if(!answerKey&&document.answerKeyData){
+    const config=assessmentConfigFor(document.subject,document.category);
+    try{
+      const normalized=await normalizeAnswerKeyDocument(document.answerKeyData,document.answerKeyOriginalName,config?.layout,config?.grading);
+      if(isUsableAnswerKey(normalized)){
+        answerKey=normalized;
+        db.prepare("UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL WHERE document_id=?")
+          .run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
+      }else{
+        db.prepare("UPDATE answer_keys SET grading_available=0,normalization_error=? WHERE document_id=?")
+          .run("Không trích xuất được bảng đáp án có mã câu hỏi từ tệp đã tải lên.",document.id);
+      }
+    }catch(error){
+      console.error("Answer-key normalization failed:",error.message);
+      db.prepare("UPDATE answer_keys SET grading_available=0,normalization_error=? WHERE document_id=?")
+        .run("Không thể đọc tệp đáp án: "+String(error.message||"lỗi không xác định").slice(0,400),document.id);
+    }
+  }
+
+  // Pending AI solution status blocks automatic grading only when there is no
+  // usable separately uploaded/approved key. This prevents a review job from
+  // masking a valid Admin-uploaded answer key.
+  if(!answerKey&&document.solutionStatus&&document.solutionStatus!=="ready"){
     waitingMessage=document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
       document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
       "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn.";
-  }else if(document.approvedSolution){
-    try{const approved=JSON.parse(document.approvedSolution);answerKey={answers:approved.answers,points:approved.points||{}};}catch{}
-  }else if(document.normalizedAnswerKey){
-    try{answerKey=JSON.parse(document.normalizedAnswerKey);}catch{}
-  }else if(document.answerKeyData){
-    const config=assessmentConfigFor(document.subject,document.category);
-    answerKey=await normalizeAnswerKeyDocument(document.answerKeyData,document.answerKeyOriginalName,config?.layout,config?.grading);
-    if(answerKey){
-      db.prepare("UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL WHERE document_id=?").run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
-    }
   }
 
   const assessmentConfig=assessmentConfigFor(document.subject,document.category);
