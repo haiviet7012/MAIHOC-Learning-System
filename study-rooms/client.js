@@ -243,7 +243,12 @@ export function mountStudyRooms(container, user) {
     const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
     const entry = { pc, stream: new MediaStream() };
     peers.set(member.participantId, entry);
-    for (const track of localStream?.getTracks() || []) pc.addTrack(track, localStream);
+    const localTracks = localStream?.getTracks() || [];
+    for (const track of localTracks) pc.addTrack(track, localStream);
+    // Reserve both media kinds up front so users who joined without a camera or
+    // microphone can enable the device later without renegotiating the room.
+    if (!localTracks.some(track => track.kind === "audio")) pc.addTransceiver("audio", { direction: "sendrecv" });
+    if (!localTracks.some(track => track.kind === "video")) pc.addTransceiver("video", { direction: "sendrecv" });
     pc.ontrack = event => {
       const incoming = event.streams?.[0];
       if (incoming) entry.stream = incoming;
@@ -382,6 +387,19 @@ export function mountStudyRooms(container, user) {
       return;
     }
     if (event.target.closest("[data-room-mic]") && currentRoom) {
+      if (!localStream?.getAudioTracks().length && !micOn) {
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const audioTrack = audioStream.getAudioTracks()[0];
+          localStream = localStream || new MediaStream();
+          localStream.addTrack(audioTrack);
+          for (const entry of peers.values()) {
+            const sender = entry.pc.getSenders().find(item => item.track?.kind === "audio")
+              || entry.pc.getTransceivers().find(item => item.receiver.track.kind === "audio")?.sender;
+            if (sender) await sender.replaceTrack(audioTrack);
+          }
+        } catch { showError("Không mở được microphone. Hãy kiểm tra quyền truy cập microphone của trình duyệt."); return; }
+      }
       micOn = !micOn;
       for (const track of localStream?.getAudioTracks() || []) track.enabled = micOn;
       updateMediaButtons(); sendEvent("media-state", { micOn, cameraOn }).catch(error => showError(error.message)); return;
@@ -393,7 +411,11 @@ export function mountStudyRooms(container, user) {
           const videoTrack = cameraStream.getVideoTracks()[0];
           localStream = localStream || new MediaStream();
           localStream.addTrack(videoTrack);
-          for (const entry of peers.values()) entry.pc.addTrack(videoTrack, localStream);
+          for (const entry of peers.values()) {
+            const sender = entry.pc.getSenders().find(item => item.track?.kind === "video")
+              || entry.pc.getTransceivers().find(item => item.receiver.track.kind === "video")?.sender;
+            if (sender) await sender.replaceTrack(videoTrack);
+          }
         } catch { showError("Không mở được camera. Kiểm tra quyền truy cập của trình duyệt."); return; }
       }
       cameraOn = !cameraOn;
