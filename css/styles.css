@@ -511,3 +511,14 @@ body.exam-open{overflow:hidden}
 @media(prefers-reduced-motion:reduce){
   .hero-logo{transition:none}
 }
+
+/* Saved exam results: compare the learner's answer with the answer key in a readable table. */
+.grade-details-table-wrap{width:100%;overflow:auto;border:1px solid var(--border);margin:14px 0 20px}
+.grade-details-table{width:100%;border-collapse:collapse;min-width:760px;background:var(--surface)}
+.grade-details-table th,.grade-details-table td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}
+.grade-details-table th{background:var(--surface-2);color:var(--muted);font-size:12px;font-weight:700}
+.grade-details-table tbody tr:last-child td{border-bottom:0}
+.grade-details-table td:nth-child(2),.grade-details-table td:nth-child(3){max-width:360px;white-space:pre-wrap;overflow-wrap:anywhere}
+.grade-details-table .is-correct{color:#16815c}
+.grade-details-table .is-wrong{color:var(--danger)}
+@media(max-width:760px){.grade-details-table-wrap{max-width:100%}.grade-details-table th,.grade-details-table td{padding:9px 10px}}
