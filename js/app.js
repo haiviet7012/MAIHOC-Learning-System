@@ -1115,6 +1115,10 @@ async function refreshAuthUI() {
     }
     applyAuthUI();
     syncPresenceHeartbeat();
+    if (state.route === "study-rooms") {
+        if (studyRoomsCleanup) void studyRoomsCleanup();
+        studyRoomsCleanup = mountStudyRooms(view, currentUser);
+    }
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
