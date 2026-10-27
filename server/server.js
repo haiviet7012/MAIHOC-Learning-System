@@ -21,7 +21,7 @@ import {
 
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
 
-  loadCurrentUser, requireAuth, requireAdmin, requireSameOrigin, createInitialAdmin
+  loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword
 
 } from "./auth.js";
 
@@ -293,26 +293,86 @@ app.get("/api/admin/users",requireAdmin,(req,res)=>{
 
 
 
-app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,(req,res)=>{
-  const id=Number(req.params.id);
-  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid user ID."});
-  if(id===req.user.id)return res.status(400).json({error:"You cannot delete your own account."});
-
-  const user=db.prepare("SELECT id,role FROM users WHERE id=?").get(id);
-  if(!user)return res.status(404).json({error:"User was not found."});
-  if(user.role!=="user")return res.status(403).json({error:"Administrator accounts cannot be deleted here."});
-
+function deleteAccountPermanently(id){
   const pendingFiles=db.prepare("SELECT filename FROM document_submissions WHERE user_id=?").all(id);
-  const result=db.prepare("DELETE FROM users WHERE id=? AND role='user'").run(id);
-  if(!result.changes)return res.status(404).json({error:"User was not found."});
-
+  const result=db.prepare("DELETE FROM users WHERE id=?").run(id);
+  if(!result.changes)return false;
   for(const file of pendingFiles){
     const storedPath=path.join(pendingDir,path.basename(file.filename));
     try{if(fs.existsSync(storedPath))fs.unlinkSync(storedPath);}
     catch(error){console.error("Could not remove pending upload for deleted user:",error.message);}
   }
+  return true;
+}
+
+app.get("/api/admin/users",requireAdmin,(req,res)=>{
+  const users=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT 500").all();
   const total=db.prepare("SELECT COUNT(*) AS count FROM users").get().count;
-  return res.json({ok:true,deletedId:id,total});
+  res.json({users:users.map(publicUser),total,isSuperAdmin:Number(req.user.adminLevel)>=2});
+});
+
+// Only the configured super admin can appoint subordinate admins.
+app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=>{
+  const name=String(req.body?.name||"").trim();
+  const email=String(req.body?.email||"").trim().toLowerCase();
+  const password=String(req.body?.password||"");
+  if(name.length<2||name.length>80)return res.status(400).json({error:"Tên admin cần từ 2 đến 80 ký tự."});
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
+  if(password.length<12||password.length>128)return res.status(400).json({error:"Mật khẩu admin cần từ 12 đến 128 ký tự."});
+  if(db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(email))return res.status(409).json({error:"Email này đã tồn tại."});
+  const passwordHash=await hashPassword(password);
+  const result=db.prepare("INSERT INTO users(name,email,password_hash,role,admin_level) VALUES(?,?,?,'admin',1)").run(name,email,passwordHash);
+  const created=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(result.lastInsertRowid);
+  notifyAdmins("admin_created","Đã tạo Admin cấp dưới",`Tài khoản ${name} (${email}) đã được tạo.`,"admin");
+  res.status(201).json({ok:true,user:publicUser(created)});
+});
+
+// A subordinate admin may only request deletion. No account is deleted until super-admin approval.
+app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID tài khoản không hợp lệ."});
+  if(id===req.user.id)return res.status(400).json({error:"Bạn không thể gửi yêu cầu xóa chính tài khoản của mình."});
+  const target=db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(id);
+  if(!target)return res.status(404).json({error:"Không tìm thấy tài khoản."});
+  if(Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa tài khoản Admin cao nhất."});
+  if(Number(req.user.adminLevel)>=2){
+    if(!deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
+    db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'").run(req.user.id,id);
+    return res.json({ok:true,deletedId:id,deleted:true,total:db.prepare("SELECT COUNT(*) AS count FROM users").get().count});
+  }
+  const pending=db.prepare("SELECT id FROM account_deletion_requests WHERE target_user_id=? AND status='pending'").get(id);
+  if(pending)return res.status(409).json({error:"Đã có yêu cầu xóa tài khoản này đang chờ Admin cao nhất duyệt."});
+  const request=db.prepare(`INSERT INTO account_deletion_requests(target_user_id,target_name,target_email,target_role,requested_by,requested_by_name)
+    VALUES(?,?,?,?,?,?)`).run(target.id,target.name,target.email,target.role,req.user.id,req.user.name);
+  const superAdmins=db.prepare("SELECT id FROM users WHERE role='admin' AND admin_level>=2").all();
+  for(const admin of superAdmins)notifyUser(admin.id,"account_deletion_request","Yêu cầu xóa tài khoản",`${req.user.name} đề nghị xóa ${target.role==="admin"?"Admin cấp dưới":"User"}: ${target.name} (${target.email}). Cần bạn chấp thuận.`,"admin");
+  res.status(202).json({ok:true,deleted:false,requestId:request.lastInsertRowid,message:"Yêu cầu đã gửi Admin cao nhất. Tài khoản chưa bị xóa."});
+});
+
+app.get("/api/admin/account-deletion-requests",requireSuperAdmin,(req,res)=>{
+  const requests=db.prepare(`SELECT id,target_user_id AS targetUserId,target_name AS targetName,target_email AS targetEmail,
+    target_role AS targetRole,requested_by AS requestedBy,requested_by_name AS requestedByName,status,
+    requested_at AS requestedAt FROM account_deletion_requests ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 200`).all();
+  res.json({requests});
+});
+
+app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,requireSuperAdmin,(req,res)=>{
+  const requestId=Number(req.params.id), decision=String(req.body?.decision||"");
+  if(!Number.isSafeInteger(requestId)||requestId<1||!["approve","reject"].includes(decision))return res.status(400).json({error:"Yêu cầu hoặc quyết định không hợp lệ."});
+  const review=db.prepare("SELECT * FROM account_deletion_requests WHERE id=?").get(requestId);
+  if(!review)return res.status(404).json({error:"Không tìm thấy yêu cầu."});
+  if(review.status!=="pending")return res.status(409).json({error:"Yêu cầu này đã được xử lý."});
+  const target=db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(review.target_user_id);
+  if(decision==="approve"){
+    if(target&&Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa Admin cao nhất."});
+    if(target)deleteAccountPermanently(target.id);
+    db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
+    if(review.requested_by)notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
+    return res.json({ok:true,status:"approved",deleted:Boolean(target)});
+  }
+  db.prepare("UPDATE account_deletion_requests SET status='rejected',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
+  if(review.requested_by)notifyUser(review.requested_by,"account_deletion_rejected","Yêu cầu xóa bị từ chối",`Yêu cầu xóa tài khoản ${review.target_name} đã bị từ chối. Tài khoản vẫn được giữ nguyên.`,"admin");
+  res.json({ok:true,status:"rejected",deleted:false});
 });
 
 // -------------------- NOTIFICATIONS + LEARNING PROGRESS --------------------
