@@ -476,3 +476,40 @@ body.exam-open{overflow:hidden}
 *::after{
   border-radius:0!important;
 }
+
+
+/* Hero is the intentional exception to the global square-corner style. */
+.hero{
+  border-radius:22px!important;
+  isolation:isolate;
+}
+.hero-art{
+  perspective:900px;
+  overflow:visible;
+}
+.hero-logo{
+  display:block;
+  width:min(100%,320px);
+  max-height:340px;
+  object-fit:contain;
+  border-radius:14px!important;
+  transform:rotate(5deg) translateY(-2px);
+  transform-origin:center;
+  box-shadow:
+    0 12px 26px rgba(3,16,35,.20),
+    0 4px 10px rgba(3,16,35,.12);
+  transition:transform .28s ease,box-shadow .28s ease;
+}
+.hero-logo:hover{
+  transform:rotate(2deg) translateY(-4px);
+  box-shadow:
+    0 14px 28px rgba(3,16,35,.22),
+    0 5px 12px rgba(3,16,35,.13);
+}
+@media(max-width:760px){
+  .hero{border-radius:16px!important}
+  .hero-logo{width:min(72%,260px);max-height:280px;transform:rotate(3deg)}
+}
+@media(prefers-reduced-motion:reduce){
+  .hero-logo{transition:none}
+}
