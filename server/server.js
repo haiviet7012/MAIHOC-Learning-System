@@ -419,11 +419,11 @@ app.delete("/api/notifications",requireSameOrigin,requireAuth,(req,res)=>{
   return res.json({ok:true,deleted:result.changes,unread:0});
 });
 
-app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
+app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
 
 app.get("/api/progress",requireAuth,(req,res)=>{
 
-  const rows=db.prepare("SELECT id,item_type AS itemType,item_id AS itemId,item_title AS itemTitle,subject,grade,status,progress_percent AS progressPercent,score,answers_json AS answers,last_position AS lastPosition,started_at AS startedAt,updated_at AS updatedAt FROM user_progress WHERE user_id=? ORDER BY updated_at DESC").all(req.user.id);
+  const rows=db.prepare("SELECT p.id,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.answers_json AS answers,p.last_position AS lastPosition,p.started_at AS startedAt,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p WHERE p.user_id=? ORDER BY p.updated_at DESC").all(req.user.id);
 
   res.json({progress:rows});
 
@@ -467,55 +467,93 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 
 });
 
-app.post("/api/exams/:id/submit",requireSameOrigin,async(req,res)=>{
-  const document=db.prepare(`SELECT d.id,d.title,d.subject,d.grade,d.category,
-    ak.file_data AS answerKeyData,ak.original_name AS answerKeyOriginalName,ak.normalized_json AS normalizedAnswerKey,
-    ak.normalization_error AS answerKeyNormalizationError,es.status AS solutionStatus,es.approved_json AS approvedSolution
-    FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
-    LEFT JOIN exam_solutions es ON es.document_id=d.id WHERE d.id=?`)
-    .get(String(req.params.id));
+app.post("/api/exams/:id/submit",requireSameOrigin,requireAuth,async(req,res)=>{
+  const document=db.prepare("SELECT d.id,d.title,d.subject,d.grade,d.category,ak.file_data AS answerKeyData,ak.original_name AS answerKeyOriginalName,ak.normalized_json AS normalizedAnswerKey,ak.normalization_error AS answerKeyNormalizationError,es.status AS solutionStatus,es.approved_json AS approvedSolution FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id LEFT JOIN exam_solutions es ON es.document_id=d.id WHERE d.id=?").get(String(req.params.id));
   if(!document||!["practice","exam"].includes(document.category))return res.status(404).json({error:"Exam or practice document was not found."});
   const rawAnswers=req.body?.answers;
   if(!rawAnswers||typeof rawAnswers!=="object"||Array.isArray(rawAnswers))return res.status(400).json({error:"Submit answers as a question-to-answer object."});
   const answers=Object.fromEntries(Object.entries(rawAnswers).slice(0,200).map(([question,value])=>[String(question).slice(0,40),String(value??"").slice(0,5000)]));
+
   let answerKey=null;
-  if(document.approvedSolution){
+  let waitingMessage=null;
+  if(document.solutionStatus&&document.solutionStatus!=="ready"){
+    waitingMessage=document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
+      document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
+      "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn.";
+  }else if(document.approvedSolution){
     try{const approved=JSON.parse(document.approvedSolution);answerKey={answers:approved.answers,points:approved.points||{}};}catch{}
-  }else if(document.solutionStatus&&document.solutionStatus!=="ready"){
-    return res.json({graded:false,hasAnswerKey:false,solutionStatus:document.solutionStatus,
-      message:document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
-        document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
-        "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn."});
   }else if(document.normalizedAnswerKey){
     try{answerKey=JSON.parse(document.normalizedAnswerKey);}catch{}
   }else if(document.answerKeyData){
     const config=assessmentConfigFor(document.subject,document.category);
     answerKey=await normalizeAnswerKeyDocument(document.answerKeyData,document.answerKeyOriginalName,config?.layout,config?.grading);
     if(answerKey){
-      db.prepare(`UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL
-        WHERE document_id=?`).run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
+      db.prepare("UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL WHERE document_id=?").run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
     }
   }
-  const assessmentConfig=assessmentConfigFor(document.subject,document.category);
-  const grade=answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
 
-  if(req.user){
-    const previous=db.prepare("SELECT status FROM user_progress WHERE user_id=? AND item_type='exam' AND item_id=?").get(req.user.id,document.id);
-    const save=db.transaction(()=>{
-      db.prepare(`INSERT INTO user_progress(user_id,item_type,item_id,item_title,subject,grade,status,progress_percent,score,answers_json,last_position,updated_at)
-        VALUES(?,'exam',?,?,?,?, 'completed',100,?,?, 'submitted',datetime('now'))
-        ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status='completed',progress_percent=100,score=excluded.score,answers_json=excluded.answers_json,last_position='submitted',updated_at=datetime('now')`)
-        .run(req.user.id,document.id,document.title,document.subject,document.grade,grade?.completeAnswerKey===false?null:(grade?.score??grade?.percent??null),JSON.stringify(answers));
-      if(previous?.status!=="completed")notifyUser(req.user.id,"exam_completed",`Đã hoàn thành ${document.title}`,`Bạn đã hoàn thành ${document.title}.`);
-    });
-    save();
+  const assessmentConfig=assessmentConfigFor(document.subject,document.category);
+  const grade=!waitingMessage&&answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
+  let resultPayload;
+  if(waitingMessage){
+    resultPayload={graded:false,hasAnswerKey:false,solutionStatus:document.solutionStatus,message:waitingMessage};
+  }else if(!grade){
+    resultPayload={graded:false,hasAnswerKey:Boolean(document.answerKeyData),message:document.answerKeyData
+      ?document.answerKeyNormalizationError||"Đã nộp bài nhưng tệp đáp án chưa thể chuyển thành dữ liệu chấm điểm."
+      :"Đã nộp bài. Đề này chưa có đáp án để chấm tự động."};
+  }else if(grade.completeAnswerKey===false){
+    resultPayload={graded:false,hasAnswerKey:true,...grade,message:"Đáp án chuẩn còn thiếu "+grade.missingAnswerCount+" mục bắt buộc nên chưa thể chấm chính xác."};
+  }else{
+    resultPayload={graded:true,...grade};
   }
 
-  if(!grade)return res.json({graded:false,hasAnswerKey:Boolean(document.answerKeyData),message:document.answerKeyData
-    ?document.answerKeyNormalizationError||"Đã nộp bài nhưng tệp đáp án chưa thể chuyển thành dữ liệu chấm điểm."
-    :"Đã nộp bài. Đề này chưa có đáp án để chấm tự động."});
-  if(grade.completeAnswerKey===false)return res.json({graded:false,hasAnswerKey:true,...grade,message:`\u0110\u00e1p \u00e1n chu\u1ea9n h\u00f3a c\u00f2n thi\u1ebfu ${grade.missingAnswerCount} m\u1ee5c b\u1eaft bu\u1ed9c n\u00ean ch\u01b0a th\u1ec3 ch\u1ea5m ch\u00ednh x\u00e1c.`});
-  return res.json({graded:true,...grade});
+  const saved=db.transaction(()=>{
+    const previous=db.prepare("SELECT status FROM user_progress WHERE user_id=? AND item_type='exam' AND item_id=?").get(req.user.id,document.id);
+    const inserted=db.prepare("INSERT INTO exam_attempts(user_id,document_id,title,subject,grade,category,graded,score,scale,percent,correct_count,question_count,answers_json,answer_key_json,result_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(req.user.id,document.id,document.title,document.subject,document.grade,document.category,
+        resultPayload.graded?1:0,
+        resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null,
+        resultPayload.scale==null?(resultPayload.totalPoints==null?null:Number(resultPayload.totalPoints)):Number(resultPayload.scale),
+        resultPayload.percent==null?null:Number(resultPayload.percent),
+        resultPayload.correctCount==null?null:Number(resultPayload.correctCount),
+        resultPayload.questionCount==null?null:Number(resultPayload.questionCount),
+        JSON.stringify(answers),answerKey?JSON.stringify({answers:answerKey.answers,points:answerKey.points||{}}):null,JSON.stringify(resultPayload));
+    const attemptId=Number(inserted.lastInsertRowid);
+    const fullPayload={...resultPayload,attemptId,saved:true};
+    db.prepare("UPDATE exam_attempts SET result_json=? WHERE id=?").run(JSON.stringify(fullPayload),attemptId);
+    const score=resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null;
+    db.prepare("INSERT INTO user_progress(user_id,item_type,item_id,item_title,subject,grade,status,progress_percent,score,answers_json,last_position,updated_at) VALUES(?,'exam',?,?,?,?, 'completed',100,?,?,?,datetime('now')) ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status='completed',progress_percent=100,score=COALESCE(excluded.score,user_progress.score),answers_json=excluded.answers_json,last_position=excluded.last_position,updated_at=datetime('now')")
+      .run(req.user.id,document.id,document.title,document.subject,document.grade,score,JSON.stringify(answers),"result:"+attemptId);
+    if(previous?.status!=="completed")notifyUser(req.user.id,"exam_completed","Đã hoàn thành "+document.title,"Bạn đã hoàn thành "+document.title+".");
+    return fullPayload;
+  });
+  return res.json(saved);
+});
+
+function parseExamAttempt(row){
+  if(!row)return null;
+  let result=null,answers={},answerKey=null;
+  try{result=JSON.parse(row.result_json||"null");}catch{}
+  try{answers=JSON.parse(row.answers_json||"{}");}catch{}
+  try{answerKey=JSON.parse(row.answer_key_json||"null");}catch{}
+  return {id:Number(row.id),documentId:row.document_id,title:row.title,subject:row.subject,grade:row.grade,category:row.category,
+    graded:Boolean(row.graded),score:row.score==null?null:Number(row.score),scale:row.scale==null?null:Number(row.scale),
+    percent:row.percent==null?null:Number(row.percent),answers,answerKey,result,createdAt:row.created_at,
+    ...(row.userName?{userName:row.userName}:{}),...(row.userEmail?{userEmail:row.userEmail}:{})};
+}
+
+app.get("/api/exam-results/:id",requireAuth,(req,res)=>{
+  const row=db.prepare("SELECT * FROM exam_attempts WHERE id=? AND user_id=?").get(Number(req.params.id),req.user.id);
+  if(!row)return res.status(404).json({error:"Không tìm thấy kết quả hoặc bạn không có quyền xem."});
+  res.setHeader("Cache-Control","private, no-store");
+  return res.json(parseExamAttempt(row));
+});
+
+app.get("/api/admin/exam-results/:id",requireAdmin,(req,res)=>{
+  const row=db.prepare("SELECT a.*,u.name AS userName,u.email AS userEmail FROM exam_attempts a JOIN users u ON u.id=a.user_id WHERE a.id=?").get(Number(req.params.id));
+  if(!row)return res.status(404).json({error:"Không tìm thấy kết quả."});
+  res.setHeader("Cache-Control","private, no-store");
+  return res.json(parseExamAttempt(row));
 });
 
 

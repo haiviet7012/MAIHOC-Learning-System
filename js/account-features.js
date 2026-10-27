@@ -319,13 +319,28 @@ document.addEventListener("input",event=>{
 });
 async function loadAdminProgress(){
  const box=$("#admin-progress-list");if(!box)return;
- try{const data=await request("/api/admin/progress");const rows=data.progress||[];
- if(!rows.length){box.innerHTML="<p class=\"muted\">Chưa có tiến trình được ghi nhận.</p>";return;}
- const table=document.createElement("table");table.className="admin-table";
- table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Cập nhật</th></tr></thead>";
- const body=document.createElement("tbody");
- rows.forEach(p=>{const tr=document.createElement("tr");[p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,p.status,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);});body.append(tr);});
- table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.setAttribute("role","region");wrap.setAttribute("aria-label","Danh sách tiến trình học tập");wrap.tabIndex=0;wrap.append(table);box.replaceChildren(wrap);
+ try{
+   const data=await request("/api/admin/progress");
+   const rows=data.progress||[];
+   if(!rows.length){box.innerHTML='<p class="muted">Chưa có tiến trình được ghi nhận.</p>';return;}
+   const table=document.createElement("table");table.className="admin-table";
+   table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
+   const body=document.createElement("tbody");
+   rows.forEach(p=>{
+     const tr=document.createElement("tr");
+     [p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,p.status,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{
+       const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);
+     });
+     const actionCell=document.createElement("td");
+     if(p.itemType==="exam"&&p.latestAttemptId){
+       const link=document.createElement("button");link.type="button";link.className="button secondary small";
+       link.dataset.action="view-exam-result";link.dataset.id=String(p.latestAttemptId);link.textContent="Xem kết quả";
+       actionCell.append(link);
+     }else actionCell.textContent="—";
+     tr.append(actionCell);body.append(tr);
+   });
+   table.append(body);
+   const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.setAttribute("role","region");wrap.setAttribute("aria-label","Danh sách tiến trình học tập");wrap.tabIndex=0;wrap.append(table);box.replaceChildren(wrap);
  }catch(e){box.textContent=e.message||"Không tải được tiến trình.";box.classList.add("auth-error");}
 }
 async function loadSubmissions() {

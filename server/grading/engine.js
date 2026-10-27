@@ -879,7 +879,12 @@ function gradeConfiguredAnswers(answerKey, submittedAnswers, layout, grading) {
           if (submitted) usedSubmittedKeys.add(submitted.key);
           const accepted = expected ? (Array.isArray(expected.value) ? expected.value : [expected.value]) : [];
           const correct = accepted.some(value => answersMatch(value, submitted?.value ?? "", section.type));
-          return { statement: statementId, correct };
+          return {
+            statement: statementId,
+            correct,
+            userAnswer: submitted?.value ?? "",
+            expectedAnswer: accepted
+          };
         });
         const correctStatements = subResults.filter(item => item.correct).length;
         const pointsByCorrectCount = criteria.pointsByCorrectStatements || {};
@@ -915,7 +920,15 @@ function gradeConfiguredAnswers(answerKey, submittedAnswers, layout, grading) {
         earnedPoints += points;
         correctCount++;
       }
-      results.push({ question: questionId, type: section.type, correct, earnedPoints: correct ? points : 0, totalPoints: points });
+      results.push({
+        question: questionId,
+        type: section.type,
+        correct,
+        userAnswer: submitted?.value ?? "",
+        expectedAnswer: accepted,
+        earnedPoints: correct ? points : 0,
+        totalPoints: points
+      });
     }
     precedingQuestionCount += questionTotal;
   }
@@ -956,7 +969,14 @@ export function gradeAnswers(answerKey, submittedAnswers = {}, options = {}) {
     const correct = accepted.some((value) => answersMatch(value, submitted));
     totalPoints += points;
     if (correct) earnedPoints += points;
-    return { question, correct, earnedPoints: correct ? points : 0, totalPoints: points };
+    return {
+      question,
+      correct,
+      userAnswer: submitted,
+      expectedAnswer: accepted,
+      earnedPoints: correct ? points : 0,
+      totalPoints: points
+    };
   });
   return {
     earnedPoints,

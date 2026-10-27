@@ -41,6 +41,27 @@ db.exec(`
     started_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id,item_type,item_id)
   );
+  CREATE TABLE IF NOT EXISTS exam_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    grade TEXT NOT NULL,
+    category TEXT NOT NULL,
+    graded INTEGER NOT NULL DEFAULT 0 CHECK(graded IN (0,1)),
+    score REAL,
+    scale REAL,
+    percent INTEGER,
+    correct_count INTEGER,
+    question_count INTEGER,
+    answers_json TEXT NOT NULL,
+    answer_key_json TEXT,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS exam_attempts_user_created_idx ON exam_attempts(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS exam_attempts_document_idx ON exam_attempts(user_id, document_id, id DESC);
   CREATE TABLE IF NOT EXISTS document_submissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     subject TEXT NOT NULL, grade TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
