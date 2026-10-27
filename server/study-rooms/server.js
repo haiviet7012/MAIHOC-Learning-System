@@ -199,7 +199,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       if (!text && !image) return fail(res, 400, "Tin nhắn không được để trống.");
       if (text.length > 2000) return fail(res, 400, "Tin nhắn tối đa 2.000 ký tự.");
       if (image) {
-        if (!/^data:image\\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(image)) return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
+        if (!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(image)) return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
         const approximateBytes = Math.floor(image.length * 3 / 4);
         if (approximateBytes > IMAGE_MAX_BYTES) return fail(res, 413, "Ảnh tối đa 2 MB.");
       }
