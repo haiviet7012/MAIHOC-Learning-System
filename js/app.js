@@ -373,7 +373,7 @@ async function loadUserOnlineDashboard(){
   }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách online.";}
 }
 async function loadSuperAdminMonitoring(){
-  if(state.route!=="admin"||Number(currentUser?.adminLevel)<2)return;
+  if(!["admin","user-progress-detail"].includes(state.route)||Number(currentUser?.adminLevel)<2)return;
   const presence=$("#superadmin-online-list"),count=$("#superadmin-online-count");
   if(!presence||!count)return;
   try{
@@ -387,37 +387,72 @@ async function loadSuperAdminMonitoring(){
     const table=document.createElement("table");table.className="admin-table";
     table.innerHTML="<thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Hoạt động gần nhất</th></tr></thead>";
     const body=document.createElement("tbody");
-    users.forEach(user=>{
-      const tr=document.createElement("tr");
-      const name=document.createElement("td");name.textContent=user.name+" · "+user.email;
-      const role=document.createElement("td");role.textContent=user.role==="admin"?(Number(user.adminLevel)>=2?"Admin cao nhất":"Admin cấp dưới"):"User";
-      const stateCell=document.createElement("td");stateCell.textContent="Online";
-      const lastSeen=document.createElement("td");lastSeen.textContent=new Date(Number(user.lastSeenAt)).toLocaleString("vi-VN");
-      tr.append(name,role,stateCell,lastSeen);body.append(tr);
-    });
+    users.forEach(user=>{const tr=document.createElement("tr");const name=document.createElement("td");name.textContent=user.name+" · "+user.email;const role=document.createElement("td");role.textContent=user.role==="admin"?(Number(user.adminLevel)>=2?"Admin cao nhất":"Admin cấp dưới"):"User";const active=document.createElement("td");active.textContent="Online";const seen=document.createElement("td");seen.textContent=new Date(Number(user.lastSeenAt)).toLocaleString("vi-VN");tr.append(name,role,active,seen);body.append(tr);});
     table.append(body);presence.replaceChildren(table);
   }catch(error){count.textContent=error.message||"Không tải được trạng thái online.";}
   try{
-    const progressResponse=await fetch("/api/admin/progress",{credentials:"same-origin",cache:"no-store"});
-    const payload=await progressResponse.json().catch(()=>({}));
-    if(!progressResponse.ok)throw new Error(payload.error||"Không tải được tiến trình.");
-    const box=$("#superadmin-progress-list");if(!box||state.route!=="admin")return;
-    const rows=payload.progress||[];
-    if(!rows.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập.</p>';return;}
+    const response=await fetch("/api/admin/progress",{credentials:"same-origin",cache:"no-store"});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||"Không tải được tiến trình.");
+    const box=$("#superadmin-progress-list");if(!box||!["admin","user-progress-detail"].includes(state.route))return;
+    const users=Array.isArray(payload.users)?payload.users:[];
+    if(!users.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập của người dùng.</p>';return;}
     const table=document.createElement("table");table.className="admin-table";
-    table.innerHTML="<thead><tr><th>User</th><th>Nội dung</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Điểm</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
+    table.innerHTML="<thead><tr><th>Người dùng</th><th>Email</th><th>Số nội dung</th><th>Đã hoàn thành</th><th>Tiến độ trung bình</th><th>Hoạt động gần nhất</th><th>Chi tiết</th></tr></thead>";
     const body=document.createElement("tbody");
-    rows.forEach(row=>{
+    users.forEach(user=>{
       const tr=document.createElement("tr");
-      [row.userName+" ("+row.userEmail+")",row.itemTitle||row.itemId,row.subject+" · "+row.grade,row.status,Number(row.progressPercent)+"%",row.score??"—",row.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);});
-      const resultCell=document.createElement("td");
-      if(row.itemType==="exam"&&row.latestAttemptId){const button=document.createElement("button");button.type="button";button.className="button secondary small";button.dataset.action="view-exam-result";button.dataset.id=String(row.latestAttemptId);button.textContent="Xem kết quả";resultCell.append(button);}else resultCell.textContent="—";
-      tr.append(resultCell);body.append(tr);
+      const name=document.createElement("td");name.textContent=user.name;
+      const email=document.createElement("td");email.textContent=user.email;
+      const total=document.createElement("td");total.textContent=String(user.totalItems);
+      const completed=document.createElement("td");completed.textContent=String(user.completedItems);
+      const average=document.createElement("td");average.textContent=String(user.averageProgress)+"%";
+      const updated=document.createElement("td");updated.textContent=user.latestUpdatedAt?new Date(String(user.latestUpdatedAt).replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";
+      const action=document.createElement("td");const link=document.createElement("button");link.type="button";link.className="button secondary small";link.dataset.action="view-user-progress";link.dataset.userId=String(user.id);link.textContent="Xem toàn bộ tiến trình";action.append(link);
+      tr.append(name,email,total,completed,average,updated,action);body.append(tr);
     });
     table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
   }catch(error){const box=$("#superadmin-progress-list");if(box)box.textContent=error.message||"Không tải được tiến trình học tập.";}
 }
-function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}${Number(currentUser?.adminLevel)>=2?'<section class="dashboard-panel superadmin-monitoring"><div class="dashboard-panel-head"><div><h2>Giám sát hoạt động</h2><p class="muted">Chỉ Admin cao nhất được xem tiến trình học tập và trạng thái hoạt động.</p></div><button class="button secondary small" data-action="refresh-superadmin-monitoring">Làm mới</button></div><h3>Ai đang online?</h3><p id="superadmin-online-count" class="muted">Đang tải...</p><div id="superadmin-online-list"></div><h3>Tiến trình học tập của người dùng</h3><div id="superadmin-progress-list"><p class="muted">Đang tải...</p></div></section>':""}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+function userProgressDetailPage(){
+  const user=state.selectedProgressUser;
+  return pageHeading("Tiến trình học tập",user?.name||"Người dùng")+
+    '<div class="admin-toolbar"><div><p class="muted">'+escapeHTML(user?.email||"")+'</p></div><button class="button secondary" data-action="back-user-progress">← Quay lại giám sát</button></div>'+
+    '<div class="stat-row"><div class="stat"><span class="muted">Tổng nội dung</span><strong id="user-progress-total">—</strong></div><div class="stat"><span class="muted">Đã hoàn thành</span><strong id="user-progress-completed">—</strong></div><div class="stat"><span class="muted">Tiến độ trung bình</span><strong id="user-progress-average">—</strong></div></div>'+
+    '<p id="user-progress-status" class="muted">Đang tải toàn bộ tiến trình...</p><div id="user-progress-detail-list"></div>';
+}
+async function loadUserProgressDetail(userId){
+  if(state.route!=="user-progress-detail"||Number(currentUser?.adminLevel)<2)return;
+  const status=$("#user-progress-status"),box=$("#user-progress-detail-list");
+  try{
+    const response=await fetch("/api/admin/users/"+encodeURIComponent(userId)+"/progress",{credentials:"same-origin",cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Không tải được tiến trình người dùng.");
+    if(state.route!=="user-progress-detail")return;
+    state.selectedProgressUser=data.user;
+    $("#user-progress-total").textContent=String(data.summary.totalItems);
+    $("#user-progress-completed").textContent=String(data.summary.completedItems);
+    $("#user-progress-average").textContent=String(data.summary.averageProgress)+"%";
+    status.textContent=data.progress.length+" mục tiến trình";
+    if(!data.progress.length){box.innerHTML='<p class="muted">Người dùng này chưa có tiến trình học tập.</p>';return;}
+    const table=document.createElement("table");table.className="admin-table";
+    table.innerHTML="<thead><tr><th>Nội dung</th><th>Loại</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Điểm</th><th>Bắt đầu</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
+    const body=document.createElement("tbody");
+    data.progress.forEach(row=>{
+      const tr=document.createElement("tr");
+      [row.itemTitle||row.itemId,row.itemType,row.subject+" · "+row.grade,row.status,Number(row.progressPercent)+"%",row.score??"—",row.startedAt,row.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"—");tr.append(td);});
+      const result=document.createElement("td");
+      if(row.itemType==="exam"&&row.latestAttemptId){const button=document.createElement("button");button.type="button";button.className="button secondary small";button.dataset.action="view-exam-result";button.dataset.id=String(row.latestAttemptId);button.textContent="Xem kết quả";result.append(button);}else result.textContent="—";
+      tr.append(result);body.append(tr);
+    });
+    table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
+  }catch(error){if(status)status.textContent=error.message||"Không tải được tiến trình.";}
+}
+
+function adminPage() {
+  if(state.route==="user-progress-detail")return userProgressDetailPage();
+  return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}${Number(currentUser?.adminLevel)>=2?'<section class="dashboard-panel superadmin-monitoring"><div class="dashboard-panel-head"><div><h2>Giám sát hoạt động</h2><p class="muted">Danh sách tiến trình được gom theo từng người dùng thường; Admin không xuất hiện ở bảng này.</p></div><button class="button secondary small" data-action="refresh-superadmin-monitoring">Làm mới</button></div><h3>Ai đang online?</h3><p id="superadmin-online-count" class="muted">Đang tải...</p><div id="superadmin-online-list"></div><h3>Tiến trình học tập của người dùng</h3><div id="superadmin-progress-list"><p class="muted">Đang tải...</p></div></section>':""}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;
+}
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin" });
@@ -501,10 +536,12 @@ function render() {
         view.innerHTML = examPage();
     else if (state.route === "result" || state.route === "saved-result")
         view.innerHTML = resultPage();
-    else if (state.route === "admin")
+    else if (state.route === "admin" || state.route === "user-progress-detail")
         view.innerHTML = adminPage();
     else if (state.route === "user-dashboard")
         view.innerHTML = userDashboardPage();
+    else if (state.route === "user-progress-detail")
+        view.innerHTML = userProgressDetailPage();
     const pdfContainer = view.querySelector("[data-pdf-reader]");
     if (pdfContainer) {
         const pdfExamId = state.examDocId;
@@ -525,7 +562,9 @@ function render() {
         loadAdminUsers();
         if(Number(currentUser?.adminLevel)>=2)loadSuperAdminMonitoring();
     }
+    if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
     if(state.route==="user-dashboard")loadUserOnlineDashboard();
+    if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
@@ -761,6 +800,32 @@ document.addEventListener("click", async (e) => {
         }
         if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
         if(a==="refresh-superadmin-monitoring"){loadSuperAdminMonitoring();return;}
+        if(a==="view-user-progress"){
+            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
+            const id=Number(action.dataset.userId);
+            state.selectedProgressUser={id,name:"",email:""};
+            go("user-progress-detail");
+            loadUserProgressDetail(id);
+            return;
+        }
+        if(a==="back-user-progress"){go("admin");return;}
+        if(a==="view-user-progress"){
+            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
+            const id=Number(action.dataset.userId);
+            state.selectedProgressUser={id,name:"",email:""};
+            go("user-progress-detail");
+            loadUserProgressDetail(id);
+            return;
+        }
+        if(a==="back-user-progress"){go("admin");return;}
+        if(a==="view-user-progress"){
+            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.", "error");return;}
+            state.selectedProgressUser={id:Number(action.dataset.userId),name:"Người dùng",email:""};
+            go("user-progress-detail");
+            loadUserProgressDetail(state.selectedProgressUser.id);
+            return;
+        }
+        if(a==="back-user-progress"){go("admin");return;}
         if (a === "admin-dashboard") {
             if (currentUser?.role === "admin")
                 go("admin");
