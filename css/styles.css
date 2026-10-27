@@ -264,7 +264,14 @@ body.exam-open{overflow:hidden}
 .reader-fullscreen .reader-main{display:flex;flex-direction:column}
 .reader-fullscreen .document-text{flex:1;min-height:0;max-height:none;overflow:auto}
 .document-text{max-height:70vh;overflow:auto}
-.answer-key-modal{width:min(1180px,calc(100% - 28px));max-height:92vh}
+.answer-key-modal{width:80vw;max-width:1600px;max-height:92vh}
+@media(max-width:900px){.answer-key-modal{width:calc(100% - 28px)}}
+/* Keep the admin progress table to about ten rows; scroll within the panel for more. */
+.admin-progress-scroll{max-height:clamp(390px,68vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.admin-progress-scroll .admin-table{min-width:980px}
+.admin-progress-scroll .admin-table thead th{position:sticky;top:0;z-index:2}
+.admin-progress-scroll .admin-table tbody tr{height:65px}
+@media(max-width:620px){.admin-progress-scroll{max-height:65vh}.admin-progress-scroll .admin-table tbody tr{height:auto;min-height:58px}}
 .exam-solution-dialog{width:min(1320px,calc(100% - 28px));max-height:94vh}
 .solution-progress{display:flex;align-items:center;gap:12px;margin:12px 0 18px}.solution-progress progress{flex:1;width:100%;height:12px;accent-color:var(--primary)}.solution-progress span{min-width:42px;font-variant-numeric:tabular-nums;font-weight:700}
 .solution-review-content{display:grid;gap:14px;max-height:62vh;overflow:auto;padding:2px 4px 2px 0}
