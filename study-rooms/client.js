@@ -162,7 +162,7 @@ export function mountStudyRooms(container, user) {
       <section class="study-room-live">
         <header class="study-room-live-head">
           <div><p class="eyebrow">PHÒNG TỰ HỌC · MÃ ${escapeHtml(currentRoom.id)}</p><h1>${escapeHtml(currentRoom.name)}</h1><p class="muted" data-room-live-count>Đang kết nối người tham gia…</p></div>
-          <div class="study-room-live-head-actions"><button class="button secondary small" data-room-copy>⧉ Sao chép mã phòng</button><button class="button secondary small" data-room-leave>Rời phòng</button></div>
+          <div class="study-room-live-head-actions"><button class="button secondary small" data-room-copy>⧉ Sao chép mã phòng</button><button class="button secondary small" data-room-leave>Rời phòng</button>${(currentRoom.creatorId === user?.id || user?.role === "admin") ? '<button class="button danger small" data-room-close>Đóng phòng</button>' : ""}</div>
         </header>
         <p class="study-room-error" data-room-error hidden></p>
         <p class="study-room-admin-banner" data-room-admin-banner hidden>Admin đang giám sát phòng này. Người tham gia được thông báo khi Admin tham gia.</p>
@@ -391,13 +391,24 @@ export function mountStudyRooms(container, user) {
       if (!disposed && currentRoom) pollTimer = setTimeout(poll, 1000);
     }
   }
+  async function stopLocalMedia() {
+    for (const track of localStream?.getTracks() || []) {
+      try { track.enabled = false; track.stop(); } catch {}
+    }
+    localStream = null;
+    cameraOn = false;
+    micOn = false;
+    handRaised = false;
+    for (const [id] of peers) closePeer(id);
+  }
   async function leaveRoom(notify = true) {
-    if (!currentRoom) return;
+    if (!currentRoom) {
+      await stopLocalMedia();
+      return;
+    }
     const oldRoom = currentRoom;
     const oldToken = participantToken;
-    for (const [id] of peers) closePeer(id);
-    for (const track of localStream?.getTracks() || []) track.stop();
-    localStream = null; cameraOn = false; micOn = false;
+    await stopLocalMedia();
     currentRoom = null; participant = null; participantToken = null; members = []; lastEventId = 0;
     if (pollTimer) clearTimeout(pollTimer);
     if (notify && oldToken) {
@@ -434,6 +445,17 @@ export function mountStudyRooms(container, user) {
     }
     const monitor = event.target.closest("[data-room-monitor]");
     if (monitor) { await enterRoom(monitor.dataset.roomMonitor, "", true); return; }
+    if (event.target.closest("[data-room-close]") && currentRoom) {
+      const roomToClose = currentRoom;
+      if (!confirm("Đóng phòng này cho tất cả mọi người? Họ sẽ bị ngắt kết nối khỏi phòng.")) return;
+      try {
+        await post(roomUrl(roomToClose.id, "/close"), { token: participantToken });
+        await stopLocalMedia();
+        await leaveRoom(false);
+        showError("Phòng đã được đóng.");
+      } catch (error) { showError(error.message); }
+      return;
+    }
     if (event.target.closest("[data-room-leave]")) { await leaveRoom(); return; }
     if (event.target.closest("[data-room-copy]") && currentRoom) {
       try { await navigator.clipboard.writeText(currentRoom.id); showError("Đã sao chép mã phòng: " + currentRoom.id); }
@@ -495,7 +517,11 @@ export function mountStudyRooms(container, user) {
       try {
         const data = await post("/api/study-rooms", { name: values.get("name"), password: values.get("password") });
         await enterRoom(data.roomId, String(values.get("password") || ""), false);
-      } catch (error) { showError(error.message); }
+      } catch (error) {
+        showError(error.message);
+        await loadRooms();
+        showError(error.message);
+      }
       finally { if (button) button.disabled = false; }
       return;
     }
@@ -520,6 +546,12 @@ export function mountStudyRooms(container, user) {
 
   loadRooms();
   roomRefreshTimer = setInterval(() => { if (!currentRoom && !disposed && !document.hidden) void loadRooms(); }, 5000);
+  const onPageHide = () => {
+    for (const track of localStream?.getTracks() || []) {
+      try { track.enabled = false; track.stop(); } catch {}
+    }
+  };
+  window.addEventListener("pagehide", onPageHide);
   document.addEventListener("visibilitychange", onVisibilityChange);
   function onVisibilityChange() {
     if (!document.hidden && !currentRoom && !disposed) void loadRooms();
@@ -530,6 +562,7 @@ export function mountStudyRooms(container, user) {
     clearTimeout(pollTimer);
     clearInterval(roomRefreshTimer);
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.removeEventListener("pagehide", onPageHide);
     await leaveRoom();
   };
 }
