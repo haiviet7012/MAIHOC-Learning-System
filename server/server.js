@@ -143,10 +143,15 @@ function createPasswordResetTransport(){
   const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM}=process.env;
   if(!SMTP_HOST||!SMTP_USER||!SMTP_PASS)throw new Error("Chưa cấu hình SMTP để gửi email xác minh. Hãy điền SMTP_USER và SMTP_PASS trong server/.env.");
   const port=Number(SMTP_PORT||587);
-  return {SMTP_FROM:SMTP_FROM||SMTP_USER,transporter:nodemailer.createTransport({host:SMTP_HOST,port,secure:port===465,auth:{user:SMTP_USER,pass:SMTP_PASS}})};
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error("SMTP_PORT phải là số cổng hợp lệ, ví dụ 587 hoặc 465.");
+  const smtpUser=SMTP_USER.trim();
+  const smtpPass=SMTP_PASS.trim();
+  if(!smtpUser||!smtpPass)throw new Error("SMTP_USER và SMTP_PASS không được để trống.");
+  const transporter=nodemailer.createTransport({host:SMTP_HOST.trim(),port,secure:port===465,auth:{user:smtpUser,pass:smtpPass}});
+  return {SMTP_FROM:(SMTP_FROM||smtpUser).trim(),SMTP_USER:smtpUser,transporter};
 }
 async function sendPasswordResetEmail(to,code){
-  const {SMTP_FROM,transporter}=createPasswordResetTransport();
+  const {SMTP_FROM,SMTP_USER,transporter}=createPasswordResetTransport();
   await transporter.sendMail({
     from:SMTP_FROM||SMTP_USER,
     to,
