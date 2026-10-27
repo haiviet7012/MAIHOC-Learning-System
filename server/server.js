@@ -445,19 +445,18 @@ app.get("/api/admin/progress",requireSuperAdmin,(req,res)=>{
   const rows=db.prepare("SELECT p.user_id AS userId,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id WHERE u.role='user' ORDER BY p.updated_at DESC").all();
   const grouped=new Map();
   for(const row of rows){
-    if(!grouped.has(row.userId)){
-      grouped.set(row.userId,{id:Number(row.userId),name:row.userName,email:row.userEmail,totalItems:0,completedItems:0,averageProgress:0,updatedAt:row.updatedAt,latestUpdatedAt:row.updatedAt,latestItemTitle:row.itemTitle,latestItemStatus:row.status,latestItemProgress:Number(row.progressPercent)||0,latestScore:row.score,items:[]});
-    }
+    if(!grouped.has(row.userId))grouped.set(row.userId,{id:Number(row.userId),name:row.userName,email:row.userEmail,totalItems:0,completedItems:0,progressTotal:0,averageProgress:0,latestUpdatedAt:null,latestItemTitle:null,items:[]});
     const user=grouped.get(row.userId);
     user.totalItems++;
-    if(row.status==="completed")user.completedItems++;
-    user.averageProgress+=Number(row.progressPercent)||0;
-    if(String(row.updatedAt||"")>String(user.latestUpdatedAt||"")){
-      user.latestUpdatedAt=row.updatedAt;user.latestItemTitle=row.itemTitle;user.latestItemStatus=row.status;user.latestItemProgress=Number(row.progressPercent)||0;user.latestScore=row.score;
+    user.completedItems+=row.status==="completed"?1:0;
+    user.progressTotal+=Number(row.progressPercent)||0;
+    if(!user.latestUpdatedAt||String(row.updatedAt||"")>String(user.latestUpdatedAt||"")){
+      user.latestUpdatedAt=row.updatedAt;
+      user.latestItemTitle=row.itemTitle;
     }
     user.items.push({itemType:row.itemType,itemId:row.itemId,itemTitle:row.itemTitle,subject:row.subject,grade:row.grade,status:row.status,progressPercent:row.progressPercent,score:row.score,updatedAt:row.updatedAt,latestAttemptId:row.latestAttemptId});
   }
-  const users=[...grouped.values()].map(user=>({...user,averageProgress:user.totalItems?Math.round(user.averageProgress/user.totalItems*10)/10:0}));
+  const users=[...grouped.values()].map(user=>({...user,averageProgress:user.totalItems?Math.round(user.progressTotal/user.totalItems*10)/10:0,items:undefined}));
   res.setHeader("Cache-Control","private, no-store");
   res.json({users,totalUsers:users.length});
 });
