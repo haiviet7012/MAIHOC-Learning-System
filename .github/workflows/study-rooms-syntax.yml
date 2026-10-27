@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check server/server.js
           node --check server/study-rooms/server.js
+          node --check server/grading/engine.js
       - name: Check browser modules
         run: |
           node --input-type=module --check < js/app.js
