@@ -332,7 +332,13 @@ export function mountStudyRooms(container, user) {
       await processEvents(data.events || []);
       await refreshMembersAndConnect();
     } catch (error) {
-      if (!disposed) showError(error.message || "Mất kết nối phòng học; đang thử kết nối lại.");
+      if (!disposed && /không tồn tại|đã kết thúc|phiên tham gia phòng không hợp lệ/i.test(error.message || "")) {
+        showError(error.message || "Phòng học đã kết thúc.");
+        await leaveRoom(false);
+        await loadRooms();
+      } else if (!disposed) {
+        showError(error.message || "Mất kết nối phòng học; đang thử kết nối lại.");
+      }
     } finally {
       processingPoll = false;
       if (!disposed && currentRoom) pollTimer = setTimeout(poll, 1000);
