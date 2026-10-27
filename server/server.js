@@ -775,6 +775,43 @@ app.post("/api/exams/:id/submit",requireSameOrigin,requireAuth,async(req,res)=>{
   }
 
   const assessmentConfig=assessmentConfigFor(document.subject,document.category);
+  // Normalize approved answer IDs to common question labels when they are compatible
+  // with the configured assessment. Do not overwrite one answer with another.
+  if(answerKey?.answers && assessmentConfig?.layout?.sections?.length) {
+    const normalizedAnswers={};
+    for(const [key,value] of Object.entries(answerKey.answers)) {
+      const raw=String(key).trim();
+      const sectionMatch=raw.match(/^(?:phan|section|part)\\s*([ivx]+|\\d+)\\s*(?:[-.:_ ]\\s*)?(?:cau|question|q)?\\s*(\\d+)$/i);
+      const questionMatch=raw.match(/^(?:cau|question|q)?\\s*(\\d+)$/i);
+      const letterMatch=raw.match(/^(?:cau|question|q)?\\s*(\\d+)\\s*[-._:]\\s*([a-d])$/i);
+      if(sectionMatch) {
+        const sectionRef=String(sectionMatch[1]).toLowerCase();
+        const section=assessmentConfig.layout.sections.find(item=>String(item.sectionId||item.order).toLowerCase()===sectionRef||String(item.order)===sectionRef);
+        const canonical=section?String(section.sectionId||section.order)+"-"+sectionMatch[2]:null;
+        if(canonical && !(canonical in normalizedAnswers))normalizedAnswers[canonical]=value;
+        else if(!(raw in normalizedAnswers))normalizedAnswers[raw]=value;
+      } else if(letterMatch) {
+        const num=letterMatch[1],letter=letterMatch[2].toLowerCase();
+        const canonical=assessmentConfig.layout.sections.find(section=>section.type==="true_false" && Number(num)<=Number(section.count));
+        const id=canonical?String(canonical.sectionId||canonical.order)+"-"+num+letter:null;
+        if(id && !(id in normalizedAnswers))normalizedAnswers[id]=value;
+        else if(!(raw in normalizedAnswers))normalizedAnswers[raw]=value;
+      } else if(questionMatch) {
+        const num=Number(questionMatch[1]);
+        let offset=0,canonical=null,localNum=num;
+        for(const section of assessmentConfig.layout.sections) {
+          const count=Number(section.count)||0;
+          if(num>offset && num<=offset+count){canonical=section;localNum=num-offset;break;}
+          offset+=count;
+        }
+        const id=canonical?String(canonical.sectionId||canonical.order)+"-"+localNum:null;
+        if(id && !(id in normalizedAnswers))normalizedAnswers[id]=value;
+        else if(!(raw in normalizedAnswers))normalizedAnswers[raw]=value;
+      } else if(!(raw in normalizedAnswers))normalizedAnswers[raw]=value;
+    }
+    // Preserve original keys as fallbacks, so legacy keys remain compatible with the grader.
+    answerKey={...answerKey,answers:{...answerKey.answers,...normalizedAnswers}};
+  }
   const grade=!waitingMessage&&answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
   let resultPayload;
   if(waitingMessage){
