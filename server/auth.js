@@ -342,22 +342,21 @@ export function loadCurrentUser(req, res, next) {
         req.sessionTokenHash = hashToken(token);
 
         const nowMs = Date.now();
-        const currentUserId = user.id; // (Hoặc session.user_id tùy tên biến trong hàm của bạn)
+        const currentUserId = req.user.id;
         const lastUpdateMs = presenceUpdateCache.get(currentUserId) || 0;
 
         if (nowMs - lastUpdateMs >= PRESENCE_WRITE_INTERVAL_MS) {
           presenceUpdateCache.set(currentUserId, nowMs);
           try {
-            // Đặt lại đúng câu lệnh .run(...) cập nhật user_presence cũ của bạn vào trong khối try này:
             db.prepare(`
               INSERT INTO user_presence (user_id, last_seen_at)
-              VALUES (?, datetime('now'))
+              VALUES (?, ?)
               ON CONFLICT(user_id) DO UPDATE SET last_seen_at = excluded.last_seen_at
-            `).run(currentUserId);
+            `).run(currentUserId, nowMs);
           } catch (presenceErr) {
-            // Nếu DB đang bận ghi bài thi, bỏ qua cập nhật presence để không làm lỗi request của học sinh
+            // Presence updates are best-effort and must not fail authenticated requests.
           }
-        } 
+        }
 
       } else if (session) {
         db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
