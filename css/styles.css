@@ -1504,6 +1504,7 @@ body.test-open #online-dashboard-launcher {
 }
 
 .test-answer-mode-box {
+  min-width: 0;
   padding: 14px;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -1512,30 +1513,84 @@ body.test-open #online-dashboard-launcher {
 }
 
 .test-answer-mode-option {
-  display: flex !important;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  display: grid !important;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 0;
+  min-width: 0;
+  padding: 14px 16px;
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
   font-weight: 500 !important;
+  line-height: 1.55;
 }
 
-.test-answer-mode-option input[type="radio"] {
-  margin-top: 3px;
+.test-answer-mode-option > input[type="radio"] {
+  grid-column: 1;
+  grid-row: 1;
+  width: 18px !important;
+  height: 18px;
+  margin: 3px 0 0;
+  padding: 0;
+  justify-self: center;
   accent-color: var(--primary);
+}
+
+.test-answer-mode-option > div {
+  grid-column: 2;
+  min-width: 0;
 }
 
 .test-answer-mode-option strong {
   display: block;
+  margin: 0 0 4px;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .test-answer-mode-option span {
-  font-size: 11px;
+  display: block;
+  font-size: 12px;
+  line-height: 1.55;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.test-answer-mode-option span strong {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+}
+
+#create-test-dialog .test-answer-mode-box > .file-upload-label {
+  display: block;
+  margin: 0 0 2px;
+}
+
+#create-test-dialog [data-immediate-answer-options] {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+#create-test-dialog [data-immediate-answer-options] > label {
+  display: grid;
+  gap: 7px;
+}
+
+@media (max-width: 560px) {
+  #create-test-dialog .test-answer-mode-box {
+    padding: 10px;
+  }
+
+  #create-test-dialog .test-answer-mode-option {
+    grid-template-columns: 18px minmax(0, 1fr);
+    column-gap: 9px;
+    padding: 12px 10px;
+  }
 }
 
 .test-grading-dialog {
