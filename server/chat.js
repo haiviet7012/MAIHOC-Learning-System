@@ -520,12 +520,14 @@ export function setupChat(server, app) {
     try {
       let users = [];
       if (query) {
+        // Allow searching by either display name or email (many users search by email).
         users = db.prepare(`
           SELECT id, name
           FROM users
-          WHERE id != ? AND name LIKE ? COLLATE NOCASE
-          ORDER BY name ASC LIMIT 25
-        `).all(currentUserId, `%${query}%`);
+          WHERE id != ?
+            AND (name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE)
+          ORDER BY name COLLATE NOCASE ASC LIMIT 25
+        `).all(currentUserId, `%${query}%`, `%${query}%`);
       } else {
         // Return recent users or top students
         users = db.prepare(`
