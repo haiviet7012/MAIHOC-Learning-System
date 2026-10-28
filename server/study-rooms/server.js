@@ -18,7 +18,7 @@ function makeRoomId() {
 }
 
 
-const { promisify } = require('util');
+import { promisify } from "node:util";
 const scryptAsync = promisify(crypto.scrypt);
 
 async function hashRoomPassword(password) {
