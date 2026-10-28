@@ -574,7 +574,14 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
 
 // -------------------- ACCOUNT CENTER + GMAIL OTP API --------------------
 
-app.post("/api/account/send-code", requireSameOrigin, requireAuth, async (req, res) => {
+function requireUserOnlyAccountCenter(req, res, next) {
+  if (req.user?.role === "admin") {
+    return res.status(403).json({ error: "Trung tâm tài khoản chỉ dành cho học viên (User)." });
+  }
+  return next();
+}
+
+app.post("/api/account/send-code", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, async (req, res) => {
   try {
     const purpose = String(req.body?.purpose || "").trim();
     const allowedPurposes = {
@@ -627,7 +634,7 @@ app.post("/api/account/send-code", requireSameOrigin, requireAuth, async (req, r
   }
 });
 
-app.post("/api/account/change-email", requireSameOrigin, requireAuth, (req, res) => {
+app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, (req, res) => {
   try {
     const newEmail = String(req.body?.newEmail || "").trim().toLowerCase();
     const code = String(req.body?.code || "").trim();
@@ -658,7 +665,7 @@ app.post("/api/account/change-email", requireSameOrigin, requireAuth, (req, res)
   }
 });
 
-app.post("/api/account/change-password", requireSameOrigin, requireAuth, async (req, res) => {
+app.post("/api/account/change-password", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, async (req, res) => {
   try {
     const code = String(req.body?.code || "").trim();
     const password = String(req.body?.password || "");
@@ -681,7 +688,7 @@ app.post("/api/account/change-password", requireSameOrigin, requireAuth, async (
   }
 });
 
-app.post("/api/account/delete", requireSameOrigin, requireAuth, (req, res) => {
+app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, (req, res) => {
   try {
     const code = String(req.body?.code || "").trim();
     if (Number(req.user.adminLevel) >= 2) {

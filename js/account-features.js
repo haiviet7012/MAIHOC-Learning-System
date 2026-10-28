@@ -321,7 +321,7 @@ document.addEventListener("click", async event => {
     return;
   }
   if (event.target.closest("[data-account-delete-open]")) {
-    if (!activeUser) return;
+    if (!activeUser || activeUser.role === "admin") return;
     openGmailVerificationDialog({
       purpose: "delete_account",
       email: activeUser.email
@@ -471,6 +471,7 @@ document.addEventListener("submit", async event => {
   const changeEmailForm = event.target.closest("#account-change-email-form");
   if (changeEmailForm) {
     event.preventDefault();
+    if (!activeUser || activeUser.role === "admin") return;
     const errNode = $("#account-email-error");
     if (errNode) errNode.hidden = true;
     const newEmail = String(new FormData(changeEmailForm).get("newEmail") || "").trim().toLowerCase();
@@ -493,6 +494,7 @@ document.addEventListener("submit", async event => {
   const changePasswordForm = event.target.closest("#account-change-password-form");
   if (changePasswordForm) {
     event.preventDefault();
+    if (!activeUser || activeUser.role === "admin") return;
     const errNode = $("#account-password-error");
     if (errNode) errNode.hidden = true;
     const fd = new FormData(changePasswordForm);
@@ -531,7 +533,7 @@ function formatVietnameseDate(value) {
 
 async function loadAccountCenterProgress() {
   const list = $("#account-progress-list");
-  if (!list || !activeUser) return;
+  if (!list || !activeUser || activeUser.role === "admin") return;
   try {
     const data = await request("/api/progress");
     if (!$("#account-progress-list")) return;
@@ -679,12 +681,12 @@ async function loadUser() {
   if (bell) bell.hidden = !activeUser;
   if (upload) upload.hidden = !activeUser;
   if (testsBtn) testsBtn.hidden = !activeUser;
-  if (accountCenter) accountCenter.hidden = !activeUser;
+  if (accountCenter) accountCenter.hidden = !activeUser || activeUser.role === "admin";
   if (activeUser) {
     refreshNotifications();
     const reader = $("#reader-layout");
     if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
-    if ($("#account-progress-list")) loadAccountCenterProgress();
+    if (activeUser.role !== "admin" && $("#account-progress-list")) loadAccountCenterProgress();
   }
 
 }
@@ -1343,6 +1345,7 @@ window.addEventListener("maihoc-auth-changed",loadUser);
 
 
 window.addEventListener("maihoc-account-center-open", () => {
+  if (activeUser?.role === "admin") return;
   loadAccountCenterProgress();
 });
 window.addEventListener("maihoc-route-changed", event => {
@@ -1375,7 +1378,7 @@ if (localStorage.getItem("maihoc-online-sidebar-collapsed") === "1") {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshOnlineDashboard();
-    if ($("#account-progress-list") && activeUser) loadAccountCenterProgress();
+    if ($("#account-progress-list") && activeUser && activeUser.role !== "admin") loadAccountCenterProgress();
   }
 });
 

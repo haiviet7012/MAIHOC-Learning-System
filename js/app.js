@@ -83,6 +83,9 @@ function saveRouteHistory() {
     };
 }
 function go(route, params = {}) {
+    if (route === "account-center" && currentUser?.role === "admin") {
+        route = "admin";
+    }
     if (state.route === "reader" && (route !== "reader" || String(params.docId ?? state.docId) !== String(state.docId))) {
         window.dispatchEvent(new Event("maihoc-reader-leaving"));
     }
@@ -418,12 +421,10 @@ function accountCenterPage() {
     if (!currentUser) {
         return `${pageHeading("Trung tâm tài khoản", "Bạn cần đăng nhập để quản lý tài khoản và xem tiến trình học tập.")}<div class="empty-state"><h3>Chưa đăng nhập</h3><p>Hãy đăng nhập để xem tiến trình học tập thời gian thực, đổi Gmail, đổi mật khẩu hoặc quản lý tài khoản.</p><button class="button primary" type="button" onclick="document.querySelector('#login-open')?.click()">Đăng nhập ngay</button></div>`;
     }
-    const roleName = currentUser.role !== "admin"
-        ? "Học viên (User)"
-        : Number(currentUser.adminLevel) >= 2
-          ? "Admin cao nhất"
-          : "Admin cấp dưới";
-    const isSuperAdmin = currentUser.role === "admin" && Number(currentUser.adminLevel) >= 2;
+    if (currentUser.role === "admin") {
+        return adminPage();
+    }
+    const roleName = "Học viên (User)";
     return `
       ${pageHeading("Trung tâm tài khoản", "Quản lý thông tin bảo mật và theo dõi tiến trình học tập theo thời gian thực.")}
       <div class="admin-toolbar">
@@ -508,8 +509,8 @@ function accountCenterPage() {
             <h3>Xóa tài khoản vĩnh viễn</h3>
             <p class="muted">Xóa toàn bộ tài khoản, lịch sử làm bài và dữ liệu học tập cá nhân. Bạn sẽ cần xác nhận bằng mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
           </div>
-          <button type="button" class="button danger" id="account-delete-open" data-account-delete-open ${isSuperAdmin ? "disabled title=\"Tài khoản Admin cao nhất không thể tự xóa\"" : ""}>
-            ${isSuperAdmin ? "Admin cao nhất không thể tự xóa" : "Xóa tài khoản"}
+          <button type="button" class="button danger" id="account-delete-open" data-account-delete-open>
+            Xóa tài khoản
           </button>
         </div>
       </section>
@@ -548,6 +549,10 @@ catch (error) {
     container.innerHTML = "";
 } }
 function render() {
+    if (state.route === "account-center" && currentUser?.role === "admin") {
+        state.route = "admin";
+        history.replaceState(saveRouteHistory(), "", window.location.href);
+    }
     stopStudyRoomsIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
@@ -1261,7 +1266,7 @@ function applyAuthUI() {
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
     if ($("#tests-open")) $("#tests-open").hidden = !signedIn;
-    if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn;
+    if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || currentUser?.role === "admin";
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = currentUser?.role !== "admin";
     $("#admin-open").hidden = currentUser?.role !== "admin";
     $("#user-greeting").hidden = !signedIn;
