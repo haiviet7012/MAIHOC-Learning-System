@@ -16,19 +16,29 @@ function fail(res, status, error) {
 function makeRoomId() {
   return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
-function hashRoomPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
-  if (!password) return null;
-  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+
+
+const { promisify } = require('util');
+const scryptAsync = promisify(crypto.scrypt);
+
+async function hashRoomPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = await scryptAsync(String(password), salt, 64);
+  return `${salt}:${derived.toString('hex')}`;
 }
-function verifyRoomPassword(password, stored) {
-  if (!stored) return true;
-  if (!password) return false;
-  const [salt, expectedHex] = stored.split(":");
-  const actual = crypto.scryptSync(String(password), salt, 64);
-  const expected = Buffer.from(expectedHex, "hex");
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+
+async function verifyRoomPassword(password, storedHash) {
+  if (!storedHash || typeof storedHash !== 'string' || !storedHash.includes(':')) {
+    return false;
+  }
+  const [salt, keyHex] = storedHash.split(':');
+  const keyBuffer = Buffer.from(keyHex, 'hex');
+  const derivedBuffer = await scryptAsync(String(password), salt, 64);
+  if (keyBuffer.length !== derivedBuffer.length) return false;
+  return crypto.timingSafeEqual(keyBuffer, derivedBuffer);
 }
+
+
 function isUserAdmin(user) {
   return Boolean(user && user.role === "admin" && (user.adminLevel === undefined || Number(user.adminLevel) >= 1));
 }
@@ -159,7 +169,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
   const auth = requireAuth || requireUser;
   const sameOrigin = requireSameOrigin || ((_req, _res, next) => next());
 
-  app.get("/api/study-rooms", sameOrigin, auth, (req, res) => {
+  app.get("/api/study-rooms", sameOrigin, auth, async (req, res) => {
     pruneRooms();
     const isAdmin = isUserAdmin(req.user);
     res.setHeader("Cache-Control", "no-store");
@@ -169,7 +179,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     });
   });
 
-  app.post("/api/study-rooms", sameOrigin, auth, (req, res) => {
+  app.post("/api/study-rooms", sameOrigin, auth, async (req, res) => {
     const name = String(req.body?.name || "").trim().replace(/\s+/g, " ");
     const password = String(req.body?.password || "");
     if (name.length < 3 || name.length > 60) return fail(res, 400, "Tên phòng phải từ 3 đến 60 ký tự.");
@@ -187,7 +197,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       name,
       creatorId: req.user.id,
       creatorName: req.user.name,
-      passwordHash: password ? hashRoomPassword(password) : null,
+      passwordHash: password ? await hashRoomPassword(password) : null,
       createdAt: now,
       lastActivityAt: now,
       members: new Map(),
@@ -202,7 +212,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     res.status(201).json({ room: publicRoom(room, isUserAdmin(req.user)), roomId: id });
   });
 
-  app.post("/api/study-rooms/:roomId/join", sameOrigin, auth, (req, res) => {
+  app.post("/api/study-rooms/:roomId/join", sameOrigin, auth, async (req, res) => {
     pruneRooms();
     const room = requireRoom(req.params.roomId, res);
     if (!room) return;
@@ -217,7 +227,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       return fail(res, 403, "Chỉ Admin mới có quyền giám sát phòng.");
     }
     const isCreator = room.creatorId === req.user.id;
-    if (!monitor && !isCreator && room.passwordHash && !verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
+    if (!monitor && !isCreator && room.passwordHash && ! await verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
       return fail(res, 403, "Mật khẩu phòng không đúng.");
     }
 
@@ -279,7 +289,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     });
   });
 
-  app.get("/api/study-rooms/:roomId/events", sameOrigin, auth, (req, res) => {
+  app.get("/api/study-rooms/:roomId/events", sameOrigin, auth, async (req, res) => {
     pruneRooms();
     const room = requireRoom(req.params.roomId, res);
     if (!room) return;
@@ -300,7 +310,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     });
   });
 
-  app.post("/api/study-rooms/:roomId/events", sameOrigin, auth, (req, res) => {
+  app.post("/api/study-rooms/:roomId/events", sameOrigin, auth, async (req, res) => {
     const room = requireRoom(req.params.roomId, res);
     if (!room) return;
     const member = memberFor(room, req, req.body?.token, res);
@@ -372,7 +382,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     res.json({ ok: true });
   });
 
-  app.post("/api/study-rooms/:roomId/leave", sameOrigin, auth, (req, res) => {
+  app.post("/api/study-rooms/:roomId/leave", sameOrigin, auth, async (req, res) => {
     const room = rooms.get(String(req.params.roomId || "").toUpperCase());
     if (!room) return res.json({ ok: true });
     const member = memberFor(room, req, req.body?.token, res);
@@ -387,7 +397,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     res.json({ ok: true });
   });
 
-  const closeRoomHandler = (req, res) => {
+  const closeRoomHandler = async (req, res) => {
     const room = rooms.get(String(req.params.roomId || "").toUpperCase());
     if (!room) return res.json({ ok: true });
     const isAdmin = isUserAdmin(req.user);

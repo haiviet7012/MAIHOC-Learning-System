@@ -93,8 +93,43 @@ function updateSolutionJob(documentId,values){
 function queueExamSolution(documentId){
   const id=String(documentId);
   if(activeSolutionJobs.has(id))return;
-  activeSolutionJobs.add(id);
-  setImmediate(async()=>{
+
+
+
+  const activeSolutionJobs = new Set();
+  const MAX_CONCURRENT_SOLUTION_JOBS = 2;
+  let runningSolutionJobs = 0;
+  const solutionJobQueue = [];
+
+  function enqueueSolutionJob(jobKey, jobTaskFn) {
+    if (activeSolutionJobs.has(jobKey)) return false;
+    activeSolutionJobs.add(jobKey);
+    solutionJobQueue.push({ jobKey, jobTaskFn });
+    drainSolutionJobQueue();
+    return true;
+  }
+
+  function drainSolutionJobQueue() {
+    while (runningSolutionJobs < MAX_CONCURRENT_SOLUTION_JOBS && solutionJobQueue.length > 0) {
+      const { jobKey, jobTaskFn } = solutionJobQueue.shift();
+      runningSolutionJobs++;
+      setImmediate(async () => {
+        try {
+          await jobTaskFn();
+        } catch (err) {
+          console.error(`[SolutionJob:${jobKey}] Failed:`, err);
+        } finally {
+          activeSolutionJobs.delete(jobKey);
+          runningSolutionJobs--;
+          drainSolutionJobQueue();
+        }
+      });
+    }
+  }
+
+  // Thay jobKey bằng biến định danh job hiện tại trong code của bạn (ví dụ: docId hoặc jobId)
+  enqueueSolutionJob(jobKey, async () => {
+
     let solver=examSolverConfig();
     try{
       const document=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,
@@ -194,17 +229,26 @@ app.use("/vendor/pdfjs/cmaps",express.static(path.join(__dirname,"node_modules",
 app.use("/vendor/pdfjs/standard_fonts",express.static(path.join(__dirname,"node_modules","pdfjs-dist","standard_fonts"),{maxAge:"1d"}));
 app.use("/vendor/pdfjs/wasm",express.static(path.join(__dirname,"node_modules","pdfjs-dist","wasm"),{maxAge:"1d"}));
 app.use("/vendor/pdfjs",express.static(path.join(__dirname,"node_modules","pdfjs-dist","build"),{maxAge:"1d"}));
+
 app.use((req, res, next) => {
-  if (req.path === "/" || /\.(?:html|js|css|json)$/i.test(req.path)) {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
+  const reqPath = req.path.toLowerCase();
+  if (reqPath === '/' || reqPath.endsWith('.html')) {
+    // File HTML: luôn kiểm tra bản mới qua ETag nhưng vẫn cho phép lưu bản nháp để đối chiếu
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  } else if (/\.(js|css|json)$/i.test(reqPath)) {
+    // File JS/CSS/JSON cấu hình: cache 1 giờ kết hợp ETag (trả về 304 cực nhẹ nếu file chưa đổi)
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+  } else if (/\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?)$/i.test(reqPath)) {
+    // Ảnh và font: cache 7 ngày
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
   }
   next();
 });
-app.use(express.static(path.join(root, "public"), { etag: false, lastModified: false }));
 
-app.use(express.static(root, { extensions: ["html"], index: "index.html", etag: false, lastModified: false }));
+
+app.use(express.static(path.join(root, "public"), { etag: true, lastModified: true, maxAge: '1h' }));
+
+app.use(express.static(root, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: '1h' }));
 
 
 

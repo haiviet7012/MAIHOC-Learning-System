@@ -667,7 +667,7 @@ async function loadUser() {
     if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
     if ($("#account-progress-list")) loadAccountCenterProgress();
   }
-  await refreshOnlineDashboard();
+
 }
 async function refreshNotifications() {
   if(!activeUser)return;
@@ -1300,14 +1300,25 @@ document.addEventListener("click",async e=>{
 
 document.addEventListener("DOMContentLoaded",loadUser);
 fetch("/api/documents").then(r=>r.ok?r.json():[]).then(list=>{if(!Array.isArray(list))return;const key="maihoc-uploaded-docs";const existing=JSON.parse(localStorage.getItem(key)||"[]");const known=new Set(existing.map(d=>d.id));for(const d of list){if(!known.has(d.id))existing.push({...d,sample:false,description:d.originalName||"Tài liệu đã được Admin duyệt"});}localStorage.setItem(key,JSON.stringify(existing));}).catch(()=>{});
-const observer=new MutationObserver(()=>{
+
+let bodyMutationTimer = null;
+const observer = new MutationObserver((mutations) => {
+  if (bodyMutationTimer) clearTimeout(bodyMutationTimer);
+  bodyMutationTimer = setTimeout(() => {
   if(activeUser?.role==="admin" && $("#admin-users-table") && !$("#admin-review-panel")) addAdminReviewPanel();
   const reader=$("#reader-layout");
   if(reader&&activeUser&&(activeReader?.id!==reader.dataset.readerId||activeReaderRoot!==reader))startReaderTracking(reader);
   else if(!reader&&activeReader){readerMaxProgress=Math.max(readerMaxProgress,Math.min(100,measureReaderProgress(activeReaderRoot)));const payload=readerPayload(readerMaxProgress===100?"completed":"in_progress");if(payload)saveProgress(payload);activeReaderCleanup?.();activeReaderCleanup=null;activeReader=null;activeReaderRoot=null;clearTimeout(readerSaveTimer);}
+}, 150); // Gom mọi biến động DOM trong 150ms thành 1 lần thực thi duy nhất
 });
-observer.observe(document.body,{childList:true,subtree:true});
-setInterval(()=>{loadUser();},45000);
+observer.observe(document.body, { childList: true, subtree: true })
+
+// Tăng chu kỳ kiểm tra phiên từ 45 giây lên 120 giây (2 phút) và không chạy khi tab đang ẩn
+setInterval(() => {
+  if (!document.hidden) {
+    loadUser();
+  }
+}, 120000);
 loadUser();
 window.addEventListener("maihoc-auth-changed",loadUser);
 
@@ -1348,9 +1359,31 @@ document.addEventListener("visibilitychange", () => {
     if ($("#account-progress-list") && activeUser) loadAccountCenterProgress();
   }
 });
-setInterval(() => {
-  refreshOnlineDashboard();
-  if (!document.hidden && $("#account-progress-list") && activeUser) {
-    loadAccountCenterProgress();
+
+
+
+let isDashboardRefreshing = false;
+
+async function throttledRefreshOnlineDashboard() {
+  // Không gửi request nếu người dùng đang ẩn tab hoặc request cũ chưa chạy xong
+  if (document.hidden || isDashboardRefreshing) return;
+
+  isDashboardRefreshing = true;
+  try {
+    await refreshOnlineDashboard();
+  } catch (err) {
+    console.debug('[Polling] Skip dashboard refresh:', err);
+  } finally {
+    isDashboardRefreshing = false;
   }
-}, 4000);
+}
+
+// Tăng chu kỳ từ 4 giây (4000) lên 30 giây (30000)
+setInterval(throttledRefreshOnlineDashboard, 30000);
+
+// Tự động cập nhật ngay khi người dùng mở lại tab
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    throttledRefreshOnlineDashboard();
+  }
+});

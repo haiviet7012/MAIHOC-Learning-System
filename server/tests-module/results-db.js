@@ -10,8 +10,12 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 export const resultsDbPath = path.join(dataDir, "learning-results.sqlite");
 export const resultsDb = new Database(resultsDbPath);
-resultsDb.pragma("journal_mode = WAL");
-resultsDb.pragma("foreign_keys = ON");
+
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 5000');
+db.pragma('temp_store = MEMORY');
+
 
 resultsDb.exec(`
   CREATE TABLE IF NOT EXISTS subjects_catalog (

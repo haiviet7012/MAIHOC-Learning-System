@@ -12,8 +12,12 @@ const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 
 export const db = new Database(path.join(dataDir, "maihoc.sqlite"));
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
+db.pragma('temp_store = MEMORY');
+db.pragma('cache_size = -64000'); // Cấp 64MB bộ nhớ đệm RAM cho SQLite
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,6 +325,9 @@ export function destroySession(req, res) {
   writeCookie(res, "", 0);
 }
 
+
+const presenceUpdateCache = new Map(); // Lưu thời điểm ghi DB gần nhất của từng userId
+const PRESENCE_WRITE_INTERVAL_MS = 60 * 1000; // Chỉ ghi xuống SQLite tối đa 1 lần / 60 giây cho mỗi user
 export function loadCurrentUser(req, res, next) {
   try {
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
@@ -333,7 +340,25 @@ export function loadCurrentUser(req, res, next) {
       if (session && session.expires_at > Date.now()) {
         req.user = publicUser(session);
         req.sessionTokenHash = hashToken(token);
-        db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(session.id, Date.now());
+
+        const nowMs = Date.now();
+        const currentUserId = user.id; // (Hoặc session.user_id tùy tên biến trong hàm của bạn)
+        const lastUpdateMs = presenceUpdateCache.get(currentUserId) || 0;
+
+        if (nowMs - lastUpdateMs >= PRESENCE_WRITE_INTERVAL_MS) {
+          presenceUpdateCache.set(currentUserId, nowMs);
+          try {
+            // Đặt lại đúng câu lệnh .run(...) cập nhật user_presence cũ của bạn vào trong khối try này:
+            db.prepare(`
+              INSERT INTO user_presence (user_id, last_seen_at)
+              VALUES (?, datetime('now'))
+              ON CONFLICT(user_id) DO UPDATE SET last_seen_at = excluded.last_seen_at
+            `).run(currentUserId);
+          } catch (presenceErr) {
+            // Nếu DB đang bận ghi bài thi, bỏ qua cập nhật presence để không làm lỗi request của học sinh
+          }
+        } 
+
       } else if (session) {
         db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
         writeCookie(res, "", 0);
