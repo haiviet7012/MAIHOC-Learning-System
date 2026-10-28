@@ -2,9 +2,6 @@ server/node_modules/
 server/.env
 uploads/*
 !uploads/.gitkeep
-!uploads/documents/
-uploads/documents/*
-!uploads/documents/.gitkeep
 
 # Local account database and sessions
 data/
