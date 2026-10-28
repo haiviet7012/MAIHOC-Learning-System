@@ -116,14 +116,13 @@ export function renderTestsQueuePage(currentUser) {
           if (isCompleted && test.submission) {
             primaryActionHtml = `
               <button type="button" class="button secondary small" data-action="view-test-submission" data-id="${escapeHTML(test.submission.id)}">Xem kết quả</button>
-              ${isAdmin ? `<button type="button" class="button ghost small" data-action="start-test" data-id="${escapeHTML(test.id)}" title="Admin làm thử lại">Làm thử</button>` : ""}
             `;
-          } else {
-            const canStart = test.availability === "open" || isAdmin;
+          } else if (!isAdmin) {
+            const canStart = test.availability === "open";
             const btnLabel =
-              test.availability === "upcoming" && !isAdmin
+              test.availability === "upcoming"
                 ? "Chưa mở đề"
-                : test.availability === "closed" && !isAdmin
+                : test.availability === "closed"
                   ? "Đã đóng đề"
                   : "Làm bài →";
             primaryActionHtml = `
