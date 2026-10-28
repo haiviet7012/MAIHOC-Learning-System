@@ -18,17 +18,17 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 ## 👥 Đội ngũ dự án
 
 ### 💻 Developers
-| Thành viên | Vai trò |
+| Thành viên | Vai trò | Campus
 |---|---|
-| **Nguyễn Việt Hải** | Developer |
-| **Nguyễn Đức Hải** | Developer |
-| **Nguyễn Xuân Hoàng** | Developer |
+| **Nguyễn Việt Hải** | Developer | UET-VNU
+| **Nguyễn Đức Hải** | Developer | FPTU HN
+| **Nguyễn Xuân Hoàng** | Developer | FPTU HN
 
 ### 📈 Sales Managers
-| Thành viên | Vai trò |
+| Thành viên | Vai trò | Campus
 |---|---|
-| **Phạm Quang Minh** | Sales Manager |
-| **Đỗ Gia Bách** | Sales Manager |
+| **Phạm Quang Minh** | Sales Manager | AOF
+| **Đỗ Gia Bách** | Sales Manager | UL-VNU
 
 ---
 
