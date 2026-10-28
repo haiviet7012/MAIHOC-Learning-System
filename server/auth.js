@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// const db = require('./db'); // Nạp kết nối SQLite từ file db.js cùng thư mục
 const scrypt = promisify(crypto.scrypt);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "data");

@@ -1,4 +1,6 @@
 import express from "express";
+import http from "node:http";
+import { setupChat } from "./chat.js";
 
 import multer from "multer";
 
@@ -27,7 +29,7 @@ import {
 
 
 
-dotenv.config();
+dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.env') });
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +50,8 @@ function assessmentConfigFor(subject,category){
 }
 
 const app=express();
+const server=http.createServer(app);
+setupChat(server,app);
 
 const port=Number(process.env.PORT||3000);
 
@@ -70,7 +74,7 @@ function notifyAdmins(type,title,message,link=null){const admins=db.prepare("SEL
 const activeSolutionJobs=new Set();
 function examSolverConfig(){
   return {provider:"gemini",apiKey:String(process.env.GEMINI_API_KEY||"").trim(),
-    modelName:String(process.env.GEMINI_SOLUTION_MODEL||"gemini-3.8-flash").trim()};
+    modelName:String(process.env.GEMINI_SOLUTION_MODEL||"gemini-3.6-flash").trim()};
 }
 function updateSolutionJob(documentId,values){
   const fields=Object.keys(values);if(!fields.length)return;
@@ -1039,7 +1043,7 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 
     const genAI=new GoogleGenerativeAI(key);
 
-    const model=genAI.getGenerativeModel({model:process.env.GEMINI_MODEL||"gemini-2.5-flash"});
+    const model=genAI.getGenerativeModel({model:process.env.GEMINI_MODEL||"gemini-3.6-flash"});
 
     const prompt=`Bạn là trợ lý đánh giá độ khó đề thi Toán THPT. Hãy phân tích đề sau bằng tiếng Việt, không tự khẳng định đáp án nếu thiếu dữ liệu. Trả lời ngắn gọn theo cấu trúc: Mức độ tổng quát (dễ/trung bình/khó), phân tích theo kiến thức, độ phân hóa, thời gian ước lượng và lưu ý.\nTên đề: ${String(title).slice(0,120)}\nNội dung đề:\n${String(text).slice(0,18000)}`;
 
@@ -1075,4 +1079,4 @@ for(const job of db.prepare("SELECT document_id FROM exam_solutions WHERE status
   queueExamSolution(job.document_id);
 }
 
-app.listen(port,()=>console.log(`MAI HOC is running at http://localhost:${port}`));
+server.listen(port,()=>console.log(`MAI HOC is running at http://localhost:${port}`));
