@@ -1,7 +1,5 @@
 # MAI HỌC — website học tập & luyện thi
 
-# Thành viên
-
 ## Developers:
 ### Nguyễn Việt Hải
 ### Nguyễn Đức Hải
