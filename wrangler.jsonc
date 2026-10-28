@@ -5,7 +5,13 @@
   "vars": {
     "BACKEND_ORIGIN": "https://maihoc-learning-system.onrender.com"
   },
-
+  "previews": {
+    "vars": {
+      // Keep PR previews isolated from the production backend.
+      // Set this to a dedicated staging backend URL to enable API testing.
+      "BACKEND_ORIGIN": ""
+    }
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
