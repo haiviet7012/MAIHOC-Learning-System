@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="vi" class="light">
+<head>
+  <link rel="icon"
+      type="image/png"
+      href="/images/mai-hoc-favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#123b70">
+  <title>MAI HỌC — Học tập & luyện thi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=20261028v2">
+  <link rel="stylesheet" href="study-rooms/styles.css?v=20261028v2">
+  <link rel="stylesheet" href="css/tests.css?v=20261028v2">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body class="is-home-lobby">
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">LEARNING SYSTEM</span></span></button>
+      <div class="topbar-actions">
+        <span class="account-greeting" id="user-greeting" hidden></span>
+        <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
+        <div class="inline-actions" id="auth-actions">
+          <button class="icon-button" id="login-open">Đăng nhập</button>
+          <button class="button primary small" id="register-open">Đăng ký</button>
+        </div>
+        <div class="inline-actions" id="user-actions" hidden>
+          <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
+          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span></button>
+          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
+          <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
+          <button class="icon-button" id="logout-button">Đăng xuất</button>
+        </div>
+        <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
+        <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu">☰</button>
+      </div>
+      <nav class="subject-menu" id="subject-menu" aria-label="Danh sách môn học">
+        <button data-subject="Toán" class="subject-link active">Toán</button>
+        <button data-subject="Tiếng Anh" class="subject-link">Tiếng Anh</button>
+        <button data-subject="Vật lý" class="subject-link">Vật lý</button>
+        <button data-subject="Hóa học" class="subject-link">Hóa học</button>
+        <button data-subject="Ngữ văn" class="subject-link">Ngữ văn</button>
+        <button data-subject="Sinh học" class="subject-link">Sinh học</button>
+        <button data-subject="Đề thi THPT quốc gia" class="subject-link">Đề thi THPT quốc gia</button>
+        <button data-subject="IELTS" class="subject-link">IELTS</button>
+        <button data-route="study-rooms" class="subject-link study-room-nav-link">Phòng tự học</button>
+      </nav>
+    </header>
+
+    <div class="app-body" id="app-body">
+      <button type="button" class="online-dashboard-launcher" id="online-dashboard-launcher" aria-label="Mở Dashboard người dùng đang online" title="Mở Dashboard người dùng đang online">
+        <span class="online-dot"></span>
+        <span>Dashboard</span>
+        <strong id="launcher-online-count">0</strong>
+      </button>
+
+      <aside id="online-dashboard" class="online-dashboard" aria-label="Dashboard người dùng đang online">
+        <div class="online-dashboard-head">
+          <div>
+            <p class="eyebrow">TRỰC TUYẾN TRÊN SERVER</p>
+            <h2>Đang online <span class="online-badge-count" id="online-dashboard-count">0</span></h2>
+          </div>
+          <button type="button" class="online-dashboard-collapse" id="online-dashboard-collapse" title="Thu gọn bảng Online" aria-label="Thu gọn bảng Online">«</button>
+        </div>
+        <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
+          <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
+          <button type="button" class="online-filter-btn" data-online-filter="user">User</button>
+          <button type="button" class="online-filter-btn" data-online-filter="admin">Admin</button>
+        </div>
+        <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
+          <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
+        </div>
+        <div class="online-dashboard-foot">
+          <span class="online-dot"></span>
+          <span>Cập nhật thời gian thực</span>
+        </div>
+      </aside>
+
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  </div>
+
+  <dialog id="upload-dialog" class="modal">
+    <form id="upload-form" method="dialog">
+      <div class="modal-heading"><div><p class="eyebrow">KHO TÀI LIỆU</p><h2>Upload tài liệu</h2></div><button type="button" class="close-button" data-close="upload-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Tài liệu bạn gửi sẽ được Admin kiểm tra trước khi xuất hiện trong thư viện. Admin có thể tải lên trực tiếp.</p>
+      <div id="upload-dialog-columns" class="upload-dialog-columns">
+      <section class="upload-document-column">
+      <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
+      <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
+      <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="test" id="upload-category-test-opt" hidden>Bài kiểm tra (Giảng viên / Admin)</option></select></label>
+      <div id="upload-test-extra-fields" class="test-answer-mode-box" hidden>
+        <div class="test-form-grid-two">
+          <label>Ngày mở bài kiểm tra (Bắt buộc)<input name="openAt" type="datetime-local"></label>
+          <label>Hạn cuối nộp bài (Bắt buộc)<input name="closeAt" type="datetime-local"></label>
+        </div>
+        <div class="test-form-grid-two">
+          <label>Thời gian làm bài
+            <select name="durationMinutes">
+              <option value="30">30 phút</option>
+              <option value="45" selected>45 phút</option>
+              <option value="60">60 phút</option>
+              <option value="90">90 phút</option>
+              <option value="120">120 phút</option>
+              <option value="">Không set (Không giới hạn)</option>
+            </select>
+          </label>
+          <label>Chế độ đáp án sau khi đăng đề
+            <select name="answerMode">
+              <option value="immediate">Nhập / Duyệt đáp án ngay sau khi up đề</option>
+              <option value="deferred">Chưa nhập đáp án ngay (Hiện "Đang chờ chấm")</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
+      <div class="file-upload-field"><span class="file-upload-label">Tệp tài liệu</span><label class="file-drop-zone" data-file-drop-zone tabindex="0"><input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required><span class="file-drop-icon" aria-hidden="true">⇧</span><strong>Kéo thả tệp vào đây</strong><span class="file-drop-hint">hoặc nhấn để chọn tệp · PDF, Word, PowerPoint, TXT, ảnh</span><span class="file-drop-name" data-file-name>Chưa chọn tệp</span></label></div>
+      </section>
+
+    </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="upload-dialog">Hủy</button><button class="button primary" type="submit">Tải lên</button></div>
+      <p class="tiny muted">Cần đăng nhập để gửi tài liệu. Tệp tối đa 20 MB; tài liệu do User gửi sẽ ở trạng thái chờ duyệt.</p>
+    </form>
+  </dialog>
+
+  <dialog id="exam-solution-dialog" class="modal exam-solution-dialog">
+    <div class="modal-heading"><div><p class="eyebrow">LỜI GIẢI AI · DUYỆT BỘ CHẤM</p><h2 data-solution-title>Đang chuẩn bị lời giải</h2></div><button type="button" class="close-button" data-close="exam-solution-dialog" aria-label="Đóng">×</button></div>
+    <p class="muted" data-solution-status>Đang chờ tác vụ…</p>
+    <div class="solution-progress"><progress data-solution-progress max="100" value="0"></progress><span data-solution-progress-label>0%</span></div>
+    <div class="solution-admin-error" data-solution-error hidden></div>
+    <div class="solution-review-content" data-solution-review-content></div>
+    <div class="modal-actions solution-dialog-actions"><button type="button" class="button secondary" data-solution-retry hidden>Thử giải lại</button><a class="button secondary" data-solution-download hidden>Tải file dữ liệu lời giải</a><button type="button" class="button primary" data-solution-save hidden>Lưu đáp án chuẩn đã duyệt</button></div>
+  </dialog>
+
+  <dialog id="answer-key-dialog" class="modal answer-key-modal">
+    <div class="modal-heading"><div><p class="eyebrow">QUẢN TRỊ ĐÁP ÁN</p><h2>Đáp án đề bài</h2></div><button type="button" class="close-button" data-close="answer-key-dialog" aria-label="Đóng">×</button></div>
+    <p class="muted">Duyệt lời giải AI và quản lý file đáp án tham khảo theo từng đề. Chỉ bộ chấm đã được admin xác nhận mới dùng để chấm tự động.</p>
+    <details class="answer-key-help"><summary>Đáp án tham khảo dạng JSON</summary><p class="tiny muted">Nếu tải file đáp án tham khảo lên, có thể dùng ID theo cấu hình để admin đối chiếu: I-1 cho trắc nghiệm, II-1a cho mệnh đề a của câu đúng/sai, III-1 cho trả lời ngắn.</p><pre class="answer-key-example">{"answers":{"I-1":"A","II-1a":"Đúng","II-1b":"Sai","III-1":["2","2.0"]}}</pre><p class="tiny muted">Đây là nguồn đối chiếu tùy chọn. Bộ chấm chính thức được tạo từ lời giải AI, admin xác nhận, và áp dụng criteria cùng thang điểm trong configs/exam-layouts.json.</p></details>
+    <div class="answer-key-columns four-cols">
+      <section class="answer-key-section"><h3>Lý thuyết</h3><div class="answer-key-list" data-answer-key-list="theory"><p class="muted">Đang tải…</p></div></section>
+      <section class="answer-key-section"><h3>Đề ôn tập</h3><div class="answer-key-list" data-answer-key-list="practice"><p class="muted">Đang tải…</p></div></section>
+      <section class="answer-key-section"><h3>Đề thi thử</h3><div class="answer-key-list" data-answer-key-list="exam"><p class="muted">Đang tải…</p></div></section>
+      <section class="answer-key-section"><h3>Bài kiểm tra</h3><div class="answer-key-list" data-answer-key-list="test"><p class="muted">Đang tải…</p></div></section>
+    </div>
+  </dialog>
+
+  <dialog id="notifications-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">TRUNG TÂM THÔNG BÁO</p><h2>Thông báo</h2></div><button type="button" class="close-button" data-close="notifications-dialog" aria-label="Đóng">×</button></div>
+    <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button><button type="button" class="text-button danger-text" id="notifications-delete-all">Xóa tất cả</button></div>
+    <div id="notifications-list" class="notifications-list"><p class="muted">Đang tải thông báo…</p></div>
+  </dialog>
+
+  <dialog id="login-dialog" class="modal compact">
+    <form id="login-form">
+      <div class="modal-heading"><div><p class="eyebrow">TÀI KHOẢN MAI HỌC</p><h2>Đăng nhập</h2></div><button type="button" class="close-button" data-close="login-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Đăng nhập để truy cập các chức năng dành riêng cho tài khoản của bạn.</p>
+      <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required minlength="1" maxlength="128" placeholder="Nhập mật khẩu"></label>
+      <p id="login-error" class="auth-error" role="alert" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="login-dialog">Hủy</button><button class="button primary" type="submit">Đăng nhập</button></div>
+      <p class="tiny muted"><button class="text-button" id="forgot-password-open" data-open-forgot-password type="button">Quên mật khẩu?</button></p>
+      <p class="tiny muted">Chưa có tài khoản? <button class="text-button" id="switch-to-register" type="button">Đăng ký tại đây</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="register-dialog" class="modal compact">
+    <form id="register-form">
+      <div class="modal-heading"><div><p class="eyebrow">BẮT ĐẦU HÀNH TRÌNH</p><h2>Tạo tài khoản</h2></div><button type="button" class="close-button" data-close="register-dialog" aria-label="Đóng">×</button></div>
+      <p class="muted">Tài khoản mới mặc định là User. Quyền Admin chỉ được cấp qua cấu hình quản trị phía máy chủ.</p>
+      <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
+      <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
+      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      <p id="register-error" class="auth-error" role="alert" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="register-dialog">Hủy</button><button class="button primary" type="submit">Tạo tài khoản</button></div>
+      <p class="tiny muted"><button class="text-button" data-open-forgot-password type="button">Quên mật khẩu?</button> · Đã có tài khoản? <button class="text-button" id="switch-to-login" type="button">Đăng nhập</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="forgot-password-dialog" class="modal compact" data-verify-purpose="forgot_password">
+    <form id="forgot-password-form">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow" id="verify-dialog-eyebrow">KHÔI PHỤC TÀI KHOẢN</p>
+          <h2 id="verify-dialog-title">Quên mật khẩu</h2>
+        </div>
+        <button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng">×</button>
+      </div>
+      <p class="muted" id="verify-dialog-desc">Nhập Gmail đã đăng ký. Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số, có hiệu lực trong 10 phút.</p>
+      <div id="verify-target-summary" class="verify-target-summary" hidden></div>
+      <label><span id="verify-email-label">Email đăng ký</span><input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <p id="forgot-password-error" class="auth-error" role="alert" hidden></p>
+      <p id="forgot-password-status" class="muted" role="status" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="forgot-password-dialog">Hủy</button><button class="button primary" type="submit" id="verify-send-submit">Gửi mã xác minh</button></div>
+    </form>
+    <form id="reset-password-form" hidden>
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow" id="verify-step2-eyebrow">XÁC MINH EMAIL</p>
+          <h2 id="verify-step2-title">Đặt mật khẩu mới</h2>
+        </div>
+        <button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng cửa sổ xác minh" title="Đóng">×</button>
+      </div>
+      <p class="muted" id="verify-step2-desc">Nhập mã 6 chữ số được gửi đến Gmail và hoàn tất thao tác.</p>
+      <div id="verify-dev-code-box" class="verify-dev-code-box" hidden></div>
+      <label>Mã xác minh<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required minlength="6" maxlength="6" placeholder="6 chữ số"></label>
+      <div id="verify-password-fields" class="verify-password-fields">
+        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
+        <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      </div>
+      <p id="reset-password-error" class="auth-error" role="alert" hidden></p>
+      <p id="reset-password-status" class="muted" role="status" hidden></p>
+      <div class="modal-actions"><button class="button secondary" type="button" id="reset-resend-code">Gửi mã mới</button><button class="button primary" type="submit" id="verify-confirm-submit">Cập nhật mật khẩu</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">XÁC NHẬN</p><h2 id="confirm-title">Nộp bài?</h2></div><button type="button" class="close-button" data-close="confirm-dialog" aria-label="Đóng">×</button></div>
+    <p id="confirm-message">Bạn chắc chắn muốn nộp bài?</p>
+    <div class="modal-actions"><button class="button secondary" data-close="confirm-dialog">Tiếp tục làm</button><button id="confirm-yes" class="button primary">Nộp bài</button></div>
+  </dialog>
+
+  <dialog id="difficulty-dialog" class="modal compact">
+    <div class="modal-heading"><div><p class="eyebrow">ĐÁNH GIÁ BẰNG AI</p><h2>Độ khó đề thi</h2></div><button type="button" class="close-button" data-close="difficulty-dialog" aria-label="Đóng">×</button></div>
+    <div id="difficulty-result" class="ai-result"><span class="spinner"></span> Đang phân tích…</div>
+  </dialog>
+
+  <dialog id="create-test-dialog" class="modal create-test-modal">
+    <form id="create-test-form" method="dialog">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">GIẢNG VIÊN &amp; QUẢN TRỊ VIÊN</p>
+          <h2>Thêm bài kiểm tra mới</h2>
+        </div>
+        <button type="button" class="close-button" data-close="create-test-dialog" aria-label="Đóng">×</button>
+      </div>
+      <p class="muted">Thiết lập đề kiểm tra, thời gian đóng/mở bắt buộc, thời lượng làm bài và cơ chế chấm điểm (nhập đáp án ngay hoặc để chờ chấm).</p>
+
+      <div class="test-form-grid-two">
+        <label>Môn học
+          <select name="subject" required>
+            <option value="Toán">Toán</option>
+            <option value="Tiếng Anh">Tiếng Anh</option>
+            <option value="Vật lý">Vật lý</option>
+            <option value="Hóa học">Hóa học</option>
+            <option value="Ngữ văn">Ngữ văn</option>
+            <option value="Sinh học">Sinh học</option>
+            <option value="Đề thi THPT quốc gia">Đề thi THPT quốc gia</option>
+            <option value="IELTS">IELTS</option>
+          </select>
+        </label>
+        <label>Khối lớp
+          <select name="grade" required>
+            <option value="10">Lớp 10</option>
+            <option value="11">Lớp 11</option>
+            <option value="12">Lớp 12</option>
+          </select>
+        </label>
+      </div>
+
+      <label>Tên bài kiểm tra
+        <input name="title" required maxlength="140" placeholder="Ví dụ: Bài kiểm tra 45 phút Toán 10 — Chương Hàm số">
+      </label>
+
+      <div class="test-form-grid-two">
+        <label>Ngày mở bài kiểm tra (Bắt buộc)
+          <input name="openAt" type="datetime-local" required>
+        </label>
+        <label>Hạn cuối để nộp bài / Ngày đóng (Bắt buộc)
+          <input name="closeAt" type="datetime-local" required>
+        </label>
+      </div>
+
+      <label>Thời gian làm bài
+        <select name="durationMinutes">
+          <option value="30">30 phút</option>
+          <option value="45" selected>45 phút</option>
+          <option value="60">60 phút</option>
+          <option value="90">90 phút</option>
+          <option value="120">120 phút</option>
+          <option value="">Không set (Không giới hạn thời gian)</option>
+        </select>
+      </label>
+
+      <div class="test-answer-mode-box">
+        <span class="file-upload-label">Cơ chế nhập đáp án &amp; chấm điểm</span>
+        <label class="test-answer-mode-option">
+          <input type="radio" name="answerMode" value="immediate" checked>
+          <div>
+            <strong>Nhập / Duyệt đáp án ngay sau khi tải đề lên</strong>
+            <span>Mở trình nhập &amp; duyệt đáp án chuẩn ngay sau khi tạo đề (theo đúng pipeline của tab Gửi tài liệu và Duyệt đáp án). Học viên nộp bài sẽ có điểm ngay.</span>
+          </div>
+        </label>
+        <label class="test-answer-mode-option">
+          <input type="radio" name="answerMode" value="deferred">
+          <div>
+            <strong>Chưa nhập đáp án ngay (Để chấm sau)</strong>
+            <span>Sau khi học viên làm xong bài sẽ không hiện điểm mà hiện <strong>“Đang chờ chấm”</strong>. Bài nộp sẽ chuyển vào mục <strong>Bài chờ chấm</strong> trong tab Quản trị để giảng viên chấm sau.</span>
+          </div>
+        </label>
+        <div data-immediate-answer-options>
+          <label>Phương thức chuẩn bị đáp án khi tải lên
+            <select name="answerEntryMethod">
+              <option value="manual" selected>Nhập đáp án thủ công theo từng câu (Không dùng AI)</option>
+              <option value="ai">Giải tự động bằng AI rồi Admin duyệt lại</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="file-upload-field">
+        <span class="file-upload-label">Tệp đề bài kiểm tra (Bắt buộc)</span>
+        <label class="file-drop-zone compact-drop-zone" data-file-drop-zone tabindex="0">
+          <input name="document" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" required>
+          <span class="file-drop-icon" aria-hidden="true">⇧</span>
+          <strong>Kéo thả tệp đề bài kiểm tra vào đây</strong>
+          <span class="file-drop-hint">hoặc nhấn để chọn tệp · PDF, DOCX, TXT, Ảnh (Tối đa 20 MB)</span>
+          <span class="file-drop-name" data-file-name>Chưa chọn tệp</span>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="create-test-dialog">Hủy</button>
+        <button type="submit" class="button primary">Tạo bài kiểm tra</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="test-grading-dialog" class="modal exam-solution-dialog test-grading-dialog">
+    <div class="modal-heading">
+      <div>
+        <p class="eyebrow">QUẢN TRỊ CHẤM BÀI KIỂM TRA · ĐỐI CHIẾU ĐỀ BÀI &amp; ĐÁP ÁN ĐÚNG (KHÔNG DÙNG AI)</p>
+        <h2 data-grading-title>Chấm bài kiểm tra</h2>
+      </div>
+      <button type="button" class="close-button" data-close="test-grading-dialog" aria-label="Đóng">×</button>
+    </div>
+    <p class="muted" data-grading-meta>Đang tải thông tin bài làm…</p>
+
+    <div class="test-grading-summary-bar">
+      <div class="test-grading-live-score" data-grading-live-score>Điểm chấm dự kiến: — / 10.00</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="button secondary small" data-grading-toggle-paper>📄 Ẩn/Hiện đề bài gốc</button>
+      </div>
+    </div>
+
+    <div class="test-grading-paper-preview" data-grading-paper-preview hidden></div>
+    <div class="solution-admin-error" data-grading-error hidden></div>
+    <div class="solution-review-content" data-grading-content></div>
+
+    <div class="test-grading-footer-options">
+      <label class="inline-check" style="font-size:12px;gap:8px;cursor:pointer">
+        <input type="checkbox" data-grading-save-as-key checked>
+        <span>Lưu bộ đáp án đúng này cho đề kiểm tra và tự động chấm các bài đang chờ khác của cùng đề</span>
+      </label>
+      <input type="text" data-grading-teacher-note placeholder="Nhận xét của giảng viên cho bài làm này (tùy chọn)…" style="max-width:360px;padding:8px 10px">
+    </div>
+
+    <div class="modal-actions solution-dialog-actions">
+      <button type="button" class="button secondary" data-close="test-grading-dialog">Đóng</button>
+      <button type="button" class="button primary" data-grading-save>Lưu điểm &amp; Hoàn tất chấm bài</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/app.js?v=20261028v2"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="js/chat.js"></script>
+</body>
+</html>

@@ -1,10 +1,11 @@
 {
   "name": "maihoc-learning",
   "main": "./worker.js",
-  "compatibility_date": "2026-10-29",
+  "compatibility_date": "2026-10-28",
   "vars": {
     "BACKEND_ORIGIN": "https://maihoc-learning-system.onrender.com"
   },
+
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
