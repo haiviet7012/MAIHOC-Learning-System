@@ -19,7 +19,6 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 
 ### 💻 Developers
 
-<div align="center">
 
 **Nguyễn Việt Hải**  
 *Developer*
@@ -30,11 +29,9 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 **Nguyễn Xuân Hoàng**  
 *Developer*
 
-</div>
 
 ### 📈 Sales Managers
 
-<div align="center">
 
 **Phạm Quang Minh**  
 *Sales Manager*
@@ -42,7 +39,7 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 **Đỗ Gia Bách**  
 *Sales Manager*
 
-</div>
+
 
 <div align="center">
 
