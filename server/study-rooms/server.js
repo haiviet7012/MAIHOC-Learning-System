@@ -2,12 +2,13 @@ import crypto from "node:crypto";
 
 const rooms = new Map();
 const MAX_STUDENTS = 12;
-const ROOM_IDLE_TTL = 3 * 60 * 1000;
+const ROOM_IDLE_TTL = 5 * 60 * 1000;
 const MEMBER_STALE_MS = 45 * 1000;
 const EVENT_LIMIT = 500;
-const EVENT_MAX_BYTES = 8 * 1024 * 1024;
-const CHAT_HISTORY_MAX_BYTES = 4 * 1024 * 1024;
+const EVENT_MAX_BYTES = 12 * 1024 * 1024;
+const CHAT_HISTORY_MAX_BYTES = 6 * 1024 * 1024;
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const ALLOWED_EMOTES = new Set(["👍", "❤️", "👏", "😂", "🎉", "🔥"]);
 
 function fail(res, status, error) {
   return res.status(status).json({ error });
@@ -28,6 +29,9 @@ function verifyRoomPassword(password, stored) {
   const expected = Buffer.from(expectedHex, "hex");
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
+function isUserAdmin(user) {
+  return Boolean(user && user.role === "admin" && (user.adminLevel === undefined || Number(user.adminLevel) >= 1));
+}
 function studentMembers(room) {
   return [...room.members.values()].filter(member => !member.isAdminObserver);
 }
@@ -36,26 +40,37 @@ function publicMember(member) {
     participantId: member.participantId,
     userId: member.userId,
     name: member.name,
-    isAdminObserver: member.isAdminObserver,
-    handRaised: member.handRaised,
-    micOn: member.micOn,
-    cameraOn: member.cameraOn,
+    isAdminObserver: Boolean(member.isAdminObserver),
+    handRaised: Boolean(member.handRaised),
+    micOn: Boolean(member.micOn),
+    cameraOn: Boolean(member.cameraOn),
     joinedAt: member.joinedAt
   };
 }
-function publicRoom(room) {
-  return {
+function visibleMembersFor(room, viewerIsAdmin = false) {
+  const list = viewerIsAdmin
+    ? [...room.members.values()]
+    : studentMembers(room);
+  return list.map(publicMember);
+}
+function publicRoom(room, viewerIsAdmin = false) {
+  const students = studentMembers(room);
+  const payload = {
     id: room.id,
     name: room.name,
     hasPassword: Boolean(room.passwordHash),
-    participantCount: studentMembers(room).length,
+    participantCount: students.length,
     maxParticipants: MAX_STUDENTS,
     createdAt: room.createdAt,
     creatorName: room.creatorName,
     creatorId: room.creatorId,
-    isFull: studentMembers(room).length >= MAX_STUDENTS,
-    adminObserving: [...room.members.values()].some(member => member.isAdminObserver)
+    isFull: students.length >= MAX_STUDENTS,
+    adminObserving: false
   };
+  if (viewerIsAdmin) {
+    payload.adminObserving = [...room.members.values()].some(member => member.isAdminObserver);
+  }
+  return payload;
 }
 function addEvent(room, type, payload, member, targetParticipantId = null) {
   const event = {
@@ -63,7 +78,7 @@ function addEvent(room, type, payload, member, targetParticipantId = null) {
     type,
     payload,
     fromParticipantId: member?.participantId || null,
-    fromName: member?.name || "Hệ thống",
+    fromName: member?.isAdminObserver ? "Peer" : (member?.name || "Hệ thống"),
     fromIsAdminObserver: Boolean(member?.isAdminObserver),
     targetParticipantId,
     createdAt: Date.now()
@@ -78,12 +93,42 @@ function addEvent(room, type, payload, member, targetParticipantId = null) {
   }
   return event;
 }
+function filterEventsForMember(events, viewerMember) {
+  const viewerIsAdmin = Boolean(viewerMember?.isAdminObserver);
+  const result = [];
+  for (const event of events) {
+    if (event.targetParticipantId && event.targetParticipantId !== viewerMember.participantId) continue;
+    if (!viewerIsAdmin && event.fromIsAdminObserver) {
+      // Regular students must never see join/leave/presence events of a stealth Admin.
+      // Only direct WebRTC signaling or stealth-peer cleanup is forwarded without Admin identity.
+      if (["signal-offer", "signal-answer", "signal-ice", "stealth-peer-left"].includes(event.type)) {
+        result.push({
+          id: event.id,
+          type: event.type,
+          payload: event.payload,
+          fromParticipantId: event.fromParticipantId,
+          fromName: "Peer",
+          fromIsAdminObserver: false,
+          targetParticipantId: event.targetParticipantId,
+          createdAt: event.createdAt
+        });
+      }
+      continue;
+    }
+    result.push({ ...event });
+  }
+  return result;
+}
 function pruneRooms(now = Date.now()) {
   for (const [id, room] of rooms) {
     for (const [participantId, member] of room.members) {
       if (now - member.lastSeenAt > MEMBER_STALE_MS) {
         room.members.delete(participantId);
-        addEvent(room, "participant-left", { participantId }, member);
+        if (member.isAdminObserver) {
+          addEvent(room, "stealth-peer-left", { participantId }, member);
+        } else {
+          addEvent(room, "participant-left", { participantId }, member);
+        }
       }
     }
     if (now - room.lastActivityAt > ROOM_IDLE_TTL && !room.members.size) rooms.delete(id);
@@ -116,9 +161,12 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
 
   app.get("/api/study-rooms", sameOrigin, auth, (req, res) => {
     pruneRooms();
-    const isAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 1;
+    const isAdmin = isUserAdmin(req.user);
     res.setHeader("Cache-Control", "no-store");
-    res.json({ rooms: [...rooms.values()].map(publicRoom), isAdmin });
+    res.json({
+      rooms: [...rooms.values()].map(room => publicRoom(room, isAdmin)),
+      isAdmin
+    });
   });
 
   app.post("/api/study-rooms", sameOrigin, auth, (req, res) => {
@@ -129,52 +177,92 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     pruneRooms();
     const existingRoom = [...rooms.values()].find(room => room.creatorId === req.user.id);
     if (existingRoom) {
-      return fail(res, 409, "Bạn đã có một phòng học đang hoạt động. Hãy đóng phòng cũ trước khi tạo phòng mới.");
+      return fail(res, 409, "Mỗi người chỉ được tạo tối đa 1 phòng. Hãy đóng phòng cũ trước khi tạo phòng mới.");
     }
     let id = makeRoomId();
     while (rooms.has(id)) id = makeRoomId();
     const now = Date.now();
     const room = {
-      id, name, creatorId: req.user.id, creatorName: req.user.name,
+      id,
+      name,
+      creatorId: req.user.id,
+      creatorName: req.user.name,
       passwordHash: password ? hashRoomPassword(password) : null,
-      createdAt: now, lastActivityAt: now, members: new Map(),
-      events: [], eventSequence: 0, eventBytes: 0, chatHistory: [], chatHistoryBytes: 0
+      createdAt: now,
+      lastActivityAt: now,
+      members: new Map(),
+      events: [],
+      eventSequence: 0,
+      eventBytes: 0,
+      chatHistory: [],
+      chatHistoryBytes: 0
     };
     addEvent(room, "system", { message: `${req.user.name} đã tạo phòng học.` }, null);
     rooms.set(id, room);
-    res.status(201).json({ room: publicRoom(room), roomId: id });
+    res.status(201).json({ room: publicRoom(room, isUserAdmin(req.user)), roomId: id });
   });
 
   app.post("/api/study-rooms/:roomId/join", sameOrigin, auth, (req, res) => {
     pruneRooms();
     const room = requireRoom(req.params.roomId, res);
     if (!room) return;
-    const isAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 1;
-    // Admin entry is always treated as an observer and disclosed to everyone in the room.
-    const monitor = Boolean(req.body?.monitor) || isAdmin;
-    if (monitor && !isAdmin) return fail(res, 403, "Chỉ Admin mới có quyền giám sát phòng.");
-    if (!monitor && room.passwordHash && !verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
+    const isAdmin = isUserAdmin(req.user);
+    // Admin joining any room (or clicking Giám sát) enters in 100% stealth monitoring mode,
+    // unless the Admin is the creator explicitly entering their own room as host (monitor === false).
+    const requestedMonitor = req.body?.monitor;
+    const monitor = isAdmin
+      ? (requestedMonitor !== undefined ? Boolean(requestedMonitor) : room.creatorId !== req.user.id)
+      : false;
+    if (Boolean(requestedMonitor) && !isAdmin) {
+      return fail(res, 403, "Chỉ Admin mới có quyền giám sát phòng.");
+    }
+    const isCreator = room.creatorId === req.user.id;
+    if (!monitor && !isCreator && room.passwordHash && !verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
       return fail(res, 403, "Mật khẩu phòng không đúng.");
     }
-    const existing = [...room.members.values()].find(member => member.userId === req.user.id && member.isAdminObserver === monitor);
+    const existing = [...room.members.values()].find(
+      member => member.userId === req.user.id && Boolean(member.isAdminObserver) === monitor
+    );
     if (existing) {
       existing.lastSeenAt = Date.now();
-      return res.json({ participant: publicMember(existing), participantToken: existing.participantId, room: publicRoom(room), members: [...room.members.values()].map(publicMember), messages: room.chatHistory.slice(-100), lastEventId: room.eventSequence });
+      return res.json({
+        participant: publicMember(existing),
+        participantToken: existing.participantId,
+        room: publicRoom(room, isAdmin),
+        members: visibleMembersFor(room, monitor || isAdmin),
+        messages: room.chatHistory.slice(-100),
+        lastEventId: room.eventSequence
+      });
     }
-    if (!monitor && studentMembers(room).length >= MAX_STUDENTS) return fail(res, 409, "Phòng đã đủ 12 người.");
-    if (monitor && [...room.members.values()].some(member => member.isAdminObserver && member.userId === req.user.id)) {
-      return fail(res, 409, "Bạn đang giám sát phòng này ở một cửa sổ khác.");
+    if (!monitor && studentMembers(room).length >= MAX_STUDENTS) {
+      return fail(res, 409, "Phòng đã đủ 12 người.");
     }
     const participantId = crypto.randomBytes(18).toString("hex");
     const member = {
-      participantId, userId: req.user.id, name: String(req.user.name || "Người học").slice(0, 80),
-      isAdminObserver: monitor, handRaised: false, micOn: false, cameraOn: false,
-      joinedAt: Date.now(), lastSeenAt: Date.now()
+      participantId,
+      userId: req.user.id,
+      name: String(req.user.name || "Người học").slice(0, 80),
+      isAdminObserver: monitor,
+      handRaised: false,
+      micOn: false,
+      cameraOn: false,
+      joinedAt: Date.now(),
+      lastSeenAt: Date.now()
     };
     room.members.set(participantId, member);
     room.lastActivityAt = Date.now();
-    addEvent(room, "participant-joined", { member: publicMember(member) }, member);
-    res.json({ participant: publicMember(member), participantToken: participantId, room: publicRoom(room), members: [...room.members.values()].map(publicMember), messages: room.chatHistory.slice(-100), lastEventId: room.eventSequence });
+    // Only broadcast participant-joined for regular participants; stealth Admin joins silently.
+    if (!monitor) {
+      addEvent(room, "participant-joined", { member: publicMember(member) }, member);
+    }
+    res.json({
+      participant: publicMember(member),
+      participantToken: participantId,
+      room: publicRoom(room, isAdmin),
+      members: visibleMembersFor(room, monitor || isAdmin),
+      messages: room.chatHistory.slice(-100),
+      lastEventId: room.eventSequence
+    });
   });
 
   app.get("/api/study-rooms/:roomId/events", sameOrigin, auth, (req, res) => {
@@ -186,11 +274,16 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     member.lastSeenAt = Date.now();
     room.lastActivityAt = Date.now();
     const since = Math.max(0, Number(req.query.since) || 0);
-    const events = room.events
-      .filter(event => event.id > since && (!event.targetParticipantId || event.targetParticipantId === member.participantId))
-      .map(event => ({ ...event }));
+    const rawEvents = room.events.filter(event => event.id > since);
+    const events = filterEventsForMember(rawEvents, member);
+    const viewerIsAdmin = Boolean(member.isAdminObserver) || isUserAdmin(req.user);
     res.setHeader("Cache-Control", "no-store");
-    res.json({ room: publicRoom(room), members: [...room.members.values()].map(publicMember), events, lastEventId: room.eventSequence });
+    res.json({
+      room: publicRoom(room, viewerIsAdmin),
+      members: visibleMembersFor(room, Boolean(member.isAdminObserver)),
+      events,
+      lastEventId: room.eventSequence
+    });
   });
 
   app.post("/api/study-rooms/:roomId/events", sameOrigin, auth, (req, res) => {
@@ -203,20 +296,36 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     const type = String(req.body?.type || "");
     const payload = req.body?.payload || {};
     const target = req.body?.targetParticipantId ? String(req.body.targetParticipantId) : null;
-    const allowed = new Set(["chat", "hand", "media-state", "signal-offer", "signal-answer", "signal-ice"]);
+    const allowed = new Set(["chat", "hand", "emote", "media-state", "signal-offer", "signal-answer", "signal-ice"]);
     if (!allowed.has(type)) return fail(res, 400, "Loại sự kiện phòng không hợp lệ.");
-    if (type.startsWith("signal-") && (!target || target === member.participantId)) return fail(res, 400, "Đích tín hiệu WebRTC không hợp lệ.");
+    if (type.startsWith("signal-") && (!target || target === member.participantId)) {
+      return fail(res, 400, "Đích tín hiệu WebRTC không hợp lệ.");
+    }
+    if (member.isAdminObserver && ["chat", "hand", "emote", "media-state"].includes(type)) {
+      // Stealth admin observer remains completely invisible to participants in the room.
+      return res.json({ ok: true, stealthIgnored: true });
+    }
     if (type === "chat") {
       const text = String(payload.text || "").trim();
       const image = String(payload.image || "");
       if (!text && !image) return fail(res, 400, "Tin nhắn không được để trống.");
       if (text.length > 2000) return fail(res, 400, "Tin nhắn tối đa 2.000 ký tự.");
       if (image) {
-        if (!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(image)) return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
+        if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(image)) {
+          return fail(res, 400, "Tệp ảnh không được hỗ trợ.");
+        }
         const approximateBytes = Math.floor(image.length * 3 / 4);
         if (approximateBytes > IMAGE_MAX_BYTES) return fail(res, 413, "Ảnh tối đa 2 MB.");
       }
-      const chat = { id: crypto.randomBytes(10).toString("hex"), text, image: image || null, participantId: member.participantId, name: member.name, isAdminObserver: member.isAdminObserver, createdAt: Date.now() };
+      const chat = {
+        id: crypto.randomBytes(10).toString("hex"),
+        text,
+        image: image || null,
+        participantId: member.participantId,
+        name: member.name,
+        isAdminObserver: false,
+        createdAt: Date.now()
+      };
       const chatBytes = Buffer.byteLength(JSON.stringify(chat));
       room.chatHistory.push(chat);
       room.chatHistoryBytes = (room.chatHistoryBytes || 0) + chatBytes;
@@ -230,7 +339,13 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     }
     if (type === "hand") {
       member.handRaised = Boolean(payload.raised);
-      addEvent(room, "hand", { participantId: member.participantId, raised: member.handRaised }, member);
+      addEvent(room, "hand", { participantId: member.participantId, name: member.name, raised: member.handRaised }, member);
+      return res.json({ ok: true });
+    }
+    if (type === "emote") {
+      const emoji = String(payload.emoji || "").trim();
+      if (!ALLOWED_EMOTES.has(emoji)) return fail(res, 400, "Biểu cảm không hợp lệ.");
+      addEvent(room, "emote", { participantId: member.participantId, name: member.name, emoji }, member);
       return res.json({ ok: true });
     }
     if (type === "media-state") {
@@ -249,7 +364,11 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     const member = memberFor(room, req, req.body?.token, res);
     if (!member) return;
     room.members.delete(member.participantId);
-    addEvent(room, "participant-left", { participantId: member.participantId }, member);
+    if (member.isAdminObserver) {
+      addEvent(room, "stealth-peer-left", { participantId: member.participantId }, member);
+    } else {
+      addEvent(room, "participant-left", { participantId: member.participantId }, member);
+    }
     room.lastActivityAt = Date.now();
     res.json({ ok: true });
   });
@@ -257,14 +376,16 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
   const closeRoomHandler = (req, res) => {
     const room = rooms.get(String(req.params.roomId || "").toUpperCase());
     if (!room) return res.json({ ok: true });
-    const isAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 1;
-    if (!isAdmin && room.creatorId !== req.user.id) return fail(res, 403, "Chỉ người tạo phòng hoặc Admin mới có thể đóng phòng.");
-    addEvent(room, "room-closed", { message: "Phòng đã được đóng bởi chủ phòng hoặc Admin." }, null);
+    const isAdmin = isUserAdmin(req.user);
+    if (!isAdmin && room.creatorId !== req.user.id) {
+      return fail(res, 403, "Chỉ người tạo phòng hoặc Admin mới có thể đóng phòng.");
+    }
+    addEvent(room, "room-closed", { message: "Phòng học đã được đóng." }, null);
     rooms.delete(room.id);
     res.json({ ok: true });
   };
   app.delete("/api/study-rooms/:roomId", sameOrigin, auth, closeRoomHandler);
   app.post("/api/study-rooms/:roomId/close", sameOrigin, auth, closeRoomHandler);
 
-  console.info("Study Rooms module loaded (12 students per room).");
+  console.info("Study Rooms module loaded (max 12 students per room, stealth admin monitoring enabled).");
 }

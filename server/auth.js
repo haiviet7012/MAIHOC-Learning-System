@@ -39,9 +39,22 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS password_reset_expiry_idx ON password_reset_tokens(expires_at,user_id);
+  CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL COLLATE NOCASE,
+    purpose TEXT NOT NULL,
+    target_email TEXT,
+    code_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS email_verification_user_idx ON email_verification_codes(user_id, purpose, expires_at);
   CREATE TABLE IF NOT EXISTS user_presence (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    last_seen_at INTEGER NOT NULL
+    last_seen_at INTEGER NOT NULL,
+    activity TEXT NOT NULL DEFAULT 'Đang trực tuyến'
   );
   CREATE INDEX IF NOT EXISTS user_presence_last_seen_idx ON user_presence(last_seen_at);
   CREATE TABLE IF NOT EXISTS user_progress (
@@ -174,6 +187,11 @@ if (!userColumns.has("admin_level")) {
   db.exec("ALTER TABLE users ADD COLUMN admin_level INTEGER NOT NULL DEFAULT 0");
 }
 
+const presenceColumns = new Set(db.pragma("table_info(user_presence)").map((column) => column.name));
+if (!presenceColumns.has("activity")) {
+  db.exec("ALTER TABLE user_presence ADD COLUMN activity TEXT NOT NULL DEFAULT 'Đang trực tuyến'");
+}
+
 const submissionColumns = new Set(
   db.pragma("table_info(document_submissions)").map((column) => column.name)
 );
@@ -272,7 +290,6 @@ export async function authenticateUser(email, password) {
   const safeEmail = String(email || "").trim().toLowerCase();
   const user = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(safeEmail);
   if (!user) {
-    // Keep an unknown account's failure path reasonably similar to a real hash check.
     await hashPassword("dummy-password-for-timing-only").catch(() => null);
     return null;
   }
@@ -285,8 +302,7 @@ export function createSession(userId, res) {
   const now = Date.now();
   db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)")
     .run(hashToken(token), userId, now + SESSION_MS, now);
-  db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(userId,now);
-  // Periodically purge expired rows without a separate job.
+  db.prepare("INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,'Đang trực tuyến') ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(userId, now);
   db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
   writeCookie(res, token, Math.floor(SESSION_MS / 1000));
 }
@@ -296,10 +312,10 @@ export function destroySession(req, res) {
   if (token && /^[a-f0-9]{64}$/i.test(token)) {
     db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
   }
-  if(req.user?.id){
-    const remaining=db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND expires_at>?").get(req.user.id,Date.now());
-    if(!Number(remaining?.count))db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
-    else db.prepare("UPDATE user_presence SET last_seen_at=? WHERE user_id=?").run(Date.now(),req.user.id);
+  if (req.user?.id) {
+    const remaining = db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND expires_at>?").get(req.user.id, Date.now());
+    if (!Number(remaining?.count)) db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
+    else db.prepare("UPDATE user_presence SET last_seen_at=? WHERE user_id=?").run(Date.now(), req.user.id);
   }
   writeCookie(res, "", 0);
 }
@@ -316,7 +332,7 @@ export function loadCurrentUser(req, res, next) {
       if (session && session.expires_at > Date.now()) {
         req.user = publicUser(session);
         req.sessionTokenHash = hashToken(token);
-        db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(session.id,Date.now());
+        db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(session.id, Date.now());
       } else if (session) {
         db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
         writeCookie(res, "", 0);

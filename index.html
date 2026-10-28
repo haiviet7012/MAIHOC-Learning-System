@@ -24,8 +24,8 @@
         </div>
         <div class="inline-actions" id="user-actions" hidden>
           <span class="account-greeting" id="user-greeting"></span>
-          <button class="icon-button" id="user-dashboard-open" data-action="user-dashboard" hidden>Dashboard</button>
-          <button class="icon-button" id="account-center-open" data-route="account-center" hidden>Trung tâm tài khoản</button>
+          <button class="icon-button" id="user-dashboard-open" data-action="user-dashboard" title="Ẩn/Hiện bảng người dùng đang online">🟢 <span class="button-label">Online</span> <span class="online-pill-count" id="topbar-online-count">0</span></button>
+          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
         </div>
@@ -44,7 +44,39 @@
         <button data-route="study-rooms" class="subject-link study-room-nav-link">Phòng tự học</button>
       </nav>
     </header>
-    <main id="view" class="view" tabindex="-1"></main>
+
+    <div class="app-body" id="app-body">
+      <button type="button" class="online-dashboard-launcher" id="online-dashboard-launcher" aria-label="Mở Dashboard người dùng đang online" title="Mở Dashboard người dùng đang online">
+        <span class="online-dot"></span>
+        <span>Dashboard</span>
+        <strong id="launcher-online-count">0</strong>
+      </button>
+
+      <aside id="online-dashboard" class="online-dashboard" aria-label="Dashboard người dùng đang online">
+        <div class="online-dashboard-head">
+          <div>
+            <p class="eyebrow">TRỰC TUYẾN TRÊN SERVER</p>
+            <h2>Đang online <span class="online-badge-count" id="online-dashboard-count">0</span></h2>
+          </div>
+          <button type="button" class="online-dashboard-collapse" id="online-dashboard-collapse" title="Thu gọn bảng Online" aria-label="Thu gọn bảng Online">«</button>
+        </div>
+        <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
+          <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
+          <button type="button" class="online-filter-btn" data-online-filter="user">User</button>
+          <button type="button" class="online-filter-btn" data-online-filter="admin">Admin</button>
+        </div>
+        <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
+          <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
+        </div>
+        <div class="online-dashboard-foot">
+          <span class="online-dot"></span>
+          <span>Cập nhật thời gian thực</span>
+        </div>
+      </aside>
+
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
   </div>
 
@@ -120,24 +152,40 @@
     </form>
   </dialog>
 
-  <dialog id="forgot-password-dialog" class="modal compact">
+  <dialog id="forgot-password-dialog" class="modal compact" data-verify-purpose="forgot_password">
     <form id="forgot-password-form">
-      <div class="modal-heading"><div><p class="eyebrow">KHÔI PHỤC TÀI KHOẢN</p><h2>Quên mật khẩu</h2></div><button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng">×</button></div>
-      <p class="muted">Nhập Gmail đã đăng ký. Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số, có hiệu lực trong 10 phút.</p>
-      <label>Email đăng ký<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow" id="verify-dialog-eyebrow">KHÔI PHỤC TÀI KHOẢN</p>
+          <h2 id="verify-dialog-title">Quên mật khẩu</h2>
+        </div>
+        <button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng">×</button>
+      </div>
+      <p class="muted" id="verify-dialog-desc">Nhập Gmail đã đăng ký. Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số, có hiệu lực trong 10 phút.</p>
+      <div id="verify-target-summary" class="verify-target-summary" hidden></div>
+      <label><span id="verify-email-label">Email đăng ký</span><input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
       <p id="forgot-password-error" class="auth-error" role="alert" hidden></p>
       <p id="forgot-password-status" class="muted" role="status" hidden></p>
-      <div class="modal-actions"><button class="button secondary" type="button" data-close="forgot-password-dialog">Hủy</button><button class="button primary" type="submit">Gửi mã xác minh</button></div>
+      <div class="modal-actions"><button class="button secondary" type="button" data-close="forgot-password-dialog">Hủy</button><button class="button primary" type="submit" id="verify-send-submit">Gửi mã xác minh</button></div>
     </form>
     <form id="reset-password-form" hidden>
-      <div class="modal-heading"><div><p class="eyebrow">XÁC MINH EMAIL</p><h2>Đặt mật khẩu mới</h2></div><button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng cửa sổ đặt lại mật khẩu" title="Đóng">×</button></div>
-      <p class="muted">Nhập mã được gửi đến Gmail và tạo mật khẩu mới.</p>
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow" id="verify-step2-eyebrow">XÁC MINH EMAIL</p>
+          <h2 id="verify-step2-title">Đặt mật khẩu mới</h2>
+        </div>
+        <button type="button" class="close-button" data-close="forgot-password-dialog" aria-label="Đóng cửa sổ xác minh" title="Đóng">×</button>
+      </div>
+      <p class="muted" id="verify-step2-desc">Nhập mã 6 chữ số được gửi đến Gmail và hoàn tất thao tác.</p>
+      <div id="verify-dev-code-box" class="verify-dev-code-box" hidden></div>
       <label>Mã xác minh<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required minlength="6" maxlength="6" placeholder="6 chữ số"></label>
-      <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
-      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      <div id="verify-password-fields" class="verify-password-fields">
+        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
+        <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      </div>
       <p id="reset-password-error" class="auth-error" role="alert" hidden></p>
       <p id="reset-password-status" class="muted" role="status" hidden></p>
-      <div class="modal-actions"><button class="button secondary" type="button" id="reset-resend-code">Gửi mã mới</button><button class="button primary" type="submit">Cập nhật mật khẩu</button></div>
+      <div class="modal-actions"><button class="button secondary" type="button" id="reset-resend-code">Gửi mã mới</button><button class="button primary" type="submit" id="verify-confirm-submit">Cập nhật mật khẩu</button></div>
     </form>
   </dialog>
 

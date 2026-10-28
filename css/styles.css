@@ -528,3 +528,600 @@ body.exam-open{overflow:hidden}
 .view:focus-visible{
   outline:none;
 }
+
+/* Prevent default browser focus ring on the main view container upon reload/navigation. */
+.view:focus,
+.view:focus-visible {
+  outline: none;
+}
+
+/* =========================================================
+   LEFT-SIDE ONLINE USERS DASHBOARD (ẢNH 1)
+   ========================================================= */
+.app-body {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 74px);
+  position: relative;
+}
+
+.app-body > .view {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.online-pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: color-mix(in srgb, #16a34a 20%, var(--surface-2));
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.online-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+  flex-shrink: 0;
+}
+
+.online-dashboard-launcher {
+  display: none;
+  position: fixed;
+  left: 12px;
+  top: 86px;
+  z-index: 18;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+
+.online-dashboard-launcher strong {
+  padding: 2px 6px;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.app-body.online-sidebar-collapsed .online-dashboard {
+  display: none;
+}
+
+.app-body.online-sidebar-collapsed .online-dashboard-launcher {
+  display: inline-flex;
+}
+
+body.exam-open .online-dashboard,
+body.reader-open .online-dashboard,
+body.study-room-open .online-dashboard {
+  display: none;
+}
+
+.online-dashboard {
+  width: 256px;
+  flex: 0 0 256px;
+  position: sticky;
+  top: 74px;
+  height: calc(100dvh - 74px);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 15;
+  overflow: hidden;
+}
+
+.online-dashboard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.online-dashboard-head .eyebrow {
+  margin: 0 0 4px;
+  font-size: 10px;
+}
+
+.online-dashboard-head h2 {
+  margin: 0;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  background: color-mix(in srgb, #22c55e 18%, var(--surface-2));
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+:root.dark .online-badge-count,
+:root.dark .online-pill-count {
+  color: #4ade80;
+}
+
+.online-dashboard-collapse {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.online-dashboard-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.online-filter-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.online-filter-btn.is-active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--primary);
+}
+
+.online-dashboard-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.online-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  transition: border-color 0.15s ease;
+}
+
+.online-user-row.is-self {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.online-user-avatar {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 13px;
+  border: 1px solid var(--border);
+}
+
+.online-user-row.is-admin .online-user-avatar {
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface-2));
+}
+
+.online-status-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  background: #22c55e;
+  border: 2px solid var(--surface);
+}
+
+.online-user-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.online-user-name-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.online-user-name-line strong {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.online-role-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.online-role-badge.is-admin {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
+  color: var(--primary);
+}
+
+.online-user-activity {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.online-dashboard-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* =========================================================
+   TRUNG TÂM TÀI KHOẢN & TIẾN TRÌNH HỌC TẬP (10 CELLS SCROLL)
+   ========================================================= */
+.account-section {
+  margin-bottom: 22px;
+}
+
+.account-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.account-section-head h2 {
+  margin: 6px 0 4px;
+  font-size: 22px;
+}
+
+.account-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.online-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+:root.dark .online-live-indicator {
+  color: #4ade80;
+}
+
+.account-progress-stats {
+  margin: 12px 0 16px;
+}
+
+.account-progress-head-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 2.2fr) minmax(150px, 1fr) minmax(170px, 1.1fr) 110px;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/* Strictly show up to 10 cells (each 68px tall + 8px gap = 752px); scroll from the 11th cell onward */
+.account-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(10 * 68px + 9 * 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.account-progress-cell {
+  box-sizing: border-box;
+  height: 68px;
+  min-height: 68px;
+  max-height: 68px;
+  flex: 0 0 68px;
+  display: grid;
+  grid-template-columns: minmax(220px, 2.2fr) minmax(150px, 1fr) minmax(170px, 1.1fr) 110px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color 0.15s ease;
+}
+
+.account-progress-cell:hover {
+  border-color: var(--accent);
+}
+
+.account-progress-cell.is-completed {
+  border-left: 4px solid #16a34a;
+}
+
+.account-progress-cell.is-in-progress {
+  border-left: 4px solid var(--accent);
+}
+
+.account-progress-col-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.account-progress-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-progress-index {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--primary);
+  background: var(--surface-2);
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.account-progress-title-row strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-progress-col-main .tiny {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-progress-col-date {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.account-progress-date-label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.account-progress-col-percent {
+  display: grid;
+  gap: 6px;
+}
+
+.account-progress-percent-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.account-progress-percent-top strong.is-done {
+  color: #16a34a;
+}
+
+.account-progress-status-chip {
+  padding: 2px 7px;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.account-progress-status-chip.is-done {
+  background: color-mix(in srgb, #16a34a 18%, var(--surface-2));
+  color: #16a34a;
+}
+
+.account-progress-bar-track {
+  height: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.account-progress-bar-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.account-progress-cell.is-completed .account-progress-bar-track span {
+  background: #16a34a;
+}
+
+.account-progress-col-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.account-settings-grid .account-section {
+  margin-bottom: 0;
+}
+
+.account-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.account-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-form input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.account-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.account-danger-card {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+
+.account-danger-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.pill.danger-pill,
+.button.danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.verify-target-summary {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.verify-dev-code-box {
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.verify-dev-code-box strong {
+  font-size: 20px;
+  letter-spacing: 3px;
+  color: var(--primary);
+}
+
+.verify-password-fields {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 1020px) {
+  .online-dashboard {
+    position: fixed;
+    left: 0;
+    top: 74px;
+    bottom: 0;
+    box-shadow: var(--shadow);
+  }
+  .online-dashboard-launcher {
+    display: inline-flex;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-progress-head-row {
+    display: none;
+  }
+  .account-progress-cell {
+    height: auto;
+    min-height: 86px;
+    max-height: none;
+    flex: none;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+}

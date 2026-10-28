@@ -10,9 +10,20 @@ import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js";
+import { mountStudyRooms } from "../study-rooms/client.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
+let activeStudyRoomsCleanup = null;
+function stopStudyRoomsIfActive() {
+    if (activeStudyRoomsCleanup) {
+        const cleanup = activeStudyRoomsCleanup;
+        activeStudyRoomsCleanup = null;
+        Promise.resolve(cleanup()).catch(() => {});
+    }
+    view.classList.remove("study-room-fullscreen", "study-room-lobby-view");
+    document.body.classList.remove("study-room-open");
+}
 let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
@@ -339,6 +350,108 @@ async function openSavedExamResult(id) {
         toast(error.message || "Không tải được kết quả bài làm.", "error");
     }
 }
+
+function accountCenterPage() {
+    if (!currentUser) {
+        return `${pageHeading("Trung tâm tài khoản", "Bạn cần đăng nhập để quản lý tài khoản và xem tiến trình học tập.")}<div class="empty-state"><h3>Chưa đăng nhập</h3><p>Hãy đăng nhập để xem tiến trình học tập thời gian thực, đổi Gmail, đổi mật khẩu hoặc quản lý tài khoản.</p><button class="button primary" type="button" onclick="document.querySelector('#login-open')?.click()">Đăng nhập ngay</button></div>`;
+    }
+    const roleName = currentUser.role !== "admin"
+        ? "Học viên (User)"
+        : Number(currentUser.adminLevel) >= 2
+          ? "Admin cao nhất"
+          : "Admin cấp dưới";
+    const isSuperAdmin = currentUser.role === "admin" && Number(currentUser.adminLevel) >= 2;
+    return `
+      ${pageHeading("Trung tâm tài khoản", "Quản lý thông tin bảo mật và theo dõi tiến trình học tập theo thời gian thực.")}
+      <div class="admin-toolbar">
+        <div>
+          <span class="pill">TÀI KHOẢN CÁ NHÂN</span>
+          <h2 style="margin:10px 0 2px">${escapeHTML(currentUser.name)}</h2>
+          <p class="muted" style="margin:0"><strong id="account-center-current-email">${escapeHTML(currentUser.email)}</strong> · <span class="role-chip">${escapeHTML(roleName)}</span></p>
+        </div>
+        <button class="button secondary" data-route="home">← Về trang học tập</button>
+      </div>
+
+      <section class="account-section card">
+        <div class="account-section-head">
+          <div>
+            <span class="pill">REALTIME · TỐI ĐA 10 MỤC HIỂN THỊ TRƯỚC KHI CUỘN</span>
+            <h2>Tiến trình học tập</h2>
+            <p class="muted">Tự động cập nhật theo thời gian thực khi bạn đọc lý thuyết, luyện tập hoặc làm đề thi thử.</p>
+          </div>
+          <div class="account-progress-meta">
+            <span class="online-live-indicator"><span class="online-dot"></span> Đang đồng bộ trực tiếp</span>
+            <button type="button" class="button secondary small" data-account-progress-refresh>↻ Làm mới</button>
+          </div>
+        </div>
+        <div class="stat-row account-progress-stats">
+          <div class="stat"><span class="muted">Bài / Đề đã học</span><strong id="account-progress-total">0</strong></div>
+          <div class="stat"><span class="muted">Đã hoàn thành</span><strong id="account-progress-completed">0</strong></div>
+          <div class="stat"><span class="muted">Tiến trình trung bình</span><strong id="account-progress-avg">0%</strong></div>
+        </div>
+        <div class="account-progress-head-row" aria-hidden="true">
+          <span>BÀI / ĐỀ ĐANG HỌC</span>
+          <span>NGÀY BẮT ĐẦU HỌC</span>
+          <span>TIẾN TRÌNH (%)</span>
+        </div>
+        <div class="account-progress-list" id="account-progress-list" role="region" aria-label="Danh sách tiến trình học tập" tabindex="0">
+          <p class="muted">Đang tải tiến trình học tập…</p>
+        </div>
+      </section>
+
+      <div class="account-settings-grid">
+        <section class="account-section card">
+          <span class="pill">BẢO MẬT GMAIL</span>
+          <h3>Email &amp; Đổi địa chỉ Email</h3>
+          <p class="muted">Email hiện tại: <strong id="account-form-current-email">${escapeHTML(currentUser.email)}</strong>. Thao tác đổi Email yêu cầu nhập mã xác minh 6 chữ số gửi qua Gmail.</p>
+          <form id="account-change-email-form" class="account-form">
+            <label>
+              Email (Gmail) mới
+              <input name="newEmail" type="email" required maxlength="254" autocomplete="email" placeholder="Nhập địa chỉ Gmail mới (ví dụ: banmoi@gmail.com)">
+            </label>
+            <p class="auth-error" id="account-email-error" hidden></p>
+            <div class="account-form-actions">
+              <button type="submit" class="button primary">Gửi mã xác minh &amp; Đổi Email</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="account-section card">
+          <span class="pill">MẬT KHẨU</span>
+          <h3>Đổi mật khẩu tài khoản</h3>
+          <p class="muted">Nhập mật khẩu mới (tối thiểu 10 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+          <form id="account-change-password-form" class="account-form">
+            <label>
+              Mật khẩu mới
+              <input name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 10 ký tự">
+            </label>
+            <label>
+              Nhập lại mật khẩu mới
+              <input name="confirmPassword" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
+            </label>
+            <p class="auth-error" id="account-password-error" hidden></p>
+            <div class="account-form-actions">
+              <button type="submit" class="button primary">Gửi mã xác minh &amp; Đổi mật khẩu</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <section class="account-section card account-danger-card">
+        <div class="account-danger-content">
+          <div>
+            <span class="pill danger-pill">VÙNG NGUY HIỂM · XÁC NHẬN GMAIL</span>
+            <h3>Xóa tài khoản vĩnh viễn</h3>
+            <p class="muted">Xóa toàn bộ tài khoản, lịch sử làm bài và dữ liệu học tập cá nhân. Bạn sẽ cần xác nhận bằng mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+          </div>
+          <button type="button" class="button danger" id="account-delete-open" data-account-delete-open ${isSuperAdmin ? "disabled title=\"Tài khoản Admin cao nhất không thể tự xóa\"" : ""}>
+            ${isSuperAdmin ? "Admin cao nhất không thể tự xóa" : "Xóa tài khoản"}
+          </button>
+        </div>
+      </section>
+    `;
+}
+
 function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
@@ -371,6 +484,7 @@ catch (error) {
     container.innerHTML = "";
 } }
 function render() {
+    stopStudyRoomsIfActive();
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
@@ -405,6 +519,12 @@ function render() {
         view.innerHTML = resultPage();
     else if (state.route === "admin")
         view.innerHTML = adminPage();
+    else if (state.route === "account-center")
+        view.innerHTML = accountCenterPage();
+    else if (state.route === "study-rooms") {
+        view.innerHTML = "";
+        activeStudyRoomsCleanup = mountStudyRooms(view, currentUser);
+    }
     const pdfContainer = view.querySelector("[data-pdf-reader]");
     if (pdfContainer) {
         const pdfExamId = state.examDocId;
@@ -423,6 +543,9 @@ function render() {
     view.focus({ preventScroll: true });
     if (state.route === "admin")
         loadAdminUsers();
+    if (state.route === "account-center")
+        window.dispatchEvent(new CustomEvent("maihoc-account-center-open"));
+    window.dispatchEvent(new CustomEvent("maihoc-route-changed", { detail: { route: state.route, subject: state.subject, grade: state.grade } }));
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
@@ -645,6 +768,7 @@ document.addEventListener("click", async (e) => {
     if (routeBtn) {
         e.preventDefault();
         const r = routeBtn.dataset.route;
+        $("#subject-menu")?.classList.remove("open");
         go(r);
         return;
     }
@@ -863,8 +987,20 @@ $("#upload-form").addEventListener("submit", async (e) => {
     }
 });
 $("#confirm-yes").addEventListener("click", () => { closeDialog("confirm-dialog"); finishExam(); });
-document.addEventListener("input", e => { if (e.target.matches("[data-answer]"))
-    state.answers[e.target.dataset.answer] = e.target.value; });
+function notifyExamAnswerProgress() {
+    if (state.route !== "exam" || !state.examDocId) return;
+    const d = findDoc(state.examDocId);
+    if (!d) return;
+    const layout = assessmentLayoutFor(d);
+    const total = (layout?.sections || []).reduce((sum, s) => sum + Number(s.count || 0) * (s.type === "true_false" ? (s.statements || ["a","b","c","d"]).length : 1), 0) || Math.max(1, activeExamQuestions.length || 10);
+    const answered = Object.values(state.answers).filter(v => String(v ?? "").trim() !== "").length;
+    const percent = Math.min(99, Math.max(1, Math.round((answered / Math.max(1, total)) * 100)));
+    window.dispatchEvent(new CustomEvent("maihoc-exam-progress", { detail: { id: d.id, title: d.title, subject: d.subject || "Toán", grade: d.grade || "10", category: d.category || "exam", percent, answers: state.answers } }));
+}
+document.addEventListener("input", e => { if (e.target.matches("[data-answer]")) {
+    state.answers[e.target.dataset.answer] = e.target.value;
+    notifyExamAnswerProgress();
+} });
 document.addEventListener("change", e => {
     const multipleChoice = e.target.closest("[data-answer-choice]");
     if (multipleChoice) {
@@ -892,6 +1028,9 @@ document.addEventListener("change", e => {
         } else if (state.answers[answerId] === trueFalse.dataset.answerValue) {
             delete state.answers[answerId];
         }
+        notifyExamAnswerProgress();
+    } else if (multipleChoice) {
+        notifyExamAnswerProgress();
     }
 });
 window.addEventListener("beforeunload", e => { if (state.route === "exam" && state.examStarted && findDoc(state.examDocId)?.category === "exam") {
@@ -909,6 +1048,8 @@ function applyAuthUI() {
     $("#user-actions").hidden = !signedIn;
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
+    if ($("#user-dashboard-open")) $("#user-dashboard-open").hidden = !signedIn;
+    if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn;
     $("#admin-open").hidden = currentUser?.role !== "admin";
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
 }
@@ -922,6 +1063,7 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
+    if (state.route === "study-rooms" || state.route === "account-center") render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1006,7 +1148,7 @@ $("#logout-button").addEventListener("click", async () => {
         currentUser = null;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
-        if (state.route === "admin")
+        if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center")
             go("home");
         toast("Bạn đã đăng xuất.", "success");
     }
@@ -1064,4 +1206,13 @@ document.addEventListener("click",async e=>{
     toast(decision==="approve"?"Đã chấp thuận và xóa tài khoản.":"Đã từ chối yêu cầu; tài khoản được giữ nguyên.","success");
     await loadAccountDeletionRequests();await loadAdminUsers();
   }catch(error){toast(error.message||"Không xử lý được yêu cầu.","error");review.disabled=false;}
+});
+window.addEventListener("maihoc-user-updated", event => {
+  currentUser = event.detail?.user || null;
+  applyAuthUI();
+  if (state.route === "account-center") render();
+});
+window.addEventListener("maihoc-navigate", event => {
+  const { route, params } = event.detail || {};
+  if (route) go(route, params || {});
 });

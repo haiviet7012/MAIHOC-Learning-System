@@ -16,6 +16,7 @@ import {GoogleGenerativeAI} from "@google/generative-ai";
 import nodemailer from "nodemailer";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
+import { installStudyRooms } from "./study-rooms/server.js";
 
 import {
 
@@ -27,6 +28,9 @@ import {
 
 
 
+const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__earlyDir, ".env") });
+dotenv.config({ path: path.resolve(__earlyDir, "..", ".env") });
 dotenv.config();
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
@@ -167,7 +171,7 @@ app.use((req,res,next)=>{
 
 });
 
-app.use(express.json({limit:"1mb"}));
+app.use(express.json({limit:"4mb"}));
 
 app.use(loadCurrentUser);
 
@@ -276,6 +280,414 @@ app.post("/api/auth/logout",requireSameOrigin,(req,res)=>{
   res.status(204).end();
 
 });
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_COOLDOWN_MS = 30 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const ONLINE_WINDOW_MS = 90 * 1000;
+
+function smtpConfigFromEnv() {
+  const rawUser = String(process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER || "").trim();
+  const rawPass = String(process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || process.env.EMAIL_PASS || "").trim();
+  const host = String(process.env.SMTP_HOST || (rawUser ? "smtp.gmail.com" : "")).trim();
+  const port = Number(process.env.SMTP_PORT || 587);
+  const from = String(process.env.SMTP_FROM || rawUser).trim();
+  const isPlaceholder =
+    !host ||
+    !rawUser ||
+    !rawPass ||
+    /your-gmail-address|your-16-character-app-password|example\.com/i.test(rawUser + " " + rawPass);
+  const pass = /gmail\.com$/i.test(host) ? rawPass.replace(/\s+/g, "") : rawPass;
+  return { host, port, user: rawUser, pass, from: from || rawUser, configured: !isPlaceholder };
+}
+
+function hashOtpCode(userId, purpose, code, targetEmail = "") {
+  return crypto
+    .createHash("sha256")
+    .update(`${userId}:${purpose}:${String(code).trim()}:${String(targetEmail || "").trim().toLowerCase()}`)
+    .digest("hex");
+}
+
+async function sendVerificationCodeEmail({ toEmail, userName, code, purposeLabel, userId = null, extraTargetEmail = null }) {
+  const smtp = smtpConfigFromEnv();
+  console.log(`[MAI HỌC OTP] Mã xác minh (${purposeLabel}) cho ${toEmail}: ${code} (hiệu lực 10 phút)`);
+  if (userId) {
+    try {
+      notifyUser(
+        userId,
+        "verification_code",
+        `Mã xác minh ${purposeLabel}: ${code}`,
+        `Mã xác minh gồm 6 chữ số cho thao tác "${purposeLabel}" của bạn là: ${code}. Mã có hiệu lực trong 10 phút.`
+      );
+    } catch {}
+  }
+  if (!smtp.configured) {
+    return {
+      sentByEmail: false,
+      devCode: code,
+      message: `Hệ thống đã tạo mã xác minh 6 chữ số (môi trường hiện tại chưa cấu hình SMTP Gmail trong server/.env). Mã xác minh của bạn là: ${code} (hiệu lực 10 phút).`
+    };
+  }
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.port === 465,
+      auth: { user: smtp.user, pass: smtp.pass },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000
+    });
+    const recipients = [toEmail];
+    if (extraTargetEmail && extraTargetEmail.toLowerCase() !== toEmail.toLowerCase()) {
+      recipients.push(extraTargetEmail);
+    }
+    await transporter.sendMail({
+      from: smtp.from,
+      to: recipients.join(", "),
+      subject: `[MAI HỌC] Mã xác minh ${purposeLabel}: ${code}`,
+      text: `Xin chào ${userName || "bạn"},\n\nMã xác minh 6 chữ số cho yêu cầu "${purposeLabel}" trên hệ thống MAI HỌC của bạn là: ${code}\n\nMã có hiệu lực trong 10 phút. Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.`,
+      html: `<div style="font-family:Montserrat,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #d8e2ef;background:#ffffff;color:#172b45">
+        <p style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:#2478c9;margin:0 0 8px">MAI HỌC LEARNING SYSTEM</p>
+        <h2 style="margin:0 0 12px;font-size:20px">Xác minh: ${purposeLabel}</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6">Xin chào <strong>${userName || "bạn"}</strong>, sử dụng mã gồm 6 chữ số dưới đây để hoàn tất thao tác trên MAI HỌC:</p>
+        <div style="padding:16px;background:#eaf1fb;text-align:center;font-size:28px;font-weight:700;letter-spacing:6px;color:#123b70;margin:0 0 16px">${code}</div>
+        <p style="margin:0;font-size:12px;color:#65758b">Mã xác minh có hiệu lực trong <strong>10 phút</strong>. Không chia sẻ mã này cho bất kỳ ai.</p>
+      </div>`
+    });
+    return {
+      sentByEmail: true,
+      message: `Đã gửi mã xác minh 6 chữ số đến Gmail ${toEmail}. Vui lòng kiểm tra hộp thư (hoặc thư mục Spam).`,
+    };
+  } catch (error) {
+    console.warn("Could not send verification email via SMTP:", error.message);
+    return {
+      sentByEmail: false,
+      devCode: code,
+      message: `Không kết nối được máy chủ SMTP Gmail (${error.message}). Mã xác minh dự phòng 6 chữ số của bạn là: ${code} (hiệu lực 10 phút).`
+    };
+  }
+}
+
+async function issueVerificationCode({ user, purpose, purposeLabel, targetEmail = null }) {
+  const now = Date.now();
+  db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
+  const latest = db
+    .prepare("SELECT created_at FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1")
+    .get(user.id, purpose);
+  if (latest && now - Number(latest.created_at) < OTP_COOLDOWN_MS) {
+    const retryAfter = Math.max(1, Math.ceil((OTP_COOLDOWN_MS - (now - Number(latest.created_at))) / 1000));
+    const err = new Error(`Vui lòng chờ ${retryAfter} giây trước khi yêu cầu gửi mã mới.`);
+    err.status = 429;
+    err.retryAfter = retryAfter;
+    throw err;
+  }
+  const code = String(crypto.randomInt(100000, 1000000));
+  const normalizedTarget = String(targetEmail || user.email || "").trim().toLowerCase();
+  const codeHash = hashOtpCode(user.id, purpose, code, normalizedTarget);
+  db.prepare("DELETE FROM email_verification_codes WHERE user_id=? AND purpose=?").run(user.id, purpose);
+  db.prepare(
+    "INSERT INTO email_verification_codes(user_id,email,purpose,target_email,code_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,?,0,?)"
+  ).run(user.id, user.email, purpose, normalizedTarget, codeHash, now + OTP_TTL_MS, now);
+  return sendVerificationCodeEmail({
+    toEmail: user.email,
+    userName: user.name,
+    code,
+    purposeLabel,
+    userId: user.id,
+    extraTargetEmail: purpose === "change_email" ? normalizedTarget : null
+  });
+}
+
+function consumeVerificationCode({ userId, purpose, code, targetEmail = null }) {
+  const now = Date.now();
+  db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
+  const cleanCode = String(code || "").trim();
+  if (!/^\d{6}$/.test(cleanCode)) {
+    const err = new Error("Mã xác minh phải gồm đúng 6 chữ số.");
+    err.status = 400;
+    throw err;
+  }
+  const row = db
+    .prepare("SELECT * FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1")
+    .get(userId, purpose);
+  if (!row || Number(row.expires_at) < now) {
+    const err = new Error("Mã xác minh không tồn tại hoặc đã hết hạn (10 phút). Hãy bấm Gửi mã mới.");
+    err.status = 400;
+    throw err;
+  }
+  if (Number(row.attempts) >= OTP_MAX_ATTEMPTS) {
+    db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+    const err = new Error("Bạn đã nhập sai mã quá 5 lần. Hãy yêu cầu gửi mã xác minh mới.");
+    err.status = 429;
+    throw err;
+  }
+  const expectedTarget = String(row.target_email || "").trim().toLowerCase();
+  if (targetEmail && expectedTarget !== String(targetEmail).trim().toLowerCase()) {
+    const err = new Error("Thông tin email xác minh không khớp với yêu cầu ban đầu. Hãy gửi mã mới.");
+    err.status = 400;
+    throw err;
+  }
+  const expectedBuffer = Buffer.from(row.code_hash, "hex");
+  const actualBuffer = Buffer.from(hashOtpCode(userId, purpose, cleanCode, expectedTarget), "hex");
+  const valid = expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+  if (!valid) {
+    const nextAttempts = Number(row.attempts) + 1;
+    if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+      db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+    } else {
+      db.prepare("UPDATE email_verification_codes SET attempts=? WHERE id=?").run(nextAttempts, row.id);
+    }
+    const err = new Error(`Mã xác minh không chính xác (còn ${Math.max(0, OTP_MAX_ATTEMPTS - nextAttempts)} lần thử).`);
+    err.status = 400;
+    throw err;
+  }
+  db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+  return true;
+}
+
+app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return res.status(400).json({ error: "Vui lòng nhập địa chỉ Gmail hợp lệ." });
+    }
+    const user = db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE email=? COLLATE NOCASE").get(email);
+    if (!user) {
+      return res.status(404).json({ error: "Không tìm thấy tài khoản nào đăng ký với địa chỉ Gmail này." });
+    }
+    const delivery = await issueVerificationCode({
+      user,
+      purpose: "forgot_password",
+      purposeLabel: "Khôi phục mật khẩu",
+      targetEmail: user.email
+    });
+    return res.json({
+      ok: true,
+      email: user.email,
+      sentByEmail: delivery.sentByEmail,
+      ...(delivery.devCode ? { devCode: delivery.devCode } : {}),
+      message: delivery.message
+    });
+  } catch (error) {
+    const status = Number(error.status) || 500;
+    if (error.retryAfter) res.setHeader("Retry-After", String(error.retryAfter));
+    return res.status(status).json({
+      error: error.message || "Không thể gửi mã xác minh lúc này.",
+      ...(error.retryAfter ? { retryAfter: error.retryAfter } : {})
+    });
+  }
+});
+
+app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const code = String(req.body?.code || "").trim();
+    const password = String(req.body?.password || "");
+    if (!email) return res.status(400).json({ error: "Thiếu địa chỉ email cần đặt lại mật khẩu." });
+    if (password.length < 10 || password.length > 128) {
+      return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+    }
+    const user = db.prepare("SELECT id,name,email FROM users WHERE email=? COLLATE NOCASE").get(email);
+    if (!user) {
+      return res.status(404).json({ error: "Tài khoản không tồn tại." });
+    }
+    consumeVerificationCode({
+      userId: user.id,
+      purpose: "forgot_password",
+      code,
+      targetEmail: user.email
+    });
+    const passwordHash = await hashPassword(password);
+    db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, user.id);
+    db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
+    notifyUser(user.id, "password_reset", "Mật khẩu đã được đặt lại", "Mật khẩu tài khoản MAI HỌC của bạn vừa được cập nhật thông qua mã xác minh Gmail.");
+    return res.json({ ok: true, message: "Đã đổi mật khẩu thành công. Hãy đăng nhập lại bằng mật khẩu mới." });
+  } catch (error) {
+    const status = Number(error.status) || 400;
+    return res.status(status).json({ error: error.message || "Không thể đặt lại mật khẩu." });
+  }
+});
+
+// -------------------- ACCOUNT CENTER + GMAIL OTP API --------------------
+
+app.post("/api/account/send-code", requireSameOrigin, requireAuth, async (req, res) => {
+  try {
+    const purpose = String(req.body?.purpose || "").trim();
+    const allowedPurposes = {
+      change_email: "Đổi địa chỉ Email",
+      change_password: "Đổi mật khẩu tài khoản",
+      delete_account: "Xóa vĩnh viễn tài khoản"
+    };
+    if (!Object.hasOwn(allowedPurposes, purpose)) {
+      return res.status(400).json({ error: "Loại thao tác xác minh không hợp lệ." });
+    }
+    let targetEmail = req.user.email;
+    if (purpose === "change_email") {
+      const newEmail = String(req.body?.newEmail || "").trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 254) {
+        return res.status(400).json({ error: "Địa chỉ Email mới không hợp lệ." });
+      }
+      if (newEmail === String(req.user.email).toLowerCase()) {
+        return res.status(400).json({ error: "Email mới trùng với Email hiện tại của bạn." });
+      }
+      const existing = db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>?").get(newEmail, req.user.id);
+      if (existing) {
+        return res.status(409).json({ error: "Địa chỉ Email này đã được sử dụng bởi một tài khoản khác." });
+      }
+      targetEmail = newEmail;
+    }
+    if (purpose === "delete_account" && Number(req.user.adminLevel) >= 2) {
+      return res.status(403).json({ error: "Tài khoản Admin cao nhất không thể tự xóa." });
+    }
+    const delivery = await issueVerificationCode({
+      user: req.user,
+      purpose,
+      purposeLabel: allowedPurposes[purpose],
+      targetEmail
+    });
+    return res.json({
+      ok: true,
+      email: req.user.email,
+      targetEmail,
+      sentByEmail: delivery.sentByEmail,
+      ...(delivery.devCode ? { devCode: delivery.devCode } : {}),
+      message: delivery.message
+    });
+  } catch (error) {
+    const status = Number(error.status) || 400;
+    if (error.retryAfter) res.setHeader("Retry-After", String(error.retryAfter));
+    return res.status(status).json({
+      error: error.message || "Không thể gửi mã xác minh.",
+      ...(error.retryAfter ? { retryAfter: error.retryAfter } : {})
+    });
+  }
+});
+
+app.post("/api/account/change-email", requireSameOrigin, requireAuth, (req, res) => {
+  try {
+    const newEmail = String(req.body?.newEmail || "").trim().toLowerCase();
+    const code = String(req.body?.code || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 254) {
+      return res.status(400).json({ error: "Địa chỉ Email mới không hợp lệ." });
+    }
+    const existing = db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>?").get(newEmail, req.user.id);
+    if (existing) {
+      return res.status(409).json({ error: "Địa chỉ Email này đã được sử dụng bởi một tài khoản khác." });
+    }
+    consumeVerificationCode({
+      userId: req.user.id,
+      purpose: "change_email",
+      code,
+      targetEmail: newEmail
+    });
+    db.prepare("UPDATE users SET email=? WHERE id=?").run(newEmail, req.user.id);
+    const updated = db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(req.user.id);
+    notifyUser(req.user.id, "email_changed", "Đã thay đổi địa chỉ Email", `Email tài khoản của bạn đã được chuyển thành ${newEmail}.`);
+    return res.json({
+      ok: true,
+      user: publicUser(updated),
+      message: `Đã cập nhật Email thành ${newEmail}.`
+    });
+  } catch (error) {
+    const status = Number(error.status) || 400;
+    return res.status(status).json({ error: error.message || "Không thể đổi địa chỉ Email." });
+  }
+});
+
+app.post("/api/account/change-password", requireSameOrigin, requireAuth, async (req, res) => {
+  try {
+    const code = String(req.body?.code || "").trim();
+    const password = String(req.body?.password || "");
+    if (password.length < 10 || password.length > 128) {
+      return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+    }
+    consumeVerificationCode({
+      userId: req.user.id,
+      purpose: "change_password",
+      code,
+      targetEmail: req.user.email
+    });
+    const passwordHash = await hashPassword(password);
+    db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, req.user.id);
+    notifyUser(req.user.id, "password_changed", "Đã đổi mật khẩu", "Mật khẩu tài khoản của bạn đã được cập nhật thành công.");
+    return res.json({ ok: true, message: "Đã đổi mật khẩu tài khoản thành công." });
+  } catch (error) {
+    const status = Number(error.status) || 400;
+    return res.status(status).json({ error: error.message || "Không thể đổi mật khẩu." });
+  }
+});
+
+app.post("/api/account/delete", requireSameOrigin, requireAuth, (req, res) => {
+  try {
+    const code = String(req.body?.code || "").trim();
+    if (Number(req.user.adminLevel) >= 2) {
+      return res.status(403).json({ error: "Không thể xóa tài khoản Admin cao nhất." });
+    }
+    consumeVerificationCode({
+      userId: req.user.id,
+      purpose: "delete_account",
+      code,
+      targetEmail: req.user.email
+    });
+    const userId = req.user.id;
+    destroySession(req, res);
+    deleteAccountPermanently(userId);
+    return res.json({ ok: true, deleted: true, message: "Tài khoản của bạn đã được xóa vĩnh viễn." });
+  } catch (error) {
+    const status = Number(error.status) || 400;
+    return res.status(status).json({ error: error.message || "Không thể xóa tài khoản." });
+  }
+});
+
+// -------------------- ONLINE USERS PRESENCE DASHBOARD API --------------------
+
+function cleanPresenceAndListOnline(now = Date.now()) {
+  const cutoff = now - ONLINE_WINDOW_MS;
+  db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
+  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
+  return db.prepare(`
+    SELECT u.id, u.name, u.role, u.admin_level AS adminLevel,
+           p.last_seen_at AS lastSeenAt, p.activity
+    FROM user_presence p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.last_seen_at >= ?
+      AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?)
+    ORDER BY CASE WHEN u.role = admin THEN 0 ELSE 1 END, p.last_seen_at DESC, u.name ASC
+    LIMIT 200
+  `).all(cutoff, now);
+}
+
+app.post("/api/presence/ping", requireSameOrigin, requireAuth, (req, res) => {
+  const now = Date.now();
+  const activity = String(req.body?.activity || "Đang trực tuyến").trim().slice(0, 80) || "Đang trực tuyến";
+  db.prepare(
+    "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
+  ).run(req.user.id, now, activity);
+  const users = cleanPresenceAndListOnline(now);
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ ok: true, onlineCount: users.length, users });
+});
+
+app.get("/api/presence/online", (req, res) => {
+  const now = Date.now();
+  if (req.user?.id) {
+    const activity = String(req.query?.activity || "").trim().slice(0, 80);
+    if (activity) {
+      db.prepare(
+        "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
+      ).run(req.user.id, now, activity);
+    } else {
+      db.prepare(
+        "INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at"
+      ).run(req.user.id, now);
+    }
+  }
+  const users = cleanPresenceAndListOnline(now);
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ onlineCount: users.length, users });
+});
+
 
 
 
@@ -440,8 +852,10 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
   const percent=previous?.status==="completed"?100:Math.max(previous?.progressPercent||0,requestedPercent);
   const wantsCompletion=b.status==="completed"&&percent===100;
   const status=wantsCompletion?"completed":(previous?.status==="completed"?"completed":"in_progress");
-  const document=type==="document"?db.prepare("SELECT title FROM documents WHERE id=?").get(id):null;
+  const document=db.prepare("SELECT title,subject,grade FROM documents WHERE id=?").get(id);
   const itemTitle=String(b.itemTitle||document?.title||id).trim().slice(0,180)||id;
+  const resolvedSubject=String(b.subject||document?.subject||"Toán").slice(0,60);
+  const resolvedGrade=String(b.grade||document?.grade||"10").slice(0,5);
 
   const answers=b.answers==null?null:JSON.stringify(b.answers).slice(0,50000);
 
@@ -451,7 +865,7 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 
     ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status=excluded.status,progress_percent=excluded.progress_percent,score=COALESCE(excluded.score,user_progress.score),answers_json=COALESCE(excluded.answers_json,user_progress.answers_json),last_position=excluded.last_position,updated_at=datetime('now')`)
 
-    .run(req.user.id,type,id,itemTitle,String(b.subject||"Toán").slice(0,60),String(b.grade||"10").slice(0,5),status,percent,Number.isFinite(Number(b.score))&&b.score!==""?Number(b.score):null,answers,String(b.lastPosition||percent).slice(0,300));
+    .run(req.user.id,type,id,itemTitle,resolvedSubject,resolvedGrade,status,percent,Number.isFinite(Number(b.score))&&b.score!==""?Number(b.score):null,answers,String(b.lastPosition||percent).slice(0,300));
 
   let notificationCreated=false;
   if(wantsCompletion&&previous?.status!=="completed"){
@@ -1123,6 +1537,8 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 });
 
 
+
+installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 
 app.use((err,_req,res,_next)=>{
 

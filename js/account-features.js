@@ -27,129 +27,645 @@ function toastNotice(message, type="success") {
   const region=$("#toast-region"); if(!region)return;
   const el=document.createElement("div");el.className="toast "+type;el.textContent=message;region.append(el);setTimeout(()=>el.remove(),3800);
 }
-let passwordResetEmail="";
-let passwordResetSendCooldown=false;
-let passwordResetCooldownUntil=0;
-let passwordResetCooldownTimer=null;
-function updateResendButton(){
-  const button=$("#reset-resend-code");
-  if(!button)return;
-  const remaining=Math.max(0,Math.ceil((passwordResetCooldownUntil-Date.now())/1000));
-  button.disabled=remaining>0||button.dataset.busy==="true";
-  button.textContent=remaining>0?`Gửi mã mới (${remaining}s)`:"Gửi mã mới";
-  if(remaining>0){
-    if(passwordResetCooldownTimer)clearTimeout(passwordResetCooldownTimer);
-    passwordResetCooldownTimer=setTimeout(updateResendButton,250);
-  }else{
-    passwordResetCooldownTimer=null;
+
+let passwordResetEmail = "";
+let verifyPurpose = "forgot_password";
+let pendingNewEmail = "";
+let pendingNewPassword = "";
+let passwordResetCooldownUntil = 0;
+let passwordResetCooldownTimer = null;
+let onlineFilter = "all";
+let latestOnlineUsers = [];
+let currentRouteActivity = "Đang ở Trang chủ";
+let examProgressTimer = null;
+
+function routeToActivityLabel(route) {
+  const map = {
+    home: "Đang ở Trang chủ",
+    subject: "Đang xem môn Toán",
+    "subject-picker": "Đang chọn môn học",
+    theory: "Đang xem Lý thuyết",
+    "theory-list": "Đang xem Lý thuyết",
+    practice: "Đang luyện đề ôn tập",
+    "practice-list": "Đang luyện đề ôn tập",
+    "exam-select": "Đang ở Phòng thi thử",
+    "exam-list": "Đang chọn đề thi thử",
+    reader: "Đang đọc tài liệu",
+    exam: "Đang làm bài thi",
+    result: "Đang xem kết quả thi",
+    "saved-result": "Đang xem kết quả thi",
+    admin: "Đang ở trang Quản trị",
+    "study-rooms": "Đang ở Phòng tự học",
+    "account-center": "Trung tâm tài khoản"
+  };
+  return map[route] || "Đang trực tuyến";
+}
+
+function updateResendButton() {
+  const button = $("#reset-resend-code");
+  if (!button) return;
+  const remaining = Math.max(0, Math.ceil((passwordResetCooldownUntil - Date.now()) / 1000));
+  button.disabled = remaining > 0 || button.dataset.busy === "true";
+  button.textContent = remaining > 0 ? `Gửi mã mới (${remaining}s)` : "Gửi mã mới";
+  if (remaining > 0) {
+    if (passwordResetCooldownTimer) clearTimeout(passwordResetCooldownTimer);
+    passwordResetCooldownTimer = setTimeout(updateResendButton, 250);
+  } else {
+    passwordResetCooldownTimer = null;
   }
 }
-function startPasswordResetCooldown(seconds=30){
-  passwordResetCooldownUntil=Date.now()+seconds*1000;
+
+function startPasswordResetCooldown(seconds = 30) {
+  passwordResetCooldownUntil = Date.now() + seconds * 1000;
   updateResendButton();
 }
-function resetMessage(id,message,isError=false){
-  const node=$("#"+id);if(!node)return;
-  node.textContent=message;node.hidden=!message;
-  node.classList.toggle("auth-error",Boolean(isError));
+
+function resetMessage(id, message, isError = false) {
+  const node = $("#" + id);
+  if (!node) return;
+  node.textContent = message;
+  node.hidden = !message;
+  node.classList.toggle("auth-error", Boolean(isError));
 }
-function resetEndpointBusy(form,busy){
-  const button=form?.querySelector('button[type="submit"]');
-  if(button){button.disabled=busy;button.dataset.originalText ||= button.textContent;if(busy)button.textContent="Đang xử lý...";else button.textContent=button.dataset.originalText;}
+
+function resetEndpointBusy(form, busy) {
+  const button = form?.querySelector('button[type="submit"]');
+  if (button) {
+    button.disabled = busy;
+    button.dataset.originalText ||= button.textContent;
+    if (busy) button.textContent = "Đang xử lý...";
+    else button.textContent = button.dataset.originalText;
+  }
 }
-async function requestPasswordResetCode(){
-  const email=String(passwordResetEmail||$("#forgot-password-form [name=email]")?.value||"").trim().toLowerCase();
-  if(!email){resetMessage("forgot-password-error","Vui lòng nhập Gmail đã đăng ký.",true);return false;}
-  const form=$("#forgot-password-form");resetEndpointBusy(form,true);
-  resetMessage("forgot-password-error","");resetMessage("forgot-password-status","");
-  try{
-    const result=await request("/api/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
-    passwordResetEmail=email;
-    const emailInput=$("#reset-password-form [name=email]");
-    if(emailInput)emailInput.value=email;
-    $("#forgot-password-form").hidden=true;
-    $("#reset-password-form").hidden=false;
-    resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó.");
+
+function showDevCodeBox(devCode) {
+  const box = $("#verify-dev-code-box");
+  if (!box) return;
+  if (devCode) {
+    box.hidden = false;
+    box.innerHTML = `<span>Mã xác minh 6 chữ số của bạn:</span> <strong>${esc(devCode)}</strong>`;
+  } else {
+    box.hidden = true;
+    box.innerHTML = "";
+  }
+}
+
+function openGmailVerificationDialog({
+  purpose = "forgot_password",
+  email = "",
+  newEmail = "",
+  prefilledPassword = ""
+} = {}) {
+  const dialog = $("#forgot-password-dialog");
+  if (!dialog) return;
+  verifyPurpose = purpose;
+  dialog.dataset.verifyPurpose = purpose;
+  passwordResetEmail = String(email || activeUser?.email || "").trim().toLowerCase();
+  pendingNewEmail = String(newEmail || "").trim().toLowerCase();
+  pendingNewPassword = String(prefilledPassword || "");
+
+  const step1Form = $("#forgot-password-form");
+  const step2Form = $("#reset-password-form");
+  step1Form.hidden = false;
+  step2Form.hidden = true;
+  resetMessage("forgot-password-error", "");
+  resetMessage("forgot-password-status", "");
+  resetMessage("reset-password-error", "");
+  resetMessage("reset-password-status", "");
+  showDevCodeBox("");
+
+  const eyebrow1 = $("#verify-dialog-eyebrow");
+  const title1 = $("#verify-dialog-title");
+  const desc1 = $("#verify-dialog-desc");
+  const summary1 = $("#verify-target-summary");
+  const emailLabel = $("#verify-email-label");
+  const emailInput = step1Form.querySelector('[name="email"]');
+  const sendBtn = $("#verify-send-submit");
+
+  const eyebrow2 = $("#verify-step2-eyebrow");
+  const title2 = $("#verify-step2-title");
+  const desc2 = $("#verify-step2-desc");
+  const passFields = $("#verify-password-fields");
+  const confirmBtn = $("#verify-confirm-submit");
+  const passInput = step2Form.querySelector('[name="password"]');
+  const confirmPassInput = step2Form.querySelector('[name="confirmPassword"]');
+  const codeInput = step2Form.querySelector('[name="code"]');
+  if (codeInput) codeInput.value = "";
+
+  if (sendBtn) sendBtn.dataset.originalText = "Gửi mã xác minh";
+  if (emailInput) {
+    emailInput.value = passwordResetEmail;
+    emailInput.readOnly = purpose !== "forgot_password";
+  }
+
+  if (purpose === "change_email") {
+    if (eyebrow1) eyebrow1.textContent = "XÁC MINH TÀI KHOẢN GMAIL";
+    if (title1) title1.textContent = "Xác nhận đổi Email";
+    if (desc1) desc1.textContent = "Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số (hiệu lực 10 phút) đến Gmail của bạn để xác nhận thay đổi địa chỉ Email.";
+    if (emailLabel) emailLabel.textContent = "Gmail nhận mã xác minh";
+    if (summary1) {
+      summary1.hidden = false;
+      summary1.innerHTML = `<div><strong>Email hiện tại:</strong> ${esc(passwordResetEmail)}</div><div><strong>Đổi sang Email mới:</strong> ${esc(pendingNewEmail)}</div>`;
+    }
+    if (eyebrow2) eyebrow2.textContent = "XÁC MINH EMAIL";
+    if (title2) title2.textContent = "Nhập mã xác nhận đổi Email";
+    if (desc2) desc2.textContent = `Nhập mã 6 chữ số đã gửi để xác nhận chuyển sang ${pendingNewEmail}.`;
+    if (passFields) passFields.hidden = true;
+    if (passInput) { passInput.required = false; passInput.value = ""; }
+    if (confirmPassInput) { confirmPassInput.required = false; confirmPassInput.value = ""; }
+    if (confirmBtn) { confirmBtn.textContent = "Xác nhận đổi Email"; confirmBtn.dataset.originalText = "Xác nhận đổi Email"; }
+  } else if (purpose === "change_password") {
+    if (eyebrow1) eyebrow1.textContent = "XÁC MINH TÀI KHOẢN GMAIL";
+    if (title1) title1.textContent = "Xác nhận đổi mật khẩu";
+    if (desc1) desc1.textContent = "Nhấn Gửi mã xác minh để nhận mã 6 chữ số qua Gmail đã đăng ký trước khi áp dụng mật khẩu mới.";
+    if (emailLabel) emailLabel.textContent = "Gmail đã đăng ký";
+    if (summary1) { summary1.hidden = true; summary1.innerHTML = ""; }
+    if (eyebrow2) eyebrow2.textContent = "XÁC MINH EMAIL";
+    if (title2) title2.textContent = "Xác nhận mật khẩu mới";
+    if (desc2) desc2.textContent = "Nhập mã 6 chữ số từ Gmail của bạn để hoàn tất đổi mật khẩu.";
+    if (passFields) passFields.hidden = false;
+    if (passInput) { passInput.required = true; passInput.value = pendingNewPassword; }
+    if (confirmPassInput) { confirmPassInput.required = true; confirmPassInput.value = pendingNewPassword; }
+    if (confirmBtn) { confirmBtn.textContent = "Cập nhật mật khẩu"; confirmBtn.dataset.originalText = "Cập nhật mật khẩu"; }
+  } else if (purpose === "delete_account") {
+    if (eyebrow1) eyebrow1.textContent = "XÁC MINH BẢO MẬT GMAIL";
+    if (title1) title1.textContent = "Xác nhận xóa tài khoản";
+    if (desc1) desc1.textContent = "Để bảo vệ tài khoản, chúng tôi sẽ gửi mã xác minh gồm 6 chữ số đến Gmail của bạn trước khi xóa vĩnh viễn.";
+    if (emailLabel) emailLabel.textContent = "Gmail xác nhận";
+    if (summary1) {
+      summary1.hidden = false;
+      summary1.innerHTML = `<strong style="color:var(--danger)">Cảnh báo:</strong> Sau khi xác nhận mã 6 chữ số, tài khoản <strong>${esc(passwordResetEmail)}</strong> và toàn bộ tiến trình sẽ bị xóa vĩnh viễn.`;
+    }
+    if (eyebrow2) eyebrow2.textContent = "XÁC NHẬN CUỐI CÙNG";
+    if (title2) title2.textContent = "Nhập mã xóa tài khoản";
+    if (desc2) desc2.textContent = "Nhập mã 6 chữ số được gửi tới Gmail để xóa vĩnh viễn tài khoản.";
+    if (passFields) passFields.hidden = true;
+    if (passInput) { passInput.required = false; passInput.value = ""; }
+    if (confirmPassInput) { confirmPassInput.required = false; confirmPassInput.value = ""; }
+    if (confirmBtn) { confirmBtn.textContent = "Xác nhận xóa vĩnh viễn"; confirmBtn.dataset.originalText = "Xác nhận xóa vĩnh viễn"; }
+  } else {
+    if (eyebrow1) eyebrow1.textContent = "KHÔI PHỤC TÀI KHOẢN";
+    if (title1) title1.textContent = "Quên mật khẩu";
+    if (desc1) desc1.textContent = "Nhập Gmail đã đăng ký. Chúng tôi sẽ gửi mã xác minh gồm 6 chữ số, có hiệu lực trong 10 phút.";
+    if (emailLabel) emailLabel.textContent = "Email đăng ký";
+    if (summary1) { summary1.hidden = true; summary1.innerHTML = ""; }
+    if (eyebrow2) eyebrow2.textContent = "XÁC MINH EMAIL";
+    if (title2) title2.textContent = "Đặt mật khẩu mới";
+    if (desc2) desc2.textContent = "Nhập mã được gửi đến Gmail và tạo mật khẩu mới.";
+    if (passFields) passFields.hidden = false;
+    if (passInput) { passInput.required = true; passInput.value = ""; }
+    if (confirmPassInput) { confirmPassInput.required = true; confirmPassInput.value = ""; }
+    if (confirmBtn) { confirmBtn.textContent = "Cập nhật mật khẩu"; confirmBtn.dataset.originalText = "Cập nhật mật khẩu"; }
+  }
+
+  if (!dialog.open) dialog.showModal();
+}
+
+async function requestPasswordResetCode() {
+  const email = String(passwordResetEmail || $("#forgot-password-form [name=email]")?.value || "").trim().toLowerCase();
+  if (!email) {
+    resetMessage("forgot-password-error", "Vui lòng nhập Gmail đã đăng ký.", true);
+    return false;
+  }
+  const form = $("#forgot-password-form");
+  resetEndpointBusy(form, true);
+  resetMessage("forgot-password-error", "");
+  resetMessage("forgot-password-status", "");
+  try {
+    let result;
+    if (verifyPurpose === "forgot_password") {
+      result = await request("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+    } else {
+      result = await request("/api/account/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose: verifyPurpose, newEmail: pendingNewEmail })
+      });
+    }
+    passwordResetEmail = email;
+    $("#forgot-password-form").hidden = true;
+    $("#reset-password-form").hidden = false;
+    resetMessage(
+      "reset-password-status",
+      result.message || "Mã xác minh gồm 6 chữ số đã được gửi đến Gmail của bạn."
+    );
+    showDevCodeBox(result.devCode || "");
+    if (activeUser) refreshNotifications();
     startPasswordResetCooldown(30);
+    $("#reset-password-form [name=code]")?.focus();
     return true;
-  }catch(error){
-    resetMessage("forgot-password-error",error.message||"Không thể gửi mã xác minh.",true);return false;
-  }finally{resetEndpointBusy(form,false);}
+  } catch (error) {
+    const seconds = Number(error.retryAfter) || Number(String(error.message).match(/(\d+) giây/)?.[1]) || 0;
+    if (seconds > 0) startPasswordResetCooldown(seconds);
+    resetMessage("forgot-password-error", error.message || "Không thể gửi mã xác minh.", true);
+    return false;
+  } finally {
+    resetEndpointBusy(form, false);
+  }
 }
-document.addEventListener("click",async event=>{
-  if(event.target.closest('[data-close="forgot-password-dialog"]')){
-    const dialog=$("#forgot-password-dialog");
-    if(dialog?.open)dialog.close();
+
+document.addEventListener("click", async event => {
+  if (event.target.closest('[data-close="forgot-password-dialog"]')) {
+    const dialog = $("#forgot-password-dialog");
+    if (dialog?.open) dialog.close();
     return;
   }
-  if(event.target.closest("[data-open-forgot-password]")){
-    const login=$("#login-dialog"),register=$("#register-dialog"),dialog=$("#forgot-password-dialog");
-    const clicked=event.target.closest("[data-open-forgot-password]");
-    const sourceForm=clicked.closest("form");
-    if(login?.open)login.close();
-    if(register?.open)register.close();
-    $("#forgot-password-form").hidden=false;$("#reset-password-form").hidden=true;
-    resetMessage("forgot-password-error","");resetMessage("forgot-password-status","");
-    resetMessage("reset-password-error","");resetMessage("reset-password-status","");
-    const email=sourceForm?.querySelector('[name="email"]')?.value?.trim()||"";
-    $("#forgot-password-form [name=email]").value=email;
-    passwordResetEmail=email;
-    if(dialog&&!dialog.open)dialog.showModal();
+  if (event.target.closest("[data-open-forgot-password]")) {
+    const login = $("#login-dialog"), register = $("#register-dialog");
+    const clicked = event.target.closest("[data-open-forgot-password]");
+    const sourceForm = clicked.closest("form");
+    if (login?.open) login.close();
+    if (register?.open) register.close();
+    const email = sourceForm?.querySelector('[name="email"]')?.value?.trim() || "";
+    openGmailVerificationDialog({ purpose: "forgot_password", email });
     return;
   }
-  if(event.target.closest("#reset-resend-code")){
-    const button=event.target.closest("#reset-resend-code");
-    if(Date.now()<passwordResetCooldownUntil){updateResendButton();return;}
-    button.dataset.busy="true";updateResendButton();
-    resetMessage("reset-password-error","");
-    try{
-      const result=await request("/api/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:passwordResetEmail})});
-      resetMessage("reset-password-status",result.message||"Nếu email thuộc tài khoản người dùng, mã mới sẽ được gửi.");
+  if (event.target.closest("#reset-resend-code")) {
+    const button = event.target.closest("#reset-resend-code");
+    if (Date.now() < passwordResetCooldownUntil) {
+      updateResendButton();
+      return;
+    }
+    button.dataset.busy = "true";
+    updateResendButton();
+    resetMessage("reset-password-error", "");
+    try {
+      const result = verifyPurpose === "forgot_password"
+        ? await request("/api/auth/forgot-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: passwordResetEmail })
+          })
+        : await request("/api/account/send-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ purpose: verifyPurpose, newEmail: pendingNewEmail })
+          });
+      resetMessage("reset-password-status", result.message || "Đã gửi mã xác minh 6 chữ số mới.");
+      showDevCodeBox(result.devCode || "");
+      if (activeUser) refreshNotifications();
       startPasswordResetCooldown(30);
-    }catch(error){
-      const seconds=Number(error.retryAfter)||Number(String(error.message).match(/(\d+) giây/)?.[1])||0;
-      if(seconds>0)startPasswordResetCooldown(seconds);
-      resetMessage("reset-password-error",error.message||"Không thể gửi mã mới.",true);
-    }finally{
-      button.dataset.busy="false";
+    } catch (error) {
+      const seconds = Number(error.retryAfter) || Number(String(error.message).match(/(\d+) giây/)?.[1]) || 0;
+      if (seconds > 0) startPasswordResetCooldown(seconds);
+      resetMessage("reset-password-error", error.message || "Không thể gửi mã mới.", true);
+    } finally {
+      button.dataset.busy = "false";
       updateResendButton();
     }
+    return;
+  }
+  if (event.target.closest("[data-account-delete-open]")) {
+    if (!activeUser) return;
+    openGmailVerificationDialog({
+      purpose: "delete_account",
+      email: activeUser.email
+    });
+    return;
+  }
+  if (event.target.closest("[data-account-progress-refresh]")) {
+    await loadAccountCenterProgress();
+    toastNotice("Đã cập nhật tiến trình học tập.");
+    return;
+  }
+  if (
+    event.target.closest("#user-dashboard-open") ||
+    event.target.closest("#online-dashboard-collapse") ||
+    event.target.closest("#online-dashboard-launcher")
+  ) {
+    const bodyWrap = $("#app-body");
+    if (bodyWrap) {
+      bodyWrap.classList.toggle("online-sidebar-collapsed");
+      const isCollapsed = bodyWrap.classList.contains("online-sidebar-collapsed");
+      localStorage.setItem("maihoc-online-sidebar-collapsed", isCollapsed ? "1" : "0");
+    }
+    return;
+  }
+  const filterBtn = event.target.closest("[data-online-filter]");
+  if (filterBtn) {
+    onlineFilter = filterBtn.dataset.onlineFilter || "all";
+    document.querySelectorAll("[data-online-filter]").forEach(btn => {
+      btn.classList.toggle("is-active", btn === filterBtn);
+    });
+    renderOnlineUsersList();
+    return;
   }
 });
-document.addEventListener("submit",async event=>{
-  const forgotForm=event.target.closest("#forgot-password-form");
-  if(forgotForm){
+
+document.addEventListener("submit", async event => {
+  const forgotForm = event.target.closest("#forgot-password-form");
+  if (forgotForm) {
     event.preventDefault();
-    passwordResetEmail=String(new FormData(forgotForm).get("email")||"").trim().toLowerCase();
+    passwordResetEmail = String(new FormData(forgotForm).get("email") || "").trim().toLowerCase();
     await requestPasswordResetCode();
     return;
   }
-  const resetForm=event.target.closest("#reset-password-form");
-  if(resetForm){
+
+  const resetForm = event.target.closest("#reset-password-form");
+  if (resetForm) {
     event.preventDefault();
-    resetMessage("reset-password-error","");resetMessage("reset-password-status","");
-    const values=new FormData(resetForm);
-    const code=String(values.get("code")||"").trim();
-    const password=String(values.get("password")||"");
-    const confirmPassword=String(values.get("confirmPassword")||"");
-    if(password!==confirmPassword){resetMessage("reset-password-error","Mật khẩu nhập lại không trùng khớp.",true);return;}
-    const button=resetForm.querySelector('button[type="submit"]');resetEndpointBusy(resetForm,true);
-    try{
-      const result=await request("/api/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:passwordResetEmail,code,password})});
-      resetMessage("reset-password-status",result.message||"Đã đổi mật khẩu. Hãy đăng nhập lại.");
-      resetForm.reset();
-      setTimeout(()=>{const dialog=$("#forgot-password-dialog");if(dialog?.open)dialog.close();const login=$("#login-dialog");if(login&&!login.open)login.showModal();const loginEmail=$("#login-form [name=email]");if(loginEmail)loginEmail.value=passwordResetEmail;},1200);
-    }catch(error){resetMessage("reset-password-error",error.message||"Không thể đặt lại mật khẩu.",true);}
-    finally{resetEndpointBusy(resetForm,false);}
+    resetMessage("reset-password-error", "");
+    resetMessage("reset-password-status", "");
+    const values = new FormData(resetForm);
+    const code = String(values.get("code") || "").trim();
+    const password = String(values.get("password") || "");
+    const confirmPassword = String(values.get("confirmPassword") || "");
+
+    if (["forgot_password", "change_password"].includes(verifyPurpose)) {
+      if (password.length < 10) {
+        resetMessage("reset-password-error", "Mật khẩu mới cần ít nhất 10 ký tự.", true);
+        return;
+      }
+      if (password !== confirmPassword) {
+        resetMessage("reset-password-error", "Mật khẩu nhập lại không trùng khớp.", true);
+        return;
+      }
+    }
+
+    resetEndpointBusy(resetForm, true);
+    try {
+      if (verifyPurpose === "forgot_password") {
+        const result = await request("/api/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: passwordResetEmail, code, password })
+        });
+        resetMessage("reset-password-status", result.message || "Đã đổi mật khẩu. Hãy đăng nhập lại.");
+        resetForm.reset();
+        setTimeout(() => {
+          const dialog = $("#forgot-password-dialog");
+          if (dialog?.open) dialog.close();
+          const login = $("#login-dialog");
+          if (login && !login.open) login.showModal();
+          const loginEmail = $("#login-form [name=email]");
+          if (loginEmail) loginEmail.value = passwordResetEmail;
+        }, 1000);
+      } else if (verifyPurpose === "change_email") {
+        const result = await request("/api/account/change-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newEmail: pendingNewEmail, code })
+        });
+        activeUser = result.user || activeUser;
+        window.dispatchEvent(new CustomEvent("maihoc-user-updated", { detail: { user: activeUser } }));
+        $("#account-change-email-form")?.reset();
+        const dialog = $("#forgot-password-dialog");
+        if (dialog?.open) dialog.close();
+        toastNotice(result.message || "Đã đổi địa chỉ Gmail thành công!", "success");
+        refreshNotifications();
+      } else if (verifyPurpose === "change_password") {
+        const result = await request("/api/account/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, password })
+        });
+        $("#account-change-password-form")?.reset();
+        const dialog = $("#forgot-password-dialog");
+        if (dialog?.open) dialog.close();
+        toastNotice(result.message || "Đã đổi mật khẩu thành công!", "success");
+        refreshNotifications();
+      } else if (verifyPurpose === "delete_account") {
+        const result = await request("/api/account/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        activeUser = null;
+        window.dispatchEvent(new CustomEvent("maihoc-user-updated", { detail: { user: null } }));
+        const dialog = $("#forgot-password-dialog");
+        if (dialog?.open) dialog.close();
+        window.dispatchEvent(new CustomEvent("maihoc-navigate", { detail: { route: "home" } }));
+        toastNotice(result.message || "Đã xóa tài khoản vĩnh viễn.", "success");
+        refreshOnlineDashboard();
+      }
+    } catch (error) {
+      resetMessage("reset-password-error", error.message || "Không thể xác minh mã.", true);
+    } finally {
+      resetEndpointBusy(resetForm, false);
+    }
+    return;
+  }
+
+  const changeEmailForm = event.target.closest("#account-change-email-form");
+  if (changeEmailForm) {
+    event.preventDefault();
+    const errNode = $("#account-email-error");
+    if (errNode) errNode.hidden = true;
+    const newEmail = String(new FormData(changeEmailForm).get("newEmail") || "").trim().toLowerCase();
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      if (errNode) { errNode.textContent = "Vui lòng nhập địa chỉ Gmail mới hợp lệ."; errNode.hidden = false; }
+      return;
+    }
+    if (newEmail === String(activeUser?.email || "").toLowerCase()) {
+      if (errNode) { errNode.textContent = "Địa chỉ Gmail mới trùng với Gmail hiện tại của bạn."; errNode.hidden = false; }
+      return;
+    }
+    openGmailVerificationDialog({
+      purpose: "change_email",
+      email: activeUser?.email || "",
+      newEmail
+    });
+    return;
+  }
+
+  const changePasswordForm = event.target.closest("#account-change-password-form");
+  if (changePasswordForm) {
+    event.preventDefault();
+    const errNode = $("#account-password-error");
+    if (errNode) errNode.hidden = true;
+    const fd = new FormData(changePasswordForm);
+    const password = String(fd.get("password") || "");
+    const confirmPassword = String(fd.get("confirmPassword") || "");
+    if (password.length < 10) {
+      if (errNode) { errNode.textContent = "Mật khẩu mới cần có ít nhất 10 ký tự."; errNode.hidden = false; }
+      return;
+    }
+    if (password !== confirmPassword) {
+      if (errNode) { errNode.textContent = "Mật khẩu nhập lại chưa khớp."; errNode.hidden = false; }
+      return;
+    }
+    openGmailVerificationDialog({
+      purpose: "change_password",
+      email: activeUser?.email || "",
+      prefilledPassword: password
+    });
+    return;
   }
 });
+
+function formatVietnameseDate(value) {
+  if (!value) return "—";
+  const normalized = String(value).includes("T") ? String(value) : String(value).replace(" ", "T") + "Z";
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+async function loadAccountCenterProgress() {
+  const list = $("#account-progress-list");
+  if (!list || !activeUser) return;
+  try {
+    const data = await request("/api/progress");
+    if (!$("#account-progress-list")) return;
+    const items = Array.isArray(data.progress) ? data.progress : [];
+    const totalNode = $("#account-progress-total");
+    const completedNode = $("#account-progress-completed");
+    const avgNode = $("#account-progress-avg");
+    const completedCount = items.filter(item => Number(item.progressPercent) >= 100 || item.status === "completed").length;
+    const avgPercent = items.length
+      ? Math.round(items.reduce((sum, item) => sum + (Number(item.progressPercent) || 0), 0) / items.length)
+      : 0;
+    if (totalNode) totalNode.textContent = String(items.length);
+    if (completedNode) completedNode.textContent = String(completedCount);
+    if (avgNode) avgNode.textContent = `${avgPercent}%`;
+
+    if (!items.length) {
+      list.innerHTML = '<div class="account-progress-empty"><p class="muted">Bạn chưa có bài học hoặc đề thi nào trong tiến trình. Hãy mở một tài liệu lý thuyết hoặc làm đề để hệ thống ghi nhận tự động theo thời gian thực.</p></div>';
+      return;
+    }
+
+    list.innerHTML = items.map((item, idx) => {
+      const percent = Math.max(0, Math.min(100, Number(item.progressPercent) || 0));
+      const isCompleted = percent >= 100 || item.status === "completed";
+      const typeLabel =
+        item.itemType === "exam" ? "Đề thi / Ôn tập" :
+        item.itemType === "practice" ? "Đề ôn tập" :
+        item.itemType === "document" ? "Tài liệu lý thuyết" : "Bài học";
+      const startedText = formatVietnameseDate(item.startedAt || item.updatedAt);
+      const scoreText = item.score != null ? ` · Điểm: ${Number(item.score).toFixed(2)}` : "";
+      const actionBtn = item.itemType === "exam" && item.latestAttemptId
+        ? `<button type="button" class="button secondary small" data-action="view-exam-result" data-id="${esc(item.latestAttemptId)}">Xem kết quả</button>`
+        : item.itemType === "document"
+          ? `<button type="button" class="button secondary small" data-action="read-doc" data-id="${esc(item.itemId)}">Đọc tiếp</button>`
+          : `<button type="button" class="button secondary small" data-action="start-exam" data-id="${esc(item.itemId)}">Mở đề</button>`;
+
+      return `
+        <article class="account-progress-cell ${isCompleted ? "is-completed" : "is-in-progress"}" data-progress-cell="${idx + 1}">
+          <div class="account-progress-col-main">
+            <div class="account-progress-title-row">
+              <span class="account-progress-index">#${idx + 1}</span>
+              <strong>${esc(item.itemTitle || item.itemId)}</strong>
+            </div>
+            <span class="muted tiny">${esc(typeLabel)} · Môn ${esc(item.subject || "Toán")} · Lớp ${esc(item.grade || "10")}${esc(scoreText)}</span>
+          </div>
+          <div class="account-progress-col-date">
+            <span class="account-progress-date-label">Ngày bắt đầu</span>
+            <strong>${esc(startedText)}</strong>
+          </div>
+          <div class="account-progress-col-percent">
+            <div class="account-progress-percent-top">
+              <strong class="${isCompleted ? "is-done" : ""}">${percent}%</strong>
+              <span class="account-progress-status-chip ${isCompleted ? "is-done" : ""}">${isCompleted ? "Hoàn thành" : "Đang học"}</span>
+            </div>
+            <div class="account-progress-bar-track"><span style="width:${percent}%"></span></div>
+          </div>
+          <div class="account-progress-col-action">
+            ${actionBtn}
+          </div>
+        </article>`;
+    }).join("");
+  } catch (error) {
+    if ($("#account-progress-list")) {
+      $("#account-progress-list").innerHTML = `<p class="auth-error">${esc(error.message || "Không tải được tiến trình học tập.")}</p>`;
+    }
+  }
+}
+
+function renderOnlineUsersList() {
+  const listNode = $("#online-dashboard-list");
+  const countNode = $("#online-dashboard-count");
+  const topbarCount = $("#topbar-online-count");
+  const launcherCount = $("#launcher-online-count");
+  const totalOnline = latestOnlineUsers.length;
+
+  if (countNode) countNode.textContent = String(totalOnline);
+  if (topbarCount) topbarCount.textContent = String(totalOnline);
+  if (launcherCount) launcherCount.textContent = String(totalOnline);
+  if (!listNode) return;
+
+  const filtered = latestOnlineUsers.filter(u => {
+    if (onlineFilter === "admin") return u.role === "admin";
+    if (onlineFilter === "user") return u.role !== "admin";
+    return true;
+  });
+
+  if (!filtered.length) {
+    listNode.innerHTML = `<div class="online-empty"><p class="muted tiny">${
+      totalOnline === 0
+        ? "Chưa có tài khoản nào đang đăng nhập trực tuyến."
+        : "Không có người dùng nào trong bộ lọc này."
+    }</p></div>`;
+    return;
+  }
+
+  listNode.innerHTML = filtered.map(u => {
+    const isSelf = activeUser && Number(u.id) === Number(activeUser.id);
+    const isAdmin = u.role === "admin";
+    const roleLabel = !isAdmin
+      ? "User"
+      : Number(u.adminLevel) >= 2
+        ? "Admin cao nhất"
+        : "Admin";
+    const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
+    return `
+      <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""}">
+        <div class="online-user-avatar">
+          <span>${initial}</span>
+          <i class="online-status-dot" title="Đang online"></i>
+        </div>
+        <div class="online-user-info">
+          <div class="online-user-name-line">
+            <strong>${esc(u.name)}${isSelf ? " (Bạn)" : ""}</strong>
+            <span class="online-role-badge ${isAdmin ? "is-admin" : ""}">${esc(roleLabel)}</span>
+          </div>
+          <span class="online-user-activity">${esc(u.activity || "Đang trực tuyến")}</span>
+        </div>
+      </article>`;
+  }).join("");
+}
+
+async function refreshOnlineDashboard() {
+  try {
+    const data = await request(`/api/presence/online?activity=${encodeURIComponent(currentRouteActivity)}`);
+    latestOnlineUsers = Array.isArray(data.users) ? data.users : [];
+    renderOnlineUsersList();
+  } catch (error) {
+    console.warn("Could not refresh online users:", error.message);
+  }
+}
+
 async function loadUser() {
-  try { const data=await request("/api/auth/me"); activeUser=data.user||null; } catch { activeUser=null; }
-  const bell=$("#notifications-open"), upload=$("#upload-open"), accountCenter=$("#account-center-open");
-  if(bell)bell.hidden=!activeUser;
-  if(upload)upload.hidden=!activeUser;
-  if(accountCenter)accountCenter.hidden=!activeUser||activeUser.role==="admin";
-  if(activeUser){refreshNotifications();const reader=$("#reader-layout");if(reader&&activeReaderRoot!==reader)startReaderTracking(reader);}
+  try {
+    const data = await request("/api/auth/me");
+    activeUser = data.user || null;
+  } catch {
+    activeUser = null;
+  }
+  const bell = $("#notifications-open"),
+        upload = $("#upload-open"),
+        accountCenter = $("#account-center-open"),
+        dashboardBtn = $("#user-dashboard-open");
+  if (bell) bell.hidden = !activeUser;
+  if (upload) upload.hidden = !activeUser;
+  if (accountCenter) accountCenter.hidden = !activeUser;
+  if (dashboardBtn) dashboardBtn.hidden = !activeUser;
+  if (activeUser) {
+    refreshNotifications();
+    const reader = $("#reader-layout");
+    if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
+    if ($("#account-progress-list")) loadAccountCenterProgress();
+  }
+  await refreshOnlineDashboard();
 }
 async function refreshNotifications() {
   if(!activeUser)return;
@@ -166,7 +682,7 @@ async function refreshNotifications() {
 }
 async function saveProgress(payload) {
   if(!activeUser)return null;
-  try { const result=await request("/api/progress",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(result.notificationCreated)refreshNotifications();return result; }
+  try { const result=await request("/api/progress",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(result.notificationCreated)refreshNotifications();if($("#account-progress-list"))loadAccountCenterProgress();return result; }
   catch(e){console.warn("Không lưu được tiến trình:",e.message);}
 }
 function readerPayload(status="in_progress"){
@@ -581,7 +1097,7 @@ document.addEventListener("click",async e=>{
   const review=e.target.closest("[data-review-id]");
   if(review){const decision=review.dataset.reviewDecision;const note=decision==="rejected"?(prompt("Lý do từ chối (không bắt buộc):")||""):"";try{await request("/api/admin/submissions/"+review.dataset.reviewId+"/review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,note})});toastNotice(decision==="approved"?"Đã duyệt tài liệu.":"Đã từ chối tài liệu.");loadSubmissions();refreshNotifications();if(decision==="approved")window.dispatchEvent(new Event("maihoc-documents-changed"));}catch(err){toastNotice(err.message,"error");}}
   const startExam=e.target.closest('[data-action="start-exam"]');
-  if(startExam&&activeUser){const card=startExam.closest(".exam-card");saveProgress({itemType:"exam",itemId:startExam.dataset.id,itemTitle:card?.querySelector("h3")?.textContent||startExam.dataset.id,subject:"Toán",grade:"10",status:"in_progress",progressPercent:0,lastPosition:"0"});}
+  if(startExam&&activeUser){const card=startExam.closest(".exam-card, .resource-row, .reader-main");saveProgress({itemType:"exam",itemId:startExam.dataset.id,itemTitle:card?.querySelector("h3, h1")?.textContent||startExam.dataset.id,subject:"Toán",grade:"10",status:"in_progress",progressPercent:1,lastPosition:"1"});}
 });
 
 document.addEventListener("DOMContentLoaded",loadUser);
@@ -596,3 +1112,43 @@ observer.observe(document.body,{childList:true,subtree:true});
 setInterval(()=>{loadUser();},45000);
 loadUser();
 window.addEventListener("maihoc-auth-changed",loadUser);
+
+
+window.addEventListener("maihoc-account-center-open", () => {
+  loadAccountCenterProgress();
+});
+window.addEventListener("maihoc-route-changed", event => {
+  const route = event.detail?.route || "home";
+  currentRouteActivity = routeToActivityLabel(route);
+  refreshOnlineDashboard();
+});
+window.addEventListener("maihoc-exam-progress", event => {
+  if (!activeUser) return;
+  const d = event.detail || {};
+  if (!d.id) return;
+  clearTimeout(examProgressTimer);
+  examProgressTimer = setTimeout(() => {
+    saveProgress({
+      itemType: "exam",
+      itemId: String(d.id),
+      itemTitle: d.title || String(d.id),
+      subject: d.subject || "Toán",
+      grade: d.grade || "10",
+      status: "in_progress",
+      progressPercent: Number(d.percent) || 1,
+      answers: d.answers || {},
+      lastPosition: String(d.percent || 1)
+    });
+  }, 400);
+});
+if (localStorage.getItem("maihoc-online-sidebar-collapsed") === "1") {
+  $("#app-body")?.classList.add("online-sidebar-collapsed");
+}
+setInterval(() => {
+  if (!document.hidden) {
+    refreshOnlineDashboard();
+    if ($("#account-progress-list") && activeUser) {
+      loadAccountCenterProgress();
+    }
+  }
+}, 4000);
