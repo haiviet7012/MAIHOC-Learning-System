@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/styles.css?v=20261028v2">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261028v2">
   <link rel="stylesheet" href="css/tests.css?v=20261028v2">
+  <link rel="stylesheet" href="css/chat.css">
 </head>
 <body class="is-home-lobby">
   <div id="app" class="app-shell">
@@ -225,6 +226,7 @@
     <div class="modal-heading"><div><p class="eyebrow">ĐÁNH GIÁ BẰNG AI</p><h2>Độ khó đề thi</h2></div><button type="button" class="close-button" data-close="difficulty-dialog" aria-label="Đóng">×</button></div>
     <div id="difficulty-result" class="ai-result"><span class="spinner"></span> Đang phân tích…</div>
   </dialog>
+
   <dialog id="create-test-dialog" class="modal create-test-modal">
     <form id="create-test-form" method="dialog">
       <div class="modal-heading">
@@ -362,5 +364,7 @@
   </dialog>
 
   <script type="module" src="js/app.js?v=20261028v2"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="js/chat.js"></script>
 </body>
 </html>

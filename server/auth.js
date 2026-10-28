@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// const db = require('./db'); // Nạp kết nối SQLite từ file db.js cùng thư mục
 const scrypt = promisify(crypto.scrypt);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "data");
@@ -380,8 +381,21 @@ export async function createInitialAdmin() {
 export function requireSameOrigin(req, res, next) {
   const origin = req.get("origin");
   if (origin) {
-    const expected = process.env.PUBLIC_ORIGIN || `${req.protocol}://${req.get("host")}`;
-    if (origin !== expected) return res.status(403).json({ error: "Yêu cầu không cùng nguồn gốc." });
+    const proto = req.get("x-forwarded-proto") || req.protocol;
+    const host = req.get("x-forwarded-host") || req.get("host");
+    const dynamicOrigin = proto + "://" + host;
+    const expected = process.env.PUBLIC_ORIGIN;
+    
+    if (expected && origin === expected) return next();
+    if (origin === dynamicOrigin) return next();
+
+    // Hỗ trợ reverse proxy (Render, Cloudflare) khi protocol chuyển tiếp giữa http và https
+    try {
+      const originHost = new URL(origin).host;
+      if (originHost && originHost === host) return next();
+    } catch {}
+
+    return res.status(403).json({ error: "Yêu cầu không cùng nguồn gốc." });
   }
   next();
 }

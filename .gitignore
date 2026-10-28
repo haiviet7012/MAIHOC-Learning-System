@@ -9,3 +9,7 @@ uploads/documents/*
 # Local account database and sessions
 data/
 server/data/
+*.sqlite
+*.sqlite3
+*.db
+.env

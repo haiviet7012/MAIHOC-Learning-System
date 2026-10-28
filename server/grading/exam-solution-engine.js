@@ -209,7 +209,7 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
     contentParts.push({ text: prompt });
     const client = new GoogleGenerativeAI(apiKey);
     const model = client.getGenerativeModel({
-      model: modelName || "gemini-3.8-flash",
+      model: modelName || "gemini-3.6-flash",
       generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: solutionSchema }
     });
     const response = await model.generateContent({ contents: [{ role: "user", parts: contentParts }] });
@@ -255,7 +255,7 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
   return {
     schemaVersion: 1,
     provider:selectedProvider,
-    model: modelName || "gemini-3.8-flash",
+    model: modelName || "gemini-3.6-flash",
     scale: Number(grading?.scale) || 10,
     generatedAt: new Date().toISOString(),
     questions,
