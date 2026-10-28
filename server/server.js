@@ -50,6 +50,7 @@ function assessmentConfigFor(subject,category){
 }
 
 const app=express();
+app.set("trust proxy", 1);
 const server=http.createServer(app);
 setupChat(server,app);
 
