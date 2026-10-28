@@ -1,8 +1,16 @@
-
 {
-  "name": "maihoc-learning-system",
+  "name": "maihoc-learning",
+  "main": "./worker.js",
   "compatibility_date": "2026-10-29",
+  "vars": {
+    "BACKEND_ORIGIN": "https://maihoc-learning-system.onrender.com"
+  },
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/socket.io/*"
+    ]
   }
 }
