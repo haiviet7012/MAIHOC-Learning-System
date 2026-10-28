@@ -20,23 +20,23 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 ### 💻 Developers
 
 
-**Nguyễn Việt Hải - UET-VNU**  
+**Nguyễn Việt Hải -- UET-VNU**  
 *Developer*
 
-**Nguyễn Đức Hải - FPTU HN**  
+**Nguyễn Đức Hải -- FPTU HN**  
 *Developer Assistant*
 
-**Nguyễn Xuân Hoàng FPTU HN**  
+**Nguyễn Xuân Hoàng -- FPTU HN**  
 *Developer*
 
 
 ### 📈 Sales Managers
 
 
-**Phạm Quang Minh - AOF**  
+**Phạm Quang Minh -- AOF**  
 *Sales Manager*
 
-**Đỗ Gia Bách UL-VNU**  
+**Đỗ Gia Bách -- UL-VNU**  
 *Sales Manager*
 
 
