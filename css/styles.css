@@ -287,6 +287,16 @@ body.exam-open{overflow:hidden}
 .solution-review-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.solution-review-head h3{margin:0;font-size:15px}
 .solution-review-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.solution-review-pane{min-width:0;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.solution-review-pane h4{margin:0 0 8px;font-size:12px;color:var(--muted)}.solution-review-pane p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0}
 .solution-review-pane label{display:grid;gap:5px;margin:8px 0;font-size:12px;font-weight:600}.solution-review-pane input,.solution-review-pane textarea{width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}.solution-review-pane textarea{min-height:74px;resize:vertical}
+.solution-review-grid-manual{grid-template-columns:minmax(92px,0.22fr) minmax(0,1fr);align-items:stretch}
+.solution-review-manual-index{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;background:var(--surface-2)}
+.solution-review-manual-index .solution-manual-question-id{margin:4px 0 0;font-size:18px;font-weight:800;line-height:1.4;color:var(--text)}
+.solution-review-manual-answer label{margin:0;gap:8px}
+.solution-review-manual-answer .solution-answer-choice-group{margin-top:4px}
+.solution-review-manual-answer .solution-answer-choice{min-height:44px}
+.solution-math-content,.solution-math-content *{font-family:"Cambria Math","STIX Two Math","Noto Sans Math","DejaVu Sans",serif;font-variant-ligatures:none;font-feature-settings:"kern" 1;letter-spacing:normal}
+.solution-review-pane textarea[data-solution-explanation],.solution-review-pane textarea[data-solution-rubric],.solution-review-pane input[data-solution-answer]:not([type="hidden"]){font-family:"Cambria Math","STIX Two Math","Noto Sans Math","DejaVu Sans",serif;font-variant-ligatures:none}
+.solution-review-manual-answer textarea{display:none}
+
 .solution-review-pane .solution-answer-choice-group{display:grid;gap:8px;margin-top:3px}.solution-answer-choice-group-four{grid-template-columns:repeat(4,minmax(0,1fr))}.solution-answer-choice-group-two{grid-template-columns:repeat(2,minmax(0,1fr))}.solution-answer-choice{min-height:42px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;font-weight:700;cursor:pointer}.solution-answer-choice:hover:not(:disabled){border-color:var(--primary)}.solution-answer-choice.is-selected{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 18%,var(--surface));color:var(--primary)}.solution-answer-choice:disabled{cursor:default;opacity:1}
 .solution-review-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px}.solution-review-controls .answer-key-status{flex:0 0 auto;white-space:nowrap}.solution-review-controls .is-selected{outline:2px solid var(--primary);outline-offset:1px}.solution-admin-error{margin:10px 0;padding:12px;border:1px solid #d38b28;border-radius:10px;background:#d38b2818;color:var(--text)}
 .solution-dialog-actions{position:sticky;bottom:-1px;padding:12px 0 2px;background:var(--surface)}
