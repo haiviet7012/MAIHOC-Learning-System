@@ -617,18 +617,29 @@
     }
 
     try {
-      const res = await fetch(`/api/chat/users?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const res = await fetch(`/api/chat/users?q=${encodeURIComponent(query)}`, {
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        dom.conversationsList.innerHTML = "";
+        dom.conversationsList.appendChild(el("p", "chat-empty-hint", data.error || "Không thể tìm người dùng. Hãy đăng nhập lại rồi thử lại."));
+        return;
+      }
       const users = data.users || [];
 
       dom.conversationsList.innerHTML = "";
 
-      const label = el("div", "chat-section-label", `Kết quả tìm kiếm (${users.length})`);
+      const label = el("div", "chat-section-label", query
+        ? `Kết quả tìm kiếm (${users.length})`
+        : `Người dùng gần đây (${users.length})`);
       dom.conversationsList.appendChild(label);
 
       if (!users.length) {
-        dom.conversationsList.appendChild(el("p", "chat-empty-hint", "Không tìm thấy học sinh phù hợp."));
+        dom.conversationsList.appendChild(el("p", "chat-empty-hint", query
+          ? "Không tìm thấy người dùng theo tên hoặc email."
+          : "Chưa có người dùng phù hợp."));
         return;
       }
 
@@ -661,18 +672,21 @@
     try {
       const res = await fetch("/api/chat/direct", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId })
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ targetUserId: Number(targetUserId) })
       });
+      const conv = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || "Không thể mở cuộc trò chuyện.");
+        dom.conversationsList.innerHTML = "";
+        dom.conversationsList.appendChild(el("p", "chat-empty-hint", conv.error || "Không thể mở cuộc trò chuyện. Hãy đăng nhập lại rồi thử."));
         return;
       }
-      const conv = await res.json();
-      openDirectChat(conv.id, conv.partner);
+      await openDirectChat(conv.id, conv.partner);
     } catch (e) {
-      alert("Lỗi khi kết nối với máy chủ.");
+      console.error("Start direct chat error:", e);
+      dom.conversationsList.innerHTML = "";
+      dom.conversationsList.appendChild(el("p", "chat-empty-hint", "Không kết nối được máy chủ chat. Vui lòng thử lại."));
     }
   }
 
@@ -814,6 +828,21 @@
       }
     });
   }
+
+  // Open a direct chat from the online-users dashboard.
+  window.addEventListener("maihoc-open-direct-chat", async (event) => {
+    const targetUserId = Number(event.detail?.userId);
+    if (!targetUserId) return;
+    if (!currentUser) {
+      dom.guestNotice.hidden = false;
+      return;
+    }
+    isWindowOpen = true;
+    dom.window.hidden = false;
+    dom.guestNotice.hidden = true;
+    switchTab("direct");
+    await startDirectChatWithUser(targetUserId);
+  });
 
   // ----------------------------------------------------
   // Auth State Listener
