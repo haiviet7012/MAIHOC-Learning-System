@@ -1,6 +1,6 @@
 
 {
-  "name": "maihoc-learning-system",
+  "name": "maihoc-learning",
   "compatibility_date": "2026-10-29",
   "assets": {
     "directory": "./dist"
