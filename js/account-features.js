@@ -838,27 +838,51 @@ async function loadAnswerKeySections(){
 
 function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
 function solutionMathText(value){
-  let text=String(value??"").replace(/\\\\/g,"\n").replace(/\\\(|\\\)|\\\[|\\\]|\$\$?/g,"");
-  const superscript={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","+":"⁺","-":"⁻","=":"⁼","(":"⁽",")":"⁾"};
-  const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎"};
-  for(let i=0;i<6;i++){
+  let text=String(value??"")
+    .replace(/\\\\/g,"\n")
+    .replace(/\\\(|\\\)|\\\[|\\\]|\$\$?/g,"")
+    .replace(/\\begin\{(?:aligned|align\*?|gathered|array)\}(?:\{[^}]*\})?/g,"")
+    .replace(/\\end\{(?:aligned|align\*?|gathered|array)\}/g,"")
+    .replace(/\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle|left|right|quad|qquad)\b/g,"")
+    .replace(/\\(?:,|;|:|!)/g," ");
+  const superscript={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","+":"⁺","-":"⁻","=":"⁼","(":"⁽",")":"⁾","n":"ⁿ","i":"ⁱ"};
+  const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎","i":"ᵢ","n":"ₙ","x":"ₓ"};
+  const replaceScript=(match,raw,map)=>{
+    const value=raw.trim();
+    if(/^[0-9+\-=()ni x]+$/.test(value)) return [...value.replace(/\s/g,"")].map(ch=>map[ch]||ch).join("");
+    return match;
+  };
+  for(let i=0;i<8;i++){
     const previous=text;
-    text=text.replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→$1")
-      .replace(/\\vec\s*\{([^{}]*)\}/g,"→$1");
-    text=text.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
+    text=text
+      .replace(/\\overrightarrow\s*\{([^{}]*)\}/g,"→$1")
+      .replace(/\\vec\s*\{([^{}]*)\}/g,"$1⃗")
+      .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,"($1)/($2)")
+      .replace(/\\sqrt\s*\[([^\]]*)\]\s*\{([^{}]*)\}/g,"($2)^(1/$1)")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g,"√($1)")
-      .replace(/\\(?:text|mathrm|mathbf)\s*\{([^{}]*)\}/g,"$1")
+      .replace(/\\(?:text|textrm|textnormal|mathrm|mathbf|mathit|operatorname)\s*\{([^{}]*)\}/g,"$1")
       .replace(/\\hat\s*\{([^{}]*)\}/g,"$1\u0302")
-      .replace(/\^\{?([0-9+\-=()]*)\}?/g,(_,value)=>[...value].map(char=>superscript[char]||char).join(""))
-      .replace(/_\{?([0-9+\-=()]*)\}?/g,(_,value)=>[...value].map(char=>subscript[char]||char).join(""));
+      .replace(/\\overline\s*\{([^{}]*)\}/g,"$1\u0305")
+      .replace(/\^\{([^{}]*)\}/g,(m,v)=>replaceScript(m,v,superscript))
+      .replace(/_\{([^{}]*)\}/g,(m,v)=>replaceScript(m,v,subscript))
+      .replace(/\^([0-9+\-=()ni])/g,(_,v)=>superscript[v]||("^"+v))
+      .replace(/_([0-9+\-=()ni])/g,(_,v)=>subscript[v]||("_"+v));
     if(text===previous)break;
   }
-  return text.replace(/\\\^?\\circ|\\circ/g,"°").replace(/\\(?:cdot|times)/g,match=>match.includes("times")?"×":"·")
-    .replace(/\\(?:Rightarrow|Longrightarrow)/g,"⇒").replace(/\\(?:rightarrow|to)/g,"→")
-    .replace(/\\(?:leq|le)/g,"≤").replace(/\\(?:geq|ge)/g,"≥").replace(/\\neq/g,"≠").replace(/\\approx/g,"≈")
-    .replace(/\\pi/g,"π").replace(/\\(sin|cos|tan|log|ln)\b/g,"$1")
-    .replace(/\\(?:left|right|displaystyle|,|;|:|!| )/g,"").replace(/\\([A-Za-z]+)/g,"$1")
-    .replace(/\\([{}_$])/g,"$1").replace(/[{}]/g,"").replace(/\s+([,.;])/g,"$1").trim();
+  return text
+    .replace(/\\times\b/g,"×").replace(/\\cdot\b/g,"·").replace(/\\div\b/g,"÷")
+    .replace(/\\pm\b/g,"±").replace(/\\mp\b/g,"∓").replace(/\\infty\b/g,"∞")
+    .replace(/\\sum\b/g,"∑").replace(/\\prod\b/g,"∏").replace(/\\int\b/g,"∫").replace(/\\oint\b/g,"∮")
+    .replace(/\\pi\b/g,"π").replace(/\\alpha\b/g,"α").replace(/\\beta\b/g,"β").replace(/\\gamma\b/g,"γ")
+    .replace(/\\theta\b/g,"θ").replace(/\\lambda\b/g,"λ").replace(/\\mu\b/g,"μ").replace(/\\sigma\b/g,"σ").replace(/\\omega\b/g,"ω")
+    .replace(/\\Delta\b/g,"Δ").replace(/\\Omega\b/g,"Ω").replace(/\\phi\b|\\varphi\b/g,"φ")
+    .replace(/\\leq?\b/g,"≤").replace(/\\geq?\b/g,"≥").replace(/\\neq\b/g,"≠").replace(/\\approx\b/g,"≈").replace(/\\equiv\b/g,"≡")
+    .replace(/\\in\b/g,"∈").replace(/\\notin\b/g,"∉").replace(/\\subseteq\b/g,"⊆").replace(/\\cup\b/g,"∪").replace(/\\cap\b/g,"∩")
+    .replace(/\\Rightarrow\b|\\Longrightarrow\b/g,"⇒").replace(/\\rightarrow\b|\\to\b/g,"→").replace(/\\leftarrow\b/g,"←")
+    .replace(/\\leftrightarrow\b/g,"↔").replace(/\\mapsto\b/g,"↦").replace(/\\circ\b/g,"°").replace(/\\angle\b/g,"∠").replace(/\\perp\b/g,"⊥")
+    .replace(/\\log\b/g,"log").replace(/\\ln\b/g,"ln").replace(/\\(?:sin|cos|tan|cot|sec|csc)\b/g,m=>m.slice(1))
+    .replace(/\\([A-Za-z]+)/g,"$1").replace(/\\([{}_$%&#])/g,"$1")
+    .replace(/[{}]/g,"").replace(/\s+([,.;])/g,"$1").replace(/[ \t]{2,}/g," ").trim();
 }
 function solutionQuestionMarkup(item,editable,manualMode=false){
   const rubric=Array.isArray(item.rubric)?item.rubric:[];
