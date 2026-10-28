@@ -1100,14 +1100,36 @@ function storedFilename(originalName){
 async function saveFileToR2(folder, fileId, file) {
   const key = createR2Key(folder, fileId, file.originalname);
 
-  await uploadToR2({
-    key,
-    body: file.buffer,
-    contentType: file.mimetype ||
-      contentTypeFor(file.originalname)
-  });
+  try {
+    const result = await uploadToR2({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype ||
+        contentTypeFor(file.originalname)
+    });
 
-  return key;
+    // Log the exact bucket and object key so uploads can be verified in
+    // Render logs without exposing R2 credentials.
+    console.info("[R2] upload successful", JSON.stringify({
+      bucket: result?.bucket || process.env.R2_BUCKET_NAME || "unknown",
+      key,
+      bytes: file.buffer?.length || 0,
+      fileId: String(fileId),
+      folder
+    }));
+
+    return key;
+  } catch (error) {
+    console.error("[R2] upload failed", JSON.stringify({
+      bucket: process.env.R2_BUCKET_NAME || "unknown",
+      key,
+      fileId: String(fileId),
+      folder,
+      errorCode: error?.Code || error?.code || "R2_UPLOAD_FAILED",
+      message: error?.message || "Unknown R2 upload error"
+    }));
+    throw error;
+  }
 }
 
 async function getFileFromR2(key) {
