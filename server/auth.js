@@ -247,6 +247,11 @@ for (const [tableName, columnName] of [
   }
 }
 
+// Backward-compatible R2 columns for databases created before object storage.
+for (const [tableName,columnName] of [["documents","r2_key"],["document_submissions","r2_key"],["document_submissions","answer_key_r2_key"],["answer_keys","r2_key"]]) {
+  const columns = new Set(db.pragma(`table_info(${tableName})`).map(c=>c.name));
+  if (!columns.has(columnName)) db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
+}
 const SESSION_COOKIE = "maihoc.sid";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const cookieSecure = () => process.env.NODE_ENV === "production";
