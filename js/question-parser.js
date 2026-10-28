@@ -214,56 +214,76 @@ function compareConfiguredOrder(left, right) {
 }
 
 /** Apply a configured layout to parsed questions; assessment screens call this explicitly. */
-export function applyQuestionLayout(questions, layout) {
-    if (!Array.isArray(questions) || !questions.length || !Array.isArray(layout?.sections) || !layout.sections.length) {
-        return questions || [];
+export function applyQuestionLayout(questions, layout, { fillMissing = true } = {}) {
+    if (!Array.isArray(layout?.sections) || !layout.sections.length) {
+        return Array.isArray(questions) ? questions : [];
     }
 
     const sections = layout.sections
         .filter(section => VALID_QUESTION_TYPES.has(section.type) && Number(section.count) > 0)
         .map((section, index) => ({ ...section, order: Number(section.order) || index + 1, count: Math.floor(Number(section.count)) }));
-    if (!sections.length) return questions;
+    if (!sections.length) return Array.isArray(questions) ? questions : [];
 
-    const source = questions.map((question, index) => ({
+    const source = (Array.isArray(questions) ? questions : []).map((question, index) => ({
         ...question,
         documentOrder: Number.isFinite(Number(question.documentOrder)) ? Number(question.documentOrder) : index
     })).sort(compareQuestionOrder);
     const hasSectionMetadata = source.some(question => Number.isFinite(Number(question.sectionOrder))
         && Number(question.sectionOrder) < Number.MAX_SAFE_INTEGER);
 
-    // Content without explicit Part headings follows configured counts in document order.
-    if (!hasSectionMetadata) {
-        let cursor = 0;
-        return sections.flatMap(section => source.slice(cursor, cursor += section.count)
-            .map((question, index) => questionWithConfiguredSection(question, section, index + 1)));
-    }
-
     const used = new Set();
     const normalized = [];
-    for (const section of sections) {
-        const matching = source.filter(question => !used.has(question)
-            && Number(question.sectionOrder) === section.order)
-            .sort(compareQuestionOrder)
-            .slice(0, section.count);
-        for (const [index, question] of matching.entries()) {
-            used.add(question);
-            normalized.push(questionWithConfiguredSection(question, section, index + 1));
+
+    if (!hasSectionMetadata) {
+        let cursor = 0;
+        for (const section of sections) {
+            const slice = source.slice(cursor, cursor += section.count);
+            for (const [index, question] of slice.entries()) {
+                used.add(question);
+                normalized.push(questionWithConfiguredSection(question, section, index + 1));
+            }
+        }
+    } else {
+        for (const section of sections) {
+            const matching = source.filter(question => !used.has(question)
+                && Number(question.sectionOrder) === section.order)
+                .sort(compareQuestionOrder)
+                .slice(0, section.count);
+            for (const [index, question] of matching.entries()) {
+                used.add(question);
+                normalized.push(questionWithConfiguredSection(question, section, index + 1));
+            }
         }
     }
 
-    // Place unsectioned leftovers into any slots left by the parser.
-    const unsectioned = source.filter(question => !used.has(question)
-        && (!Number.isFinite(Number(question.sectionOrder)) || Number(question.sectionOrder) >= Number.MAX_SAFE_INTEGER))
-        .sort(compareQuestionOrder);
+    // Place any remaining unused questions into any slots left by the parser.
+    const leftovers = source.filter(question => !used.has(question)).sort(compareQuestionOrder);
     let fallbackIndex = 0;
     for (const section of sections) {
         const present = normalized.filter(question => question.layoutSectionOrder === section.order).length;
         const missing = Math.max(0, section.count - present);
-        for (const [index, question] of unsectioned.slice(fallbackIndex, fallbackIndex + missing).entries()) {
+        for (const [index, question] of leftovers.slice(fallbackIndex, fallbackIndex + missing).entries()) {
             used.add(question);
             normalized.push(questionWithConfiguredSection(question, section, present + index + 1));
         }
         fallbackIndex += missing;
+    }
+
+    if (fillMissing) {
+        for (const section of sections) {
+            const present = normalized.filter(question => question.layoutSectionOrder === section.order).length;
+            const sectionId = String(section.sectionId || section.order);
+            for (let localNum = present + 1; localNum <= section.count; localNum++) {
+                normalized.push(questionWithConfiguredSection({
+                    id: `${sectionId}-${localNum}`,
+                    number: String(localNum),
+                    text: `Câu ${localNum}`,
+                    options: [],
+                    statements: [],
+                    documentOrder: normalized.length
+                }, section, localNum));
+            }
+        }
     }
 
     return normalized.sort(compareConfiguredOrder);
@@ -271,9 +291,12 @@ export function applyQuestionLayout(questions, layout) {
 
 function questionWithConfiguredSection(question, section, localQuestionNumber) {
     const sectionId = String(section.sectionId || section.order);
+    const localNum = String(localQuestionNumber || question.number || 1);
     const normalized = {
         ...question,
-        answerId: `${sectionId}-${localQuestionNumber || 1}`,
+        id: `${sectionId}-${localNum}`,
+        number: localNum,
+        answerId: `${sectionId}-${localNum}`,
         type: section.type,
         layoutSectionOrder: section.order,
         layoutSectionTitle: section.title || ""

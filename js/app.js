@@ -10,11 +10,9 @@ import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js";
-import { mountStudyRooms } from "../study-rooms/client.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
-let studyRoomsCleanup = null;
 let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
@@ -104,7 +102,7 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">Toán</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
     return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-logo.jpg" alt="Logo MAI HỌC"></div></section>
+    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-logo.jpg" alt="Logo MAI HỌC"></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
 <div class="grid three">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
@@ -113,7 +111,7 @@ function homePage() {
 </div>
 <section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
 <div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
-<p class="footer-note">MAI HỌC · Mai chưa phải là muộn nếu thực sự muốn bắt đầu.</p>`;
+<p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
 }
 function subjectPickerPage() {
     const subjects = [
@@ -187,11 +185,18 @@ function readerPage() {
 }
 function questionsFor(doc) {
     if (activeExamQuestionsFor === String(doc?.id)) return activeExamQuestions;
-    const parsed = applyQuestionLayout(parseQuestionText(doc?.content || ""), assessmentLayoutFor(doc));
-    if (parsed.length) return parsed;
+    const layout = assessmentLayoutFor(doc);
+    const isInlineSample = Boolean(doc?.sample && doc?.content);
+    const parsedSource = parseQuestionText(doc?.content || "");
+    if (parsedSource.length) {
+        return applyQuestionLayout(parsedSource, layout, { fillMissing: !isInlineSample });
+    }
     if (Array.isArray(doc?.questionIds) && doc.questionIds.length) {
         const fromIds = doc.questionIds.map((id, index) => ({ id: String(id), number: String(id), documentOrder: index, type: "essay", text: `Câu ${id}`, options: [], statements: [] }));
-        return applyQuestionLayout(fromIds, assessmentLayoutFor(doc));
+        return applyQuestionLayout(fromIds, layout, { fillMissing: !isInlineSample });
+    }
+    if (layout && !doc?.content) {
+        return applyQuestionLayout([], layout, { fillMissing: true });
     }
     return [];
 }
@@ -244,6 +249,9 @@ function answerFields(questions, waitingForSource = false, layout = null) {
 }
 function applyExamQuestions(documentId, questions) {
     if (state.route !== "exam" || String(state.examDocId) !== String(documentId)) return;
+    const document = findDoc(documentId);
+    const layout = assessmentLayoutFor(document);
+    questions = applyQuestionLayout(questions || [], layout, { fillMissing: !document?.sample });
     if (!questions.length) {
         const form = $("#answer-form");
         const summary = $("#answer-question-summary");
@@ -253,9 +261,6 @@ function applyExamQuestions(documentId, questions) {
         }
         return;
     }
-    const document = findDoc(documentId);
-    const layout = assessmentLayoutFor(document);
-    questions = applyQuestionLayout(questions, layout);
     activeExamQuestions = questions;
     activeExamQuestionsFor = String(documentId);
     const summary = $("#answer-question-summary");
@@ -301,13 +306,7 @@ function examPage() {
     const waitingForSource = (isPdf || isText || isDocx) && !questions.length;
     const summary = questions.length ? questionSummary(questions) : waitingForSource ? "\u0110ang \u0111\u1ecdc c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p\u2026" : questionSummary(questions);
     return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} \u00b7 ${isTimedExam ? "L\u00e0m b\u00e0i trong t\u1ed1i \u0111a 90 ph\u00fat" : "L\u00e0m b\u00e0i t\u1ef1 luy\u1ec7n"}</div></div><div id="timer" class="timer" ${isTimedExam ? "" : "hidden"}>90:00</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
-}function formatExamAnswer(value) {
-    if (Array.isArray(value)) return value.map(item => String(item ?? "").trim()).filter(Boolean).join(" / ") || "—";
-    if (value && typeof value === "object") return Object.entries(value).map(([key,item]) => key + ": " + formatExamAnswer(item)).join(" · ") || "—";
-    const text = String(value ?? "").trim();
-    return text || "—";
-}
-function resultPage() {
+}function resultPage() {
     const saved = state.route === "saved-result" ? state.savedExamResult : null;
     const d = saved ? { title: saved.title, subject: saved.subject, grade: saved.grade, category: saved.category } : findDoc(state.examDocId);
     const result = saved ? saved.result : state.gradeResult;
@@ -316,25 +315,14 @@ function resultPage() {
     const layout = assessmentLayoutFor(d);
     const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
     const rows = Array.isArray(result?.results) ? result.results : [];
-    const resultMessage = result?.message ? "<p class=\"muted\">" + escapeHTML(result.message) + "</p>" : "";
-    const detailRows = rows.map(item => {
-        const statements = Array.isArray(item.statements) ? item.statements : null;
-        const userAnswer = item.userAnswer ?? (statements ? statements.map(row => String(row.statement) + ": " + formatExamAnswer(row.userAnswer)).join(" · ") : "—");
-        const expectedAnswer = item.expectedAnswer ?? (statements ? statements.map(row => String(row.statement) + ": " + formatExamAnswer(row.expectedAnswer)).join(" · ") : "—");
-        return "<tr><td>" + escapeHTML(item.question) + "</td><td>" + escapeHTML(formatExamAnswer(userAnswer)) + "</td><td>" + escapeHTML(formatExamAnswer(expectedAnswer)) + "</td><td><strong class=\"" + (item.correct ? "is-correct" : "is-wrong") + "\">" + (item.correct ? "Đúng" : "Chưa đúng") + "</strong></td><td>" + escapeHTML(item.earnedPoints ?? 0) + "/" + escapeHTML(item.totalPoints ?? 0) + "</td></tr>";
-    }).join("");
-    const hasDetails = detailRows.length > 0;
-    const scoreBlock = result?.graded
-        ? "<div class=\"result-score\">" + Number(result.score ?? result.earnedPoints).toFixed(2) + "/" + (result.scale ?? result.totalPoints) + "</div><p class=\"muted\">" + (result.percent ?? 0) + "% · " + (result.correctCount ?? 0) + "/" + (result.questionCount ?? rows.length) + " câu đúng · " + (result.earnedPoints ?? result.score ?? 0) + "/" + (result.totalPoints ?? result.scale ?? 0) + " điểm</p>"
-        : "<div class=\"result-score\">—/" + (result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)) + "</div><p class=\"muted\">" + escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.") + "</p>";
-    const table = hasDetails
-        ? '<div class="grade-details-table-wrap"><table class="grade-details-table"><thead><tr><th>Câu</th><th>Đáp án bạn chọn</th><th>Đáp án đúng</th><th>Trạng thái</th><th>Điểm</th></tr></thead><tbody>' + detailRows + '</tbody></table></div>'
-        : (!result?.graded ? '<p class="muted">Số câu đã trả lời: ' + answered + '/' + answerableCount + '</p>' : '');
-    const owner = saved?.userName ? "<p class=\"muted tiny\">Bài làm của " + escapeHTML(saved.userName) + (saved.userEmail ? " (" + escapeHTML(saved.userEmail) + ")" : "") + (saved.createdAt ? " · " + escapeHTML(saved.createdAt) : "") + "</p>" : "";
+    const owner = saved?.userName ? `<p class="muted tiny">Bài làm của ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` · ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
+    const details = result?.graded
+        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details">${rows.map(item => `<div class="grade-detail"><span>Câu ${escapeHTML(item.question)}</span><strong class="${item.correct ? "is-correct" : "is-wrong"}">${item.correct ? "Đúng" : "Chưa đúng"} · ${item.earnedPoints ?? 0}/${item.totalPoints ?? 0}</strong></div>`).join("")}</div>`
+        : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
     const actions = saved
-        ? (currentUser?.role === "admin" ? "<button class=\"button secondary\" data-route=\"admin\">Quay lại tiến trình</button>" : "<button class=\"button secondary\" data-route=\"home\">Về trang học tập</button>")
-        : "<button class=\"button secondary\" data-route=\"exam-select\">Chọn đề khác</button><button class=\"button primary\" data-route=\"subject\">Về môn Toán</button>";
-    return pageHeading("Kết quả bài làm", d?.title || "Đề thi") + "<div class=\"result-panel\"><span class=\"pill\">ĐÃ NỘP BÀI</span>" + owner + scoreBlock + resultMessage + "<h2>" + (hasDetails ? "Đối chiếu đáp án từng câu" : (result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm")) + "</h2>" + table + "<div class=\"modal-actions\">" + actions + "</div></div>";
+        ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
+        : `<button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button>`;
+    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">ĐÃ NỘP BÀI</span>${owner}${details}<h2>${result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm"}</h2>${result?.graded ? "" : `<p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
 }
 
 async function openSavedExamResult(id) {
@@ -351,122 +339,7 @@ async function openSavedExamResult(id) {
         toast(error.message || "Không tải được kết quả bài làm.", "error");
     }
 }
-function accountCenterPage(){
-  const email=escapeHTML(currentUser?.email||""),name=escapeHTML(currentUser?.name||"");
-  return pageHeading("Trung tâm tài khoản","Quản lý thông tin đăng nhập và bảo mật tài khoản")+
-  '<section class="account-center-grid">'+
-  '<article class="dashboard-panel"><h2>Thông tin tài khoản</h2><p><strong>Họ tên:</strong> '+name+'</p><p><strong>Gmail hiện tại:</strong> <span id="account-current-email">'+email+'</span></p><p class="muted">Mã xác minh đổi Gmail sẽ được gửi về Gmail hiện tại.</p><form data-account-form="change-email" class="account-center-form"><label>Gmail mới<input type="email" name="email" required maxlength="254" placeholder="ten@gmail.com"></label><button class="button secondary" type="button" data-account-request-code="change-email">Gửi mã xác minh</button><label>Mã xác minh 6 chữ số<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="Nhập mã trong email"></label><button class="button primary" type="submit">Xác nhận đổi Gmail</button><p class="account-form-message" data-account-message hidden></p></form></article>'+
-  '<article class="dashboard-panel"><h2>Đổi mật khẩu</h2><p class="muted">Nhập mật khẩu hiện tại để xác nhận quyền sở hữu tài khoản.</p><form data-account-form="change-password" class="account-center-form"><label>Mật khẩu hiện tại<input type="password" name="currentPassword" required autocomplete="current-password"></label><label>Mật khẩu mới<input type="password" name="newPassword" required minlength="10" maxlength="128" autocomplete="new-password"></label><label>Nhập lại mật khẩu mới<input type="password" name="confirmPassword" required minlength="10" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Đổi mật khẩu</button><p class="account-form-message" data-account-message hidden></p></form></article>'+
-  '<article class="dashboard-panel account-danger-zone"><h2>Xóa tài khoản</h2><p>Tài khoản sẽ bị xóa vĩnh viễn sau khi xác minh mã gửi đến Gmail hiện tại. Thao tác này không thể hoàn tác.</p><button type="button" class="button danger" data-account-request-code="delete-account">Gửi mã xác minh xóa tài khoản</button><form data-account-form="delete-account" class="account-center-form"><label>Mã xác minh 6 chữ số<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="Nhập mã trong email"></label><label>Nhập XOA để xác nhận<input name="confirmation" required autocomplete="off" placeholder="XOA"></label><button type="submit" class="button danger">Xóa tài khoản vĩnh viễn</button><p class="account-form-message" data-account-message hidden></p></form></article></section>';
-}
-function userDashboardPage(){
-  return pageHeading("Dashboard","Trạng thái hoạt động của người dùng")+
-    '<section class="dashboard-panel"><div class="dashboard-panel-head"><div><h2>Người dùng khác</h2><p class="muted">Danh sách chỉ gồm tài khoản người dùng thường. Admin và tiến trình học của người khác không được hiển thị.</p></div><button class="button secondary small" data-action="refresh-online-users">Làm mới</button></div><p id="user-online-count" class="muted">Đang tải...</p><div class="online-user-list-shell"><div id="user-online-list" class="online-user-list"><p class="muted">Đang kiểm tra trạng thái...</p></div></div></section>';
-}
-async function loadUserOnlineDashboard(){
-  const count=$("#user-online-count"),list=$("#user-online-list");
-  if(!count||!list||state.route!=="user-dashboard")return;
-  try{
-    const response=await fetch("/api/presence/online-users",{credentials:"same-origin",cache:"no-store"});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tải được danh sách người dùng.");
-    if(state.route!=="user-dashboard")return;
-    const users=Array.isArray(data.users)?data.users:[];
-    const onlineCount=users.filter(user=>user.status==="online").length;
-    const offlineCount=users.length-onlineCount;
-    count.textContent=users.length+" người dùng khác · "+onlineCount+" online · "+offlineCount+" offline";
-    if(!users.length){list.innerHTML='<p class="muted">Chưa có người dùng thường nào khác đăng ký.</p>';return;}
-    list.replaceChildren(...users.map(user=>{
-      const online=user.status==="online";
-      const item=document.createElement("article");item.className="online-user-item "+(online?"is-online":"is-offline");
-      const dot=document.createElement("span");dot.className="online-indicator "+(online?"is-online":"is-offline");dot.setAttribute("aria-hidden","true");
-      const name=document.createElement("strong");name.className="online-user-name";name.textContent=user.name||"Người dùng";
-      const status=document.createElement("span");status.className="online-user-label "+(online?"is-online":"is-offline");status.textContent=online?"Online":"Offline";
-      item.append(dot,name,status);return item;
-    }));
-  }catch(error){count.textContent="";list.textContent=error.message||"Không tải được danh sách người dùng.";}
-}
-async function loadSuperAdminMonitoring(){
-  if(!["admin","user-progress-detail"].includes(state.route)||Number(currentUser?.adminLevel)<2)return;
-  const presence=$("#superadmin-online-list"),count=$("#superadmin-online-count");
-  if(!presence||!count)return;
-  try{
-    const response=await fetch("/api/admin/presence",{credentials:"same-origin",cache:"no-store"});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tải được trạng thái online.");
-    if(state.route!=="admin")return;
-    const users=Array.isArray(data.users)?data.users:[];
-    count.textContent=users.length+" tài khoản hoạt động trong 3 phút gần đây";
-    if(!users.length){presence.innerHTML='<p class="muted">Chưa có tài khoản hoạt động gần đây.</p>';return;}
-    const table=document.createElement("table");table.className="admin-table";
-    table.innerHTML="<thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Hoạt động gần nhất</th></tr></thead>";
-    const body=document.createElement("tbody");
-    users.forEach(user=>{const tr=document.createElement("tr");const name=document.createElement("td");name.textContent=user.name+" · "+user.email;const role=document.createElement("td");role.textContent=user.role==="admin"?(Number(user.adminLevel)>=2?"Admin cao nhất":"Admin cấp dưới"):"User";const active=document.createElement("td");active.textContent="Online";const seen=document.createElement("td");seen.textContent=new Date(Number(user.lastSeenAt)).toLocaleString("vi-VN");tr.append(name,role,active,seen);body.append(tr);});
-    table.append(body);presence.replaceChildren(table);
-  }catch(error){count.textContent=error.message||"Không tải được trạng thái online.";}
-  try{
-    const response=await fetch("/api/admin/progress",{credentials:"same-origin",cache:"no-store"});
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(payload.error||"Không tải được tiến trình.");
-    const box=$("#superadmin-progress-list");if(!box||!["admin","user-progress-detail"].includes(state.route))return;
-    const users=Array.isArray(payload.users)?payload.users:[];
-    if(!users.length){box.innerHTML='<p class="muted">Chưa có tiến trình học tập của người dùng.</p>';return;}
-    const table=document.createElement("table");table.className="admin-table";
-    table.innerHTML="<thead><tr><th>Người dùng</th><th>Email</th><th>Số nội dung</th><th>Đã hoàn thành</th><th>Tiến độ trung bình</th><th>Hoạt động gần nhất</th><th>Chi tiết</th></tr></thead>";
-    const body=document.createElement("tbody");
-    users.forEach(user=>{
-      const tr=document.createElement("tr");
-      const name=document.createElement("td");name.textContent=user.name;
-      const email=document.createElement("td");email.textContent=user.email;
-      const total=document.createElement("td");total.textContent=String(user.totalItems);
-      const completed=document.createElement("td");completed.textContent=String(user.completedItems);
-      const average=document.createElement("td");average.textContent=String(user.averageProgress)+"%";
-      const updated=document.createElement("td");updated.textContent=user.latestUpdatedAt?new Date(String(user.latestUpdatedAt).replace(" ","T")+"Z").toLocaleString("vi-VN"):"—";
-      const action=document.createElement("td");const link=document.createElement("button");link.type="button";link.className="button secondary small";link.dataset.action="view-user-progress";link.dataset.userId=String(user.id);link.textContent="Xem toàn bộ tiến trình";action.append(link);
-      tr.append(name,email,total,completed,average,updated,action);body.append(tr);
-    });
-    table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
-  }catch(error){const box=$("#superadmin-progress-list");if(box)box.textContent=error.message||"Không tải được tiến trình học tập.";}
-}
-function userProgressDetailPage(){
-  const user=state.selectedProgressUser;
-  return pageHeading("Tiến trình học tập",user?.name||"Người dùng")+
-    '<div class="admin-toolbar"><div><p class="muted">'+escapeHTML(user?.email||"")+'</p></div><button class="button secondary" data-action="back-user-progress">← Quay lại giám sát</button></div>'+
-    '<div class="stat-row"><div class="stat"><span class="muted">Tổng nội dung</span><strong id="user-progress-total">—</strong></div><div class="stat"><span class="muted">Đã hoàn thành</span><strong id="user-progress-completed">—</strong></div><div class="stat"><span class="muted">Tiến độ trung bình</span><strong id="user-progress-average">—</strong></div></div>'+
-    '<p id="user-progress-status" class="muted">Đang tải toàn bộ tiến trình...</p><div id="user-progress-detail-list"></div>';
-}
-async function loadUserProgressDetail(userId){
-  if(state.route!=="user-progress-detail"||Number(currentUser?.adminLevel)<2)return;
-  const status=$("#user-progress-status"),box=$("#user-progress-detail-list");
-  try{
-    const response=await fetch("/api/admin/users/"+encodeURIComponent(userId)+"/progress",{credentials:"same-origin",cache:"no-store"});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tải được tiến trình người dùng.");
-    if(state.route!=="user-progress-detail")return;
-    state.selectedProgressUser=data.user;
-    $("#user-progress-total").textContent=String(data.summary.totalItems);
-    $("#user-progress-completed").textContent=String(data.summary.completedItems);
-    $("#user-progress-average").textContent=String(data.summary.averageProgress)+"%";
-    status.textContent=data.progress.length+" mục tiến trình";
-    if(!data.progress.length){box.innerHTML='<p class="muted">Người dùng này chưa có tiến trình học tập.</p>';return;}
-    const table=document.createElement("table");table.className="admin-table";
-    table.innerHTML="<thead><tr><th>Nội dung</th><th>Loại</th><th>Môn/Lớp</th><th>Trạng thái</th><th>Tiến trình</th><th>Điểm</th><th>Bắt đầu</th><th>Cập nhật</th><th>Kết quả</th></tr></thead>";
-    const body=document.createElement("tbody");
-    data.progress.forEach(row=>{
-      const tr=document.createElement("tr");
-      [row.itemTitle||row.itemId,row.itemType,row.subject+" · "+row.grade,row.status,Number(row.progressPercent)+"%",row.score??"—",row.startedAt,row.updatedAt].forEach(value=>{const td=document.createElement("td");td.textContent=String(value??"—");tr.append(td);});
-      const result=document.createElement("td");
-      if(row.itemType==="exam"&&row.latestAttemptId){const button=document.createElement("button");button.type="button";button.className="button secondary small";button.dataset.action="view-exam-result";button.dataset.id=String(row.latestAttemptId);button.textContent="Xem kết quả";result.append(button);}else result.textContent="—";
-      tr.append(result);body.append(tr);
-    });
-    table.append(body);const wrap=document.createElement("div");wrap.className="admin-table-wrap admin-progress-scroll";wrap.append(table);box.replaceChildren(wrap);
-  }catch(error){if(status)status.textContent=error.message||"Không tải được tiến trình.";}
-}
-
-function adminPage() {
-  if(state.route==="user-progress-detail")return userProgressDetailPage();
-  return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}${Number(currentUser?.adminLevel)>=2?'<section class="dashboard-panel superadmin-monitoring"><div class="dashboard-panel-head"><div><h2>Giám sát hoạt động</h2><p class="muted">Danh sách tiến trình được gom theo từng người dùng thường; Admin không xuất hiện ở bảng này.</p></div><button class="button secondary small" data-action="refresh-superadmin-monitoring">Làm mới</button></div><h3>Ai đang online?</h3><p id="superadmin-online-count" class="muted">Đang tải...</p><div id="superadmin-online-list"></div><h3>Tiến trình học tập của người dùng</h3><div id="superadmin-progress-list"><p class="muted">Đang tải...</p></div></section>':""}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;
-}
+function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin" });
@@ -497,32 +370,7 @@ catch (error) {
     status.classList.add("auth-error");
     container.innerHTML = "";
 } }
-let presenceHeartbeatTimer=null;
-let presenceHeartbeatBusy=false;
-async function sendPresenceHeartbeat(){
-  if(!currentUser||presenceHeartbeatBusy)return;
-  presenceHeartbeatBusy=true;
-  try{
-    await fetch("/api/presence/heartbeat",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}",cache:"no-store"});
-  }catch{}
-  finally{presenceHeartbeatBusy=false;}
-}
-function syncPresenceHeartbeat(){
-  const button=$("#user-dashboard-open");
-  if(button)button.hidden=!currentUser||currentUser.role==="admin";
-  if(!currentUser){if(presenceHeartbeatTimer){clearInterval(presenceHeartbeatTimer);presenceHeartbeatTimer=null;}return;}
-  void sendPresenceHeartbeat();
-  if(!presenceHeartbeatTimer)presenceHeartbeatTimer=setInterval(sendPresenceHeartbeat,45000);
-}
-window.addEventListener("focus",()=>{void sendPresenceHeartbeat();});
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)void sendPresenceHeartbeat();});
 function render() {
-    if (state.route !== "study-rooms" && studyRoomsCleanup) {
-        const cleanup = studyRoomsCleanup;
-        studyRoomsCleanup = null;
-        void cleanup();
-    }
-    syncPresenceHeartbeat();
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
@@ -555,16 +403,8 @@ function render() {
         view.innerHTML = examPage();
     else if (state.route === "result" || state.route === "saved-result")
         view.innerHTML = resultPage();
-    else if (state.route === "admin" || state.route === "user-progress-detail")
+    else if (state.route === "admin")
         view.innerHTML = adminPage();
-    else if (state.route === "user-dashboard")
-        view.innerHTML = userDashboardPage();
-    else if (state.route === "account-center")
-        view.innerHTML = accountCenterPage();
-    else if (state.route === "study-rooms")
-        view.innerHTML = '<div class="study-room-loading"><p class="muted">Đang mở Phòng tự học…</p></div>';
-    else if (state.route === "user-progress-detail")
-        view.innerHTML = userProgressDetailPage();
     const pdfContainer = view.querySelector("[data-pdf-reader]");
     if (pdfContainer) {
         const pdfExamId = state.examDocId;
@@ -581,17 +421,8 @@ function render() {
         }
     }
     view.focus({ preventScroll: true });
-    if (state.route === "admin") {
+    if (state.route === "admin")
         loadAdminUsers();
-        if(Number(currentUser?.adminLevel)>=2)loadSuperAdminMonitoring();
-    }
-    if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
-    if(state.route==="user-dashboard")loadUserOnlineDashboard();
-    if(state.route==="user-progress-detail"&&state.selectedProgressUser?.id)loadUserProgressDetail(state.selectedProgressUser.id);
-    if (state.route === "study-rooms") {
-        if (studyRoomsCleanup) void studyRoomsCleanup();
-        studyRoomsCleanup = mountStudyRooms(view, currentUser);
-    }
     if (state.route === "exam") {
         wireSplitter();
         if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
@@ -673,17 +504,12 @@ function finishExam() {
     // Đánh dấu bài thi đã kết thúc trước khi thoát fullscreen.
     state.examFinished = true;
     state.examStarted = false;
-    document.body.classList.remove("exam-open", "exam-native-fullscreen");
     // Dừng đồng hồ đếm ngược.
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
     }
     const submittedAnswers = { ...state.answers };
-    // Snapshot every form value before the asynchronous submit starts.
-    document.querySelectorAll("#answer-form [data-answer]").forEach(field => {
-        submittedAnswers[field.dataset.answer] = field.value;
-    });
     const submitPromise = fetch(`/api/exams/${encodeURIComponent(state.examDocId)}/submit`, {
         method: "POST",
         credentials: "same-origin",
@@ -707,8 +533,6 @@ function finishExam() {
 // PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
 // ============================================
 document.addEventListener("fullscreenchange", () => {
-    // Keep the timed-exam state synchronized with native browser fullscreen.
-    document.body.classList.toggle("exam-native-fullscreen", Boolean(document.fullscreenElement && state.route === "exam" && findDoc(state.examDocId)?.category === "exam"));
     // Vẫn đang ở chế độ toàn màn hình.
     if (document.fullscreenElement)
         return;
@@ -740,8 +564,6 @@ function startExam(id) {
     if (!d)
         return;
     const isTimedExam = d.category === "exam";
-    document.body.classList.toggle("exam-open", isTimedExam);
-    document.body.classList.toggle("exam-native-fullscreen", Boolean(document.fullscreenElement && isTimedExam));
     // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
     // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
     let fullscreenPromise = null;
@@ -829,39 +651,6 @@ document.addEventListener("click", async (e) => {
     const action = e.target.closest("[data-action]");
     if (action) {
         const a = action.dataset.action;
-        if (a === "user-dashboard") {
-            if(currentUser&&currentUser.role!=="admin")go("user-dashboard");
-            else toast("Dashboard chỉ dành cho người dùng thường.", "error");
-            return;
-        }
-        if(a==="refresh-online-users"){loadUserOnlineDashboard();return;}
-        if(a==="refresh-superadmin-monitoring"){loadSuperAdminMonitoring();return;}
-        if(a==="view-user-progress"){
-            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
-            const id=Number(action.dataset.userId);
-            state.selectedProgressUser={id,name:"",email:""};
-            go("user-progress-detail");
-            loadUserProgressDetail(id);
-            return;
-        }
-        if(a==="back-user-progress"){go("admin");return;}
-        if(a==="view-user-progress"){
-            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.","error");return;}
-            const id=Number(action.dataset.userId);
-            state.selectedProgressUser={id,name:"",email:""};
-            go("user-progress-detail");
-            loadUserProgressDetail(id);
-            return;
-        }
-        if(a==="back-user-progress"){go("admin");return;}
-        if(a==="view-user-progress"){
-            if(Number(currentUser?.adminLevel)<2){toast("Chỉ Admin cao nhất mới được xem tiến trình.", "error");return;}
-            state.selectedProgressUser={id:Number(action.dataset.userId),name:"Người dùng",email:""};
-            go("user-progress-detail");
-            loadUserProgressDetail(state.selectedProgressUser.id);
-            return;
-        }
-        if(a==="back-user-progress"){go("admin");return;}
         if (a === "admin-dashboard") {
             if (currentUser?.role === "admin")
                 go("admin");
@@ -1074,13 +863,9 @@ $("#upload-form").addEventListener("submit", async (e) => {
     }
 });
 $("#confirm-yes").addEventListener("click", () => { closeDialog("confirm-dialog"); finishExam(); });
-document.addEventListener("input", e => {
-    const field=e.target.closest("[data-answer]");
-    if(field) state.answers[field.dataset.answer]=field.value;
-});
+document.addEventListener("input", e => { if (e.target.matches("[data-answer]"))
+    state.answers[e.target.dataset.answer] = e.target.value; });
 document.addEventListener("change", e => {
-    const answerInput = e.target.closest("[data-answer]");
-    if (answerInput) state.answers[answerInput.dataset.answer] = answerInput.value;
     const multipleChoice = e.target.closest("[data-answer-choice]");
     if (multipleChoice) {
         const questionId = multipleChoice.dataset.answerChoice;
@@ -1125,7 +910,6 @@ function applyAuthUI() {
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
     $("#admin-open").hidden = currentUser?.role !== "admin";
-    $("#user-dashboard-open").hidden = !signedIn || currentUser?.role === "admin";
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
 }
 async function refreshAuthUI() {
@@ -1138,11 +922,6 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
-    syncPresenceHeartbeat();
-    if (state.route === "study-rooms") {
-        if (studyRoomsCleanup) void studyRoomsCleanup();
-        studyRoomsCleanup = mountStudyRooms(view, currentUser);
-    }
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1257,41 +1036,6 @@ async function loadAccountDeletionRequests(){
     box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Admin cấp dưới":"User")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
-document.addEventListener("click",async e=>{
-  const button=e.target.closest("[data-account-request-code]");if(!button)return;
-  const purpose=button.dataset.accountRequestCode,form=document.querySelector('[data-account-form="'+purpose+'"]');
-  const email=form?.querySelector('[name="email"]')?.value?.trim()||"";
-  if(purpose==="change-email"&&!email){form?.querySelector('[name="email"]')?.reportValidity();return;}
-  if(purpose==="delete-account"&&!confirm("Gửi mã xác minh để xóa vĩnh viễn tài khoản này?"))return;
-  button.disabled=true;
-  try{
-    const response=await fetch("/api/account/request-code",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({purpose,email})});
-    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Không gửi được mã xác minh.");
-    const message=form?.querySelector("[data-account-message]");if(message){message.hidden=false;message.textContent=data.message||"Đã gửi mã xác minh.";}
-    toast(data.message||"Đã gửi mã xác minh.","success");let remain=30;const label=button.textContent;
-    const timer=setInterval(()=>{remain--;if(!button.isConnected){clearInterval(timer);return;}if(remain<=0){clearInterval(timer);button.textContent=label;button.disabled=false;}else button.textContent="Gửi mã mới ("+remain+"s)";},1000);
-  }catch(error){toast(error.message||"Không gửi được mã xác minh.","error");button.disabled=false;}
-});
-document.addEventListener("submit",async e=>{
-  const form=e.target.closest("[data-account-form]");if(!form)return;e.preventDefault();
-  const purpose=form.dataset.accountForm,button=form.querySelector('button[type="submit"]'),message=form.querySelector("[data-account-message]"),values=Object.fromEntries(new FormData(form).entries());
-  const showMessage=(text,isError=false)=>{if(message){message.hidden=false;message.textContent=text;message.classList.toggle("auth-error",isError);}};
-  if(purpose==="change-password"&&values.newPassword!==values.confirmPassword){showMessage("Mật khẩu nhập lại không khớp.",true);return;}
-  if(purpose==="delete-account"&&(values.confirmation||"").trim()!=="XOA"){showMessage("Hãy nhập chính xác XOA để xác nhận.",true);return;}
-  if(purpose==="delete-account"&&!confirm("Xác nhận xóa tài khoản vĩnh viễn?"))return;
-  if(button)button.disabled=true;
-  try{
-    let endpoint="/api/account/confirm-action",body={purpose,code:values.code};
-    if(purpose==="change-password"){endpoint="/api/account/change-password";body={currentPassword:values.currentPassword,newPassword:values.newPassword};}
-    if(purpose==="change-email")body.email=values.email;
-    const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Không thể cập nhật tài khoản.");
-    showMessage(data.message||"Đã cập nhật tài khoản.");
-    if(purpose==="change-email"){const node=document.querySelector("#account-current-email");if(node)node.textContent=data.user?.email||values.email;form.reset();toast("Đã đổi Gmail thành công.","success");}
-    else if(purpose==="change-password"){form.reset();toast("Đã đổi mật khẩu. Vui lòng đăng nhập lại.","success");setTimeout(()=>document.querySelector("#login-open")?.click(),700);}
-    else{toast("Tài khoản đã được xóa.","success");await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"});window.location.reload();}
-  }catch(error){showMessage(error.message||"Không thể cập nhật tài khoản.",true);}finally{if(button)button.disabled=false;}
-});
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;
   e.preventDefault();

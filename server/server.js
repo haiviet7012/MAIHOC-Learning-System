@@ -14,9 +14,8 @@ import {fileURLToPath} from "node:url";
 import {GoogleGenerativeAI} from "@google/generative-ai";
 
 import nodemailer from "nodemailer";
-import { installStudyRooms } from "./study-rooms/server.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
-import { solveExamDocument, isAIQuotaError, answerTargetsForLayout } from "./grading/exam-solution-engine.js";
+import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 
 import {
 
@@ -28,16 +27,9 @@ import {
 
 
 
-const __dirname=path.dirname(fileURLToPath(import.meta.url));
+dotenv.config();
 
-// Always load server/.env relative to this file, not process.cwd().
-// This prevents SMTP settings from silently disappearing when npm start
-// is launched from the repository root or another working directory.
-const envPath=path.join(__dirname,".env");
-const envResult=dotenv.config({path:envPath});
-if(envResult.error&&envResult.error.code!=="ENOENT"){
-  console.error("Could not load server/.env:",envResult.error.message);
-}
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
 
 const root=path.resolve(__dirname,"..");
 
@@ -147,55 +139,6 @@ function createExamSolutionJob(documentId){
   queueExamSolution(documentId);
 }
 
-function createPasswordResetTransport(){
-  const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM}=process.env;
-  const host=String(SMTP_HOST||"").trim();
-  const smtpUser=String(SMTP_USER||"").trim();
-  // App passwords are commonly displayed in groups of four characters.
-  // Remove accidental internal spaces while preserving the credential value.
-  const smtpPass=String(SMTP_PASS||"").replace(/\s+/g,"");
-  const sender=String(SMTP_FROM||smtpUser).trim();
-  if(!host||!smtpUser||!smtpPass)throw new Error("SMTP_CONFIG_MISSING: Không đọc được SMTP_HOST, SMTP_USER hoặc SMTP_PASS. Hãy kiểm tra server/.env.");
-  const port=Number(SMTP_PORT||587);
-  if(!Number.isInteger(port)||port<1||port>65535)throw new Error("SMTP_PORT_INVALID: SMTP_PORT phải là số cổng hợp lệ, ví dụ 587 hoặc 465.");
-  const transporter=nodemailer.createTransport({host,port,secure:port===465,auth:{user:smtpUser,pass:smtpPass}});
-  return {SMTP_FROM:sender,SMTP_USER:smtpUser,transporter};
-}
-function passwordResetSmtpFailure(error){
-  const code=String(error?.code||"").toUpperCase();
-  const responseCode=Number(error?.responseCode)||0;
-  if(responseCode===535||code==="EAUTH")return "Gmail từ chối xác thực (535/EAUTH). Kiểm tra SMTP_USER đúng Gmail và SMTP_PASS là App Password 16 ký tự của chính tài khoản đó.";
-  if(code==="ENOTFOUND"||code==="EAI_AGAIN")return "Không phân giải được địa chỉ SMTP. Kiểm tra SMTP_HOST và kết nối DNS/Internet.";
-  if(code==="ETIMEDOUT"||code==="ECONNECTION"||code==="ECONNREFUSED"||code==="ESOCKET")return "Không thể kết nối đến máy chủ SMTP. Kiểm tra Internet, tường lửa và SMTP_HOST/SMTP_PORT.";
-  if(String(error?.message||"").includes("SMTP_CONFIG_MISSING"))return error.message;
-  if(String(error?.message||"").includes("SMTP_PORT_INVALID"))return error.message;
-  return "Gửi email xác minh thất bại. Hãy xem mã lỗi SMTP trong cửa sổ PowerShell đang chạy npm start.";
-}
-async function sendPasswordResetEmail(to,code,mailTransport=createPasswordResetTransport()){
-  const {SMTP_FROM,SMTP_USER,transporter}=mailTransport;
-  const result=await transporter.sendMail({
-    from:{name:"MAI HỌC - Xác minh tài khoản",address:SMTP_FROM||SMTP_USER},
-    to,
-    replyTo:SMTP_FROM||SMTP_USER,
-    subject:"[MAI HỌC] Mã xác minh đặt lại mật khẩu",
-    text:`Bạn đã yêu cầu đặt lại mật khẩu MAI HỌC.\n\nMã xác minh của bạn là: ${code}\nMã có hiệu lực trong 10 phút và chỉ dùng một lần.\n\nNếu không thấy thư trong hộp thư đến, hãy kiểm tra Spam/Thư rác, All Mail/Tất cả thư và tìm kiếm “MAI HỌC”.\nNếu bạn không yêu cầu thao tác này, hãy bỏ qua email này.\n\nVì lý do bảo mật, không chia sẻ mã này với bất kỳ ai.`,
-    html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;line-height:1.6;color:#172b45"><h2 style="color:#123b70">MAI HỌC — Đặt lại mật khẩu</h2><p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản này.</p><p>Mã xác minh có hiệu lực <strong>10 phút</strong> và chỉ dùng một lần:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px;padding:16px;background:#eef4ff;text-align:center;border-radius:8px">${code}</p><p>Nếu không thấy thư trong hộp thư đến, hãy kiểm tra thư mục Spam/Thư rác.</p><p>Nếu bạn không yêu cầu, hãy bỏ qua email này. Không chia sẻ mã xác minh với bất kỳ ai.</p></div>`
-  });
-  if(result.accepted?.length===0 || result.rejected?.length){
-    const error=new Error("SMTP không chấp nhận địa chỉ nhận thư.");
-    error.code="EMAIL_RECIPIENT_REJECTED";
-    error.rejected=result.rejected;
-    throw error;
-  }
-  console.info("Password reset email accepted by SMTP:",{
-    messageId:result.messageId,
-    accepted:result.accepted?.length||0,
-    rejected:result.rejected?.length||0,
-    response:result.response
-  });
-  return result;
-}
-
 async function emailAdmins(subject,textBody){
 
   const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM,ADMIN_EMAIL}=process.env;
@@ -224,10 +167,9 @@ app.use((req,res,next)=>{
 
 });
 
-app.use(express.json({limit:"4mb"}));
+app.use(express.json({limit:"1mb"}));
 
 app.use(loadCurrentUser);
-installStudyRooms({app,db,requireAuth,requireSameOrigin});
 
 // Do not expose backend source, environment files or the local account database as static assets.
 
@@ -272,203 +214,8 @@ function loginRateLimit(req,res,next){
 // -------------------- AUTH API --------------------
 
 app.get("/api/auth/me",(req,res)=>res.json({user:req.user||null}));
-db.exec("CREATE TABLE IF NOT EXISTS account_action_tokens (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, purpose TEXT NOT NULL, target_email TEXT NOT NULL DEFAULT '', token_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,purpose))");
-const accountActionCooldowns=new Map();
-app.post("/api/account/request-code",requireSameOrigin,requireAuth,async(req,res)=>{
-  const purpose=String(req.body?.purpose||"");
-  const targetEmail=String(req.body?.email||"").trim().toLowerCase();
-  if(!["change-email","delete-account"].includes(purpose))return res.status(400).json({error:"Loại xác minh không hợp lệ."});
-  if(purpose==="change-email"&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)||targetEmail.length>254))return res.status(400).json({error:"Gmail mới không hợp lệ."});
-  if(purpose==="change-email"){const existing=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(targetEmail);if(existing&&Number(existing.id)!==Number(req.user.id))return res.status(409).json({error:"Gmail này đã được tài khoản khác sử dụng."});}
-  const key=req.user.id+":"+purpose,remaining=30000-(Date.now()-(accountActionCooldowns.get(key)||0));
-  if(remaining>0)return res.status(429).json({error:"Vui lòng chờ "+Math.ceil(remaining/1000)+" giây trước khi gửi mã mới.",retryAfter:Math.ceil(remaining/1000)});
-  try{
-    const code=String(crypto.randomInt(0,1000000)).padStart(6,"0"),now=Date.now();
-    const tokenHash=crypto.createHash("sha256").update(String(req.user.id)+":"+purpose+":"+targetEmail+":"+code).digest("hex");
-    db.prepare("INSERT INTO account_action_tokens(user_id,purpose,target_email,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,0,?) ON CONFLICT(user_id,purpose) DO UPDATE SET target_email=excluded.target_email,token_hash=excluded.token_hash,expires_at=excluded.expires_at,attempts=0,created_at=excluded.created_at").run(req.user.id,purpose,targetEmail,tokenHash,now+600000,now);
-    const mail=createPasswordResetTransport(),recipient=req.user.email;
-    await mail.transporter.sendMail({from:{name:"MAI HỌC - Xác minh tài khoản",address:mail.SMTP_FROM||mail.SMTP_USER},to:recipient,subject:purpose==="delete-account"?"[MAI HỌC] Xác nhận xóa tài khoản":"[MAI HỌC] Xác nhận đổi Gmail",text:"Mã xác minh MAI HỌC: "+code+"\nMục đích: "+(purpose==="delete-account"?"xóa tài khoản":"đổi Gmail sang "+targetEmail)+". Mã có hiệu lực trong 10 phút.",html:"<p>Mã xác minh MAI HỌC (hiệu lực 10 phút):</p><h1 style=\"letter-spacing:8px\">"+code+"</h1><p>Mục đích: "+(purpose==="delete-account"?"xóa tài khoản":"đổi Gmail sang "+targetEmail)+"</p>"});
-    accountActionCooldowns.set(key,Date.now());res.json({ok:true,message:"Đã gửi mã xác minh đến Gmail hiện tại: "+recipient+". Hãy kiểm tra cả thư rác."});
-  }catch(error){db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);console.error("Account verification email failed:",error?.code,error?.responseCode,error?.message);res.status(502).json({error:passwordResetSmtpFailure(error)});}
-});
-app.post("/api/account/change-password",requireSameOrigin,requireAuth,async(req,res)=>{
-  const currentPassword=String(req.body?.currentPassword||""),newPassword=String(req.body?.newPassword||"");
-  if(newPassword.length<10||newPassword.length>128)return res.status(400).json({error:"Mật khẩu mới phải dài từ 10 đến 128 ký tự."});
-  try{const verified=await authenticateUser(req.user.email,currentPassword);if(!verified||Number(verified.id)!==Number(req.user.id))return res.status(400).json({error:"Mật khẩu hiện tại không chính xác."});const hash=await hashPassword(newPassword);db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash,req.user.id);db.prepare("DELETE FROM sessions WHERE user_id=?").run(req.user.id);destroySession(req,res);res.json({ok:true,message:"Đã đổi mật khẩu. Vui lòng đăng nhập lại."});}catch(error){console.error("Change password failed:",error.message);res.status(500).json({error:"Không thể đổi mật khẩu lúc này."});}
-});
-app.post("/api/account/confirm-action",requireSameOrigin,requireAuth,async(req,res)=>{
-  const purpose=String(req.body?.purpose||""),code=String(req.body?.code||"").trim();
-  if(!["change-email","delete-account"].includes(purpose)||!/^\d{6}$/.test(code))return res.status(400).json({error:"Mục đích hoặc mã xác minh không hợp lệ."});
-  const token=db.prepare("SELECT target_email,token_hash,expires_at,attempts FROM account_action_tokens WHERE user_id=? AND purpose=?").get(req.user.id,purpose);
-  if(!token||Number(token.expires_at)<Date.now()||Number(token.attempts)>=5){db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});}
-  const supplied=crypto.createHash("sha256").update(String(req.user.id)+":"+purpose+":"+token.target_email+":"+code).digest("hex"),a=Buffer.from(supplied,"hex"),b=Buffer.from(token.token_hash,"hex");
-  if(a.length!==b.length||!crypto.timingSafeEqual(a,b)){const attempts=Number(token.attempts)+1;if(attempts>=5)db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);else db.prepare("UPDATE account_action_tokens SET attempts=? WHERE user_id=? AND purpose=?").run(attempts,req.user.id,purpose);return res.status(400).json({error:attempts>=5?"Sai mã quá nhiều lần. Hãy yêu cầu mã mới.":"Mã xác minh không chính xác."});}
-  if(purpose==="change-email"){const target=token.target_email,existing=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(target);if(existing&&Number(existing.id)!==Number(req.user.id))return res.status(409).json({error:"Gmail này đã được tài khoản khác sử dụng."});db.prepare("UPDATE users SET email=? WHERE id=?").run(target,req.user.id);db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);return res.json({ok:true,message:"Đã đổi Gmail.",user:db.prepare("SELECT id,name,email,role,admin_level AS adminLevel FROM users WHERE id=?").get(req.user.id)});}
-  try{db.prepare("DELETE FROM account_action_tokens WHERE user_id=? AND purpose=?").run(req.user.id,purpose);if(!deleteAccountPermanently(req.user.id))return res.status(404).json({error:"Không tìm thấy tài khoản."});destroySession(req,res);return res.json({ok:true,deleted:true,message:"Tài khoản đã được xóa."});}catch(error){console.error("Account deletion failed:",error.message);res.status(500).json({error:"Không thể xóa tài khoản lúc này."});}
-});
-app.post("/api/presence/heartbeat",requireSameOrigin,requireAuth,(req,res)=>{
-  const now=Date.now();
-  db.prepare("INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(req.user.id,now);
-  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
-  res.setHeader("Cache-Control","no-store");
-  res.json({ok:true,lastSeenAt:now});
-});
-app.get("/api/presence/online-users",requireAuth,(req,res)=>{
-  const now=Date.now(),onlineWindow=3*60*1000;
-  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-24*60*60*1000);
-  const users=db.prepare("SELECT u.id,u.name,p.last_seen_at AS lastSeenAt FROM users u LEFT JOIN user_presence p ON p.user_id=u.id WHERE u.role='user' AND u.id<>? ORDER BY u.name COLLATE NOCASE LIMIT 500").all(req.user.id);
-  res.setHeader("Cache-Control","private, no-store");
-  res.json({users:users.map(user=>({
-    id:Number(user.id),
-    name:user.name,
-    status:Number(user.lastSeenAt||0)>=now-onlineWindow?"online":"offline",
-    lastSeenAt:user.lastSeenAt==null?null:Number(user.lastSeenAt)
-  }))});
-});
-app.get("/api/admin/presence",requireSuperAdmin,(req,res)=>{
-  const now=Date.now();
-  db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(now-3*60*1000);
-  const users=db.prepare("SELECT u.id,u.name,u.email,u.role,u.admin_level AS adminLevel,p.last_seen_at AS lastSeenAt FROM user_presence p JOIN users u ON u.id=p.user_id WHERE p.last_seen_at>=? ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,u.name COLLATE NOCASE").all(now-3*60*1000);
-  res.setHeader("Cache-Control","private, no-store");
-  res.json({users:users.map(user=>({...user,lastSeenAt:Number(user.lastSeenAt)})),total:users.length,windowMs:3*60*1000});
-});
 
 
-
-
-const passwordResetRequestAttempts=new Map();
-const passwordResetCooldowns=new Map();
-function consumePasswordResetRateLimit(key,limit,now){
-  let state=passwordResetRequestAttempts.get(key);
-  if(!state||now-state.startedAt>15*60*1000)state={count:0,startedAt:now};
-  if(state.count>=limit){passwordResetRequestAttempts.set(key,state);return false;}
-  state.count++;
-  passwordResetRequestAttempts.set(key,state);
-  return true;
-}
-function passwordResetRateLimit(req,res,next){
-  const now=Date.now();
-  if(passwordResetRequestAttempts.size>5000){
-    for(const [key,state] of passwordResetRequestAttempts){
-      if(now-state.startedAt>15*60*1000)passwordResetRequestAttempts.delete(key);
-    }
-  }
-  if(passwordResetCooldowns.size>5000){
-    for(const [key,lastSentAt] of passwordResetCooldowns){
-      if(now-lastSentAt>15*60*1000)passwordResetCooldowns.delete(key);
-    }
-  }
-  const email=String(req.body?.email||"").trim().toLowerCase();
-  const resendKey="resend:"+req.ip+":"+email;
-  const lastSentAt=passwordResetCooldowns.get(resendKey)||0;
-  if(lastSentAt&&now-lastSentAt<30*1000){
-    const retryAfter=Math.ceil((30*1000-(now-lastSentAt))/1000);
-    res.setHeader("Retry-After",String(retryAfter));
-    return res.status(429).json({error:`Bạn chỉ có thể gửi lại mã sau ${retryAfter} giây.`,retryAfter});
-  }
-  const ipAllowed=consumePasswordResetRateLimit("ip:"+req.ip,10,now);
-  const emailAllowed=consumePasswordResetRateLimit("email:"+email,6,now);
-  if(!ipAllowed||!emailAllowed)return res.status(429).json({error:"Bạn đã yêu cầu quá nhiều mã xác minh. Hãy thử lại sau 15 phút."});
-  req.passwordResetCooldownKey=resendKey;
-  next();
-}
-function markPasswordResetEmailSent(req){
-  if(req.passwordResetCooldownKey)passwordResetCooldowns.set(req.passwordResetCooldownKey,Date.now());
-}
-
-app.post("/api/auth/forgot-password",requireSameOrigin,passwordResetRateLimit,async(req,res)=>{
-  const email=String(req.body?.email||"").trim().toLowerCase();
-  if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:"Vui lòng nhập địa chỉ email hợp lệ."});
-  try{
-    // Check SMTP before looking up the account, so users can see configuration/connectivity failures
-    // without disclosing whether a given email address is registered.
-    // Validate SMTP configuration/connectivity before issuing any reset code.
-    const mailTransport=createPasswordResetTransport();
-    await mailTransport.transporter.verify();
-
-    const user=db.prepare("SELECT id,email FROM users WHERE email=? COLLATE NOCASE").get(email);
-    // Keep the same generic response for registered and unknown addresses.
-    if(!user){
-      // Avoid account enumeration while keeping a successful-request cooldown.
-      markPasswordResetEmailSent(req);
-      return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
-    }
-
-    const now=Date.now();
-    db.prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?").run(user.id,now);
-    const code=String(crypto.randomInt(0,1000000)).padStart(6,"0");
-    const tokenHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
-    db.prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?)")
-      .run(user.id,tokenHash,now+10*60*1000,0,now);
-    try{
-      await sendPasswordResetEmail(user.email,code,mailTransport);
-      markPasswordResetEmailSent(req);
-    }catch(error){
-      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-      console.error("Password reset email failed:",{
-        code:error?.code||null,
-        responseCode:error?.responseCode||null,
-        command:error?.command||null,
-        message:error?.message||String(error)
-      });
-      // Do not return a misleading generic success when delivery failed.
-      return res.status(502).json({error:passwordResetSmtpFailure(error)});
-    }
-    return res.json({ok:true,message:"Nếu email thuộc một tài khoản người dùng, mã xác minh sẽ được gửi đến hộp thư đó. Hãy kiểm tra cả thư rác."});
-  }catch(error){
-    console.error("Password reset request failed:",{
-      code:error?.code||null,
-      responseCode:error?.responseCode||null,
-      command:error?.command||null,
-      message:error?.message||String(error)
-    });
-    res.status(500).json({error:passwordResetSmtpFailure(error)});
-  }
-});
-
-app.post("/api/auth/reset-password",requireSameOrigin,async(req,res)=>{
-  const email=String(req.body?.email||"").trim().toLowerCase();
-  const code=String(req.body?.code||"").trim();
-  const password=String(req.body?.password||"");
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
-  if(!/^\d{6}$/.test(code))return res.status(400).json({error:"Mã xác minh phải gồm 6 chữ số."});
-  if(password.length<10||password.length>128)return res.status(400).json({error:"Mật khẩu mới phải dài từ 10 đến 128 ký tự."});
-  const user=db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE").get(email);
-  if(!user)return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn."});
-  const reset=db.prepare("SELECT id,token_hash,expires_at,attempts FROM password_reset_tokens WHERE user_id=? ORDER BY created_at DESC LIMIT 1").get(user.id);
-  if(!reset||Number(reset.expires_at)<Date.now()||Number(reset.attempts)>=5){
-    db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-    return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã hết hạn. Hãy yêu cầu mã mới."});
-  }
-  const suppliedHash=crypto.createHash("sha256").update(String(user.id)+":"+code).digest("hex");
-  const supplied=Buffer.from(suppliedHash,"hex"),expected=Buffer.from(reset.token_hash,"hex");
-  const valid=supplied.length===expected.length&&crypto.timingSafeEqual(supplied,expected);
-  if(!valid){
-    const attempts=Number(reset.attempts)+1;
-    if(attempts>=5)db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-    else db.prepare("UPDATE password_reset_tokens SET attempts=? WHERE id=?").run(attempts,reset.id);
-    return res.status(400).json({error:attempts>=5?"Bạn đã nhập sai mã quá nhiều lần. Hãy yêu cầu mã mới.":"Mã xác minh không chính xác."});
-  }
-  try{
-    const passwordHash=await hashPassword(password);
-    const consumed=db.transaction(()=>{
-      const deleted=db.prepare("DELETE FROM password_reset_tokens WHERE id=? AND user_id=? AND token_hash=? AND expires_at>=? AND attempts<5")
-        .run(reset.id,user.id,suppliedHash,Date.now());
-      if(!deleted.changes)return false;
-      db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash,user.id);
-      db.prepare("DELETE FROM password_reset_tokens WHERE user_id=?").run(user.id);
-      db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
-      db.prepare("DELETE FROM user_presence WHERE user_id=?").run(user.id);
-      return true;
-    })();
-    if(!consumed)return res.status(400).json({error:"Mã xác minh không hợp lệ hoặc đã được sử dụng. Hãy yêu cầu mã mới."});
-    if(req.user?.id===user.id)destroySession(req,res);
-    res.json({ok:true,message:"Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới."});
-  }catch(error){
-    console.error("Password reset completion failed:",error.message);
-    res.status(500).json({error:"Không thể cập nhật mật khẩu lúc này."});
-  }
-});
 
 app.post("/api/auth/register",requireSameOrigin,async(req,res)=>{
 
@@ -672,36 +419,7 @@ app.delete("/api/notifications",requireSameOrigin,requireAuth,(req,res)=>{
   return res.json({ok:true,deleted:result.changes,unread:0});
 });
 
-app.get("/api/admin/progress",requireSuperAdmin,(req,res)=>{
-  const rows=db.prepare("SELECT p.user_id AS userId,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id WHERE u.role='user' ORDER BY p.updated_at DESC").all();
-  const grouped=new Map();
-  for(const row of rows){
-    if(!grouped.has(row.userId))grouped.set(row.userId,{id:Number(row.userId),name:row.userName,email:row.userEmail,totalItems:0,completedItems:0,progressTotal:0,averageProgress:0,latestUpdatedAt:null,latestItemTitle:null,items:[]});
-    const user=grouped.get(row.userId);
-    user.totalItems++;
-    user.completedItems+=row.status==="completed"?1:0;
-    user.progressTotal+=Number(row.progressPercent)||0;
-    if(!user.latestUpdatedAt||String(row.updatedAt||"")>String(user.latestUpdatedAt||"")){
-      user.latestUpdatedAt=row.updatedAt;
-      user.latestItemTitle=row.itemTitle;
-    }
-    user.items.push({itemType:row.itemType,itemId:row.itemId,itemTitle:row.itemTitle,subject:row.subject,grade:row.grade,status:row.status,progressPercent:row.progressPercent,score:row.score,updatedAt:row.updatedAt,latestAttemptId:row.latestAttemptId});
-  }
-  const users=[...grouped.values()].map(user=>({...user,averageProgress:user.totalItems?Math.round(user.progressTotal/user.totalItems*10)/10:0,items:undefined}));
-  res.setHeader("Cache-Control","private, no-store");
-  res.json({users,totalUsers:users.length});
-});
-
-app.get("/api/admin/users/:id/progress",requireSuperAdmin,(req,res)=>{
-  const userId=Number(req.params.id);
-  if(!Number.isSafeInteger(userId)||userId<1)return res.status(400).json({error:"User ID không hợp lệ."});
-  const user=db.prepare("SELECT id,name,email,created_at AS createdAt FROM users WHERE id=? AND role='user'").get(userId);
-  if(!user)return res.status(404).json({error:"Không tìm thấy người dùng thường."});
-  const progress=db.prepare("SELECT id,item_type AS itemType,item_id AS itemId,item_title AS itemTitle,subject,grade,status,progress_percent AS progressPercent,score,answers_json AS answers,last_position AS lastPosition,started_at AS startedAt,updated_at AS updatedAt,CASE WHEN item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=user_progress.user_id AND a.document_id=user_progress.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress WHERE user_id=? ORDER BY updated_at DESC").all(userId);
-  const counts=db.prepare("SELECT COUNT(*) AS totalItems,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completedItems,ROUND(AVG(progress_percent),1) AS averageProgress FROM user_progress WHERE user_id=?").get(userId);
-  res.setHeader("Cache-Control","private, no-store");
-  res.json({user,progress,summary:{totalItems:counts.totalItems||0,completedItems:counts.completedItems||0,averageProgress:counts.averageProgress??0}});
-});
+app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
 
 app.get("/api/progress",requireAuth,(req,res)=>{
 
@@ -731,7 +449,7 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 
     VALUES(?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
 
-    ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status=excluded.status,progress_percent=excluded.progress_percent,score=excluded.score,answers_json=excluded.answers_json,last_position=excluded.last_position,updated_at=datetime('now')`)
+    ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status=excluded.status,progress_percent=excluded.progress_percent,score=COALESCE(excluded.score,user_progress.score),answers_json=COALESCE(excluded.answers_json,user_progress.answers_json),last_position=excluded.last_position,updated_at=datetime('now')`)
 
     .run(req.user.id,type,id,itemTitle,String(b.subject||"Toán").slice(0,60),String(b.grade||"10").slice(0,5),status,percent,Number.isFinite(Number(b.score))&&b.score!==""?Number(b.score):null,answers,String(b.lastPosition||percent).slice(0,300));
 
@@ -749,108 +467,100 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 
 });
 
-app.post("/api/exams/:id/submit",requireSameOrigin,requireAuth,async(req,res)=>{
-  const document=db.prepare("SELECT d.id,d.title,d.subject,d.grade,d.category,ak.file_data AS answerKeyData,ak.original_name AS answerKeyOriginalName,ak.normalized_json AS normalizedAnswerKey,ak.normalization_error AS answerKeyNormalizationError,es.status AS solutionStatus,es.approved_json AS approvedSolution FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id LEFT JOIN exam_solutions es ON es.document_id=d.id WHERE d.id=?").get(String(req.params.id));
+app.post("/api/exams/:id/submit",requireSameOrigin,async(req,res)=>{
+  const document=db.prepare("SELECT d.id,d.title,d.subject,d.grade,d.category,ak.file_data AS answerKeyData,ak.original_name AS answerKeyOriginalName,ak.normalized_json AS normalizedAnswerKey,ak.normalization_error AS answerKeyNormalizationError,es.status AS solutionStatus,es.approved_json AS approvedSolution,es.generated_json AS generatedSolution FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id LEFT JOIN exam_solutions es ON es.document_id=d.id WHERE d.id=?").get(String(req.params.id));
   if(!document||!["practice","exam"].includes(document.category))return res.status(404).json({error:"Exam or practice document was not found."});
   const rawAnswers=req.body?.answers;
   if(!rawAnswers||typeof rawAnswers!=="object"||Array.isArray(rawAnswers))return res.status(400).json({error:"Submit answers as a question-to-answer object."});
   const answers=Object.fromEntries(Object.entries(rawAnswers).slice(0,200).map(([question,value])=>[String(question).slice(0,40),String(value??"").slice(0,5000)]));
 
+  const assessmentConfig=assessmentConfigFor(document.subject,document.category);
   let answerKey=null;
-  let waitingMessage=null;
-  const isUsableAnswerKey=value=>Boolean(value&&typeof value==="object"&&!Array.isArray(value)
-    &&value.answers&&typeof value.answers==="object"&&!Array.isArray(value.answers)&&Object.keys(value.answers).length>0);
-
-  // Prefer an Admin-approved solution. Older approved records may store the
-  // answer rows in questions[] even if the answers map is absent.
   if(document.approvedSolution){
     try{
       const approved=JSON.parse(document.approvedSolution);
-      let approvedAnswers=approved?.answers;
-      if(!approvedAnswers||typeof approvedAnswers!=="object"||Array.isArray(approvedAnswers)||!Object.keys(approvedAnswers).length){
-        approvedAnswers=Object.fromEntries((Array.isArray(approved?.questions)?approved.questions:[])
-          .filter(item=>item&&item.targetId&&item.answer!=null&&String(item.answer).trim()!=="")
-          .map(item=>[String(item.targetId),item.answer]));
+      if(approved?.answers&&Object.keys(approved.answers).length){
+        answerKey={answers:approved.answers,points:approved.points||{}};
       }
-      const candidate={answers:approvedAnswers,points:approved?.points||{}};
-      if(isUsableAnswerKey(candidate))answerKey=candidate;
-    }catch(error){console.warn("Could not read approved exam solution:",error.message);}
+    }catch{}
   }
-
-  // A usable normalized upload is next in priority. Empty or malformed
-  // legacy normalized_json must not prevent rebuilding from the stored file.
   if(!answerKey&&document.normalizedAnswerKey){
     try{
       const parsed=JSON.parse(document.normalizedAnswerKey);
-      if(isUsableAnswerKey(parsed))answerKey=parsed;
-    }catch(error){console.warn("Could not parse normalized answer key:",error.message);}
+      if(parsed?.answers&&Object.keys(parsed.answers).length)answerKey=parsed;
+    }catch{}
   }
-
   if(!answerKey&&document.answerKeyData){
-    const config=assessmentConfigFor(document.subject,document.category);
-    try{
-      const normalized=await normalizeAnswerKeyDocument(document.answerKeyData,document.answerKeyOriginalName,config?.layout,config?.grading);
-      if(isUsableAnswerKey(normalized)){
-        answerKey=normalized;
-        db.prepare("UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL WHERE document_id=?")
-          .run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
-      }else{
-        db.prepare("UPDATE answer_keys SET grading_available=0,normalization_error=? WHERE document_id=?")
-          .run("Không trích xuất được bảng đáp án có mã câu hỏi từ tệp đã tải lên.",document.id);
-      }
-    }catch(error){
-      console.error("Answer-key normalization failed:",error.message);
-      db.prepare("UPDATE answer_keys SET grading_available=0,normalization_error=? WHERE document_id=?")
-        .run("Không thể đọc tệp đáp án: "+String(error.message||"lỗi không xác định").slice(0,400),document.id);
+    answerKey=await normalizeAnswerKeyDocument(document.answerKeyData,document.answerKeyOriginalName,assessmentConfig?.layout,assessmentConfig?.grading);
+    if(answerKey){
+      db.prepare("UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL WHERE document_id=?").run(JSON.stringify(answerKey),JSON.stringify(Object.keys(answerKey.answers)),document.id);
     }
   }
+  if(!answerKey&&document.generatedSolution){
+    try{
+      const generated=JSON.parse(document.generatedSolution);
+      if(Array.isArray(generated?.questions)&&generated.questions.length){
+        const generatedAnswers={};
+        for(const q of generated.questions){
+          if(q?.targetId&&String(q.answer??"").trim()){
+            generatedAnswers[String(q.targetId)]=String(q.answer).trim();
+          }
+        }
+        if(Object.keys(generatedAnswers).length){
+          answerKey={answers:generatedAnswers,points:{}};
+        }
+      }
+    }catch{}
+  }
 
-  // Pending AI solution status blocks automatic grading only when there is no
-  // usable separately uploaded/approved key. This prevents a review job from
-  // masking a valid Admin-uploaded answer key.
+  let waitingMessage=null;
   if(!answerKey&&document.solutionStatus&&document.solutionStatus!=="ready"){
     waitingMessage=document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
       document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
       "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn.";
   }
 
-  const assessmentConfig=assessmentConfigFor(document.subject,document.category);
-
-  const grade=!waitingMessage&&answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
+  const grade=answerKey?gradeAnswers(answerKey,answers,assessmentConfig||{}):null;
   let resultPayload;
-  if(waitingMessage){
+  if(grade&&grade.completeAnswerKey!==false){
+    resultPayload={graded:true,...grade};
+  }else if(grade&&grade.matchedAnswerCount>0){
+    resultPayload={graded:true,...grade};
+  }else if(waitingMessage){
     resultPayload={graded:false,hasAnswerKey:false,solutionStatus:document.solutionStatus,message:waitingMessage};
   }else if(!grade){
     resultPayload={graded:false,hasAnswerKey:Boolean(document.answerKeyData),message:document.answerKeyData
       ?document.answerKeyNormalizationError||"Đã nộp bài nhưng tệp đáp án chưa thể chuyển thành dữ liệu chấm điểm."
       :"Đã nộp bài. Đề này chưa có đáp án để chấm tự động."};
-  }else if(grade.completeAnswerKey===false){
-    resultPayload={graded:false,hasAnswerKey:true,...grade,message:"Đáp án chuẩn còn thiếu "+grade.missingAnswerCount+" mục bắt buộc nên chưa thể chấm chính xác."};
   }else{
-    resultPayload={graded:true,...grade};
+    resultPayload={graded:false,hasAnswerKey:true,...grade,message:"Đáp án chuẩn còn thiếu "+grade.missingAnswerCount+" mục bắt buộc nên chưa thể chấm chính xác."};
   }
 
-  const saved=db.transaction(()=>{
-    const previous=db.prepare("SELECT status FROM user_progress WHERE user_id=? AND item_type='exam' AND item_id=?").get(req.user.id,document.id);
-    const inserted=db.prepare("INSERT INTO exam_attempts(user_id,document_id,title,subject,grade,category,graded,score,scale,percent,correct_count,question_count,answers_json,answer_key_json,result_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(req.user.id,document.id,document.title,document.subject,document.grade,document.category,
-        resultPayload.graded?1:0,
-        resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null,
-        resultPayload.scale==null?(resultPayload.totalPoints==null?null:Number(resultPayload.totalPoints)):Number(resultPayload.scale),
-        resultPayload.percent==null?null:Number(resultPayload.percent),
-        resultPayload.correctCount==null?null:Number(resultPayload.correctCount),
-        resultPayload.questionCount==null?null:Number(resultPayload.questionCount),
-        JSON.stringify(answers),answerKey?JSON.stringify({answers:answerKey.answers,points:answerKey.points||{}}):null,JSON.stringify(resultPayload));
-    const attemptId=Number(inserted.lastInsertRowid);
-    const fullPayload={...resultPayload,attemptId,saved:true};
-    db.prepare("UPDATE exam_attempts SET result_json=? WHERE id=?").run(JSON.stringify(fullPayload),attemptId);
-    const score=resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null;
-    db.prepare("INSERT INTO user_progress(user_id,item_type,item_id,item_title,subject,grade,status,progress_percent,score,answers_json,last_position,updated_at) VALUES(?,'exam',?,?,?,?, 'completed',100,?,?,?,datetime('now')) ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status='completed',progress_percent=100,score=COALESCE(excluded.score,user_progress.score),answers_json=excluded.answers_json,last_position=excluded.last_position,updated_at=datetime('now')")
-      .run(req.user.id,document.id,document.title,document.subject,document.grade,score,JSON.stringify(answers),"result:"+attemptId);
-    if(previous?.status!=="completed")notifyUser(req.user.id,"exam_completed","Đã hoàn thành "+document.title,"Bạn đã hoàn thành "+document.title+".");
-    return fullPayload;
-  });
-  return res.json(saved);
+  if(req.user){
+    const saveAttempt=db.transaction(()=>{
+      const previous=db.prepare("SELECT status FROM user_progress WHERE user_id=? AND item_type='exam' AND item_id=?").get(req.user.id,document.id);
+      const inserted=db.prepare("INSERT INTO exam_attempts(user_id,document_id,title,subject,grade,category,graded,score,scale,percent,correct_count,question_count,answers_json,answer_key_json,result_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(req.user.id,document.id,document.title,document.subject,document.grade,document.category,
+          resultPayload.graded?1:0,
+          resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null,
+          resultPayload.scale==null?(resultPayload.totalPoints==null?null:Number(resultPayload.totalPoints)):Number(resultPayload.scale),
+          resultPayload.percent==null?null:Number(resultPayload.percent),
+          resultPayload.correctCount==null?null:Number(resultPayload.correctCount),
+          resultPayload.questionCount==null?null:Number(resultPayload.questionCount),
+          JSON.stringify(answers),answerKey?JSON.stringify({answers:answerKey.answers,points:answerKey.points||{}}):null,JSON.stringify(resultPayload));
+      const attemptId=Number(inserted.lastInsertRowid);
+      const fullPayload={...resultPayload,attemptId,saved:true};
+      db.prepare("UPDATE exam_attempts SET result_json=? WHERE id=?").run(JSON.stringify(fullPayload),attemptId);
+      const score=resultPayload.graded?Number(resultPayload.score??resultPayload.earnedPoints??resultPayload.percent):null;
+      db.prepare("INSERT INTO user_progress(user_id,item_type,item_id,item_title,subject,grade,status,progress_percent,score,answers_json,last_position,updated_at) VALUES(?,'exam',?,?,?,?, 'completed',100,?,?,?,datetime('now')) ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET item_title=excluded.item_title,subject=excluded.subject,grade=excluded.grade,status='completed',progress_percent=100,score=COALESCE(excluded.score,user_progress.score),answers_json=excluded.answers_json,last_position=excluded.last_position,updated_at=datetime('now')")
+        .run(req.user.id,document.id,document.title,document.subject,document.grade,score,JSON.stringify(answers),"result:"+attemptId);
+      if(previous?.status!=="completed")notifyUser(req.user.id,"exam_completed","Đã hoàn thành "+document.title,"Bạn đã hoàn thành "+document.title+".");
+      return fullPayload;
+    });
+    return res.json(saveAttempt());
+  }
+
+  return res.json(resultPayload);
 });
 
 function parseExamAttempt(row){
@@ -1175,34 +885,6 @@ app.post("/api/admin/documents/:id/solution/generate",requireSameOrigin,requireA
   res.status(202).json({ok:true,id:document.id,status:"queued"});
 });
 
-app.post("/api/admin/documents/:id/solution/manual",requireSameOrigin,requireAdmin,(req,res)=>{
-  const document=db.prepare("SELECT id,title,subject,category,original_name,file_data FROM documents WHERE id=?").get(String(req.params.id));
-  if(!document)return res.status(404).json({error:"Không tìm thấy đề."});
-  if(!["exam","practice"].includes(document.category))return res.status(400).json({error:"Chỉ có thể nhập đáp án cho đề ôn tập hoặc đề thi thử."});
-  const existing=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(document.id);
-  if(activeSolutionJobs.has(document.id)||["queued","reading","solving"].includes(existing?.status))return res.status(409).json({error:"AI đang xử lý đề này. Hãy chờ tác vụ kết thúc rồi chọn nhập đáp án thủ công."});
-  if(existing?.status==="ready")return res.status(409).json({error:"Đề đã có bộ đáp án được duyệt. Không thể ghi đè bằng chế độ nhập thủ công."});
-  const config=assessmentConfigFor(document.subject,document.category);
-  if(!config?.layout?.sections?.length||!config?.grading||!config.layout.sections.filter(section=>Number(section.count)>0).every(section=>section.grading))return res.status(409).json({error:"Thiếu cấu hình câu hỏi hoặc thang điểm trong configs/exam-layouts.json."});
-  const targets=answerTargetsForLayout(config.layout);
-  if(!targets.length)return res.status(409).json({error:"Cấu hình đề chưa có câu hỏi để nhập đáp án."});
-  const questions=targets.map(target=>({
-    ...target,
-    questionText:target.type==="true_false"?`Câu ${target.questionId}, mệnh đề ${target.statement}`:`Câu ${target.targetId}`,
-    answer:"",aiAnswer:"",explanation:"",confidence:1,uncertainty:"",
-    rubric:target.type==="essay"?[{criterion:"Đáp án chính xác theo đề",points:Number(target.maximumPoints)||0.5}]:[],reviewStatus:"pending"
-  }));
-  const generated={schemaVersion:1,source:"manual-entry",provider:"manual",model:"Nhập đáp án thủ công",scale:Number(config.grading.scale)||10,
-    generatedAt:new Date().toISOString(),questions,answerCount:0,requiredCount:questions.length};
-  const sourceHash=crypto.createHash("sha256").update(Buffer.from(document.file_data)).digest("hex");
-  db.prepare(`INSERT INTO exam_solutions(document_id,status,progress,phase,model,source_hash,generated_json,approved_json,solution_version,generated_at,approved_at,approved_by,error_code,error_message)
-    VALUES(?,'review',100,'Chờ admin nhập đáp án thủ công','Nhập thủ công',?,?,NULL,1,datetime('now'),NULL,NULL,NULL,NULL)
-    ON CONFLICT(document_id) DO UPDATE SET status='review',progress=100,phase='Chờ admin nhập đáp án thủ công',model='Nhập thủ công',source_hash=excluded.source_hash,
-      generated_json=excluded.generated_json,approved_json=NULL,solution_version=exam_solutions.solution_version+1,generated_at=datetime('now'),approved_at=NULL,approved_by=NULL,error_code=NULL,error_message=NULL,updated_at=datetime('now')`)
-    .run(document.id,sourceHash,JSON.stringify(generated));
-  res.status(201).json({ok:true,id:document.id,status:"review",mode:"manual"});
-});
-
 app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdmin,(req,res)=>{
   const documentId=String(req.params.id);
   const row=db.prepare(`SELECT d.subject,d.category,s.generated_json,s.solution_version,s.source_hash
@@ -1210,8 +892,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   if(!row)return res.status(404).json({error:"Chưa có tác vụ lời giải cho đề này."});
   let generated;
   try{generated=JSON.parse(row.generated_json||"null");}catch{}
-  if(!generated?.questions?.length)return res.status(409).json({error:"Chưa có danh sách câu hỏi để duyệt."});
-  const manualMode=generated.source==="manual-entry";
+  if(!generated?.questions?.length)return res.status(409).json({error:"AI chưa tạo lời giải để duyệt."});
   const submitted=req.body?.questions;
   if(!Array.isArray(submitted)||submitted.length!==generated.questions.length)return res.status(400).json({error:"Cần duyệt từng câu trước khi lưu bộ chấm."});
   const submittedById=new Map();
@@ -1226,7 +907,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   const reviewed=[];
   for(const original of generated.questions){
     const item=submittedById.get(original.targetId);
-    if(!item||!(manualMode?item.decision==="manual":["correct","incorrect"].includes(item.decision)))return res.status(400).json({error:manualMode?`Thiếu đáp án thủ công cho câu ${original.targetId}.`:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
+    if(!item||!["correct","incorrect"].includes(item.decision))return res.status(400).json({error:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
     const answer=String(item.answer??"").trim().slice(0,3000);
     const explanation=String(item.explanation??original.explanation??"").trim().slice(0,12000);
     if(!answer)return res.status(400).json({error:`Thiếu đáp án chuẩn cho câu ${original.targetId}.`});
@@ -1252,9 +933,9 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const uncertainty=String(original.uncertainty||"").trim();
     reviewed.push({...original,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
       uncertainty:/^(none|null|undefined|n\/a)$/i.test(uncertainty)?"":uncertainty,
-      reviewStatus:manualMode?"manual":item.decision==="correct"?"approved":"corrected"});
+      reviewStatus:item.decision==="correct"?"approved":"corrected"});
   }
-  const approved={schemaVersion:1,source:manualMode?"manual-entry":"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
+  const approved={schemaVersion:1,source:"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
     version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,questions:reviewed,
     reviewedAt:new Date().toISOString(),reviewedBy:req.user.id};
   const review=db.transaction(()=>{
@@ -1263,7 +944,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const reviewMap=new Map(reviewed.map(item=>[item.targetId,item]));
     for(const before of generated.questions){
       const after=reviewMap.get(before.targetId);
-      insertAudit.run(documentId,approved.version,before.targetId,after.reviewStatus==="corrected"?"corrected":"correct",
+      insertAudit.run(documentId,approved.version,before.targetId,after.reviewStatus==="approved"?"correct":"corrected",
         JSON.stringify(before),JSON.stringify(after),req.user.id);
     }
     updateSolutionJob(documentId,{status:"ready",progress:100,phase:"Đã duyệt, sẵn sàng chấm",approved_json:JSON.stringify(approved),approved_at:approved.reviewedAt,approved_by:req.user.id,error_code:null,error_message:null});

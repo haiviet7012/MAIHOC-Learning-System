@@ -145,10 +145,55 @@ export function parseAnswerKey(buffer, filename = "") {
 
   const answers = {};
   const points = {};
-  for (const line of text.split(/\r?\n/)) {
+  let currentSection = "";
+  let currentQuestion = "";
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const sectionHeader = line.match(/^(?:ph\u1ea7n|phan|section|part)\s*([ivx]+|\d+)(?:\b|[\s,.:_-])(.*)$/iu);
+    if (sectionHeader) {
+      currentSection = sectionHeader[1].toUpperCase();
+      const remainder = sectionHeader[2].trim();
+      if (!remainder || !/\d/.test(remainder)) continue;
+    }
+    // Check for inline true/false statements on a question line, e.g. "Câu 1: a) Đ b) S c) Đ d) S"
+    const tfQuestionMatch = line.match(/^(?:(?:ph\u1ea7n|phan|section|part)\s*([ivx]+|\d+)[\s,.:_-]*)?(?:(?:c\u00e2u|cau|question|q)\s*)?(\d{1,3})\s*(?::|=|[.)-]\s*|\t|\s+)?\s*((?:[a-d]\s*[).:-]\s*(?:\u0111\u00fang|dung|sai|true|false|\u0111|d|s|t|f)(?=$|[\s,;/-])[\s,;/-]*){2,4})$/iu);
+    if (tfQuestionMatch) {
+      const sec = (tfQuestionMatch[1] || currentSection || "").toUpperCase();
+      const qNum = tfQuestionMatch[2];
+      const baseQ = sec ? `${sec}-${qNum}` : qNum;
+      currentQuestion = baseQ;
+      for (const stmtMatch of tfQuestionMatch[3].matchAll(/([a-d])\s*[).:-]\s*(\u0111\u00fang|dung|sai|true|false|\u0111|d|s|t|f)(?=$|[\s,;/-])/giu)) {
+        const letter = stmtMatch[1].toLowerCase();
+        const rawVal = stmtMatch[2].normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0110\u0111]/g, "d").toLowerCase();
+        answers[`${baseQ}${letter}`] = ["dung", "true", "d", "t"].includes(rawVal) ? "true" : "false";
+      }
+      continue;
+    }
+    // Check for standalone statement line under currentQuestion, e.g. "a) Đúng"
+    const stmtOnlyMatch = currentQuestion && line.match(/^([a-d])\s*[).:-]\s*(\u0111\u00fang|dung|sai|true|false|\u0111|d|s|t|f)\s*$/iu);
+    if (stmtOnlyMatch) {
+      const letter = stmtOnlyMatch[1].toLowerCase();
+      const rawVal = stmtOnlyMatch[2].normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0110\u0111]/g, "d").toLowerCase();
+      answers[`${currentQuestion}${letter}`] = ["dung", "true", "d", "t"].includes(rawVal) ? "true" : "false";
+      continue;
+    }
+    // Check for multiple compact MC pairs on one line, e.g. "1.A 2.B 3.C 4.D"
+    const multiMcMatches = [...line.matchAll(/(?:^|\s)(?:c\u00e2u|cau|q)?\s*(\d{1,3})\s*[.:=-]\s*([A-D])(?=\s|$|,|;)/giu)];
+    if (multiMcMatches.length >= 2) {
+      for (const m of multiMcMatches) {
+        const qKey = currentSection ? `${currentSection}-${m[1]}` : m[1];
+        answers[qKey] = m[2].toUpperCase();
+      }
+      continue;
+    }
     const match = line.match(/^\s*(?:(?:ph\u1ea7n|phan|section|part)\s*([ivx]+|\d+)[\s,.:_-]*(?:(?:c\u00e2u|cau|question|q)\s*)?)?(?:(?:c\u00e2u|cau|question|q)\s*)?((?:[ivx]+[-._:]?)?\d{1,3}[a-d]?)\s*(?::|=|[.)-]\s*|\t|\s+)\s*(.+?)\s*$/iu);
     if (!match) continue;
-    const question = match[1] ? `${match[1]}-${match[2]}` : match[2];
+    const explicitSec = match[1] ? match[1].toUpperCase() : currentSection;
+    const rawQ = match[2];
+    const hasPrefix = /^[ivx]+[-._:]/i.test(rawQ);
+    const question = hasPrefix ? rawQ.replace(/[._:]/, "-").toUpperCase() : (explicitSec ? `${explicitSec}-${rawQ}` : rawQ);
+    if (!/[a-d]$/i.test(question)) currentQuestion = question;
     let answerText = match[3].trim();
     const pointsMatch = answerText.match(/^(.*?)\s*;\s*(?:points?|diem|\u0111i\u1ec3m)\s*[:=]\s*(\d+(?:\.\d+)?)\s*$/i);
     if (pointsMatch) {
@@ -582,9 +627,21 @@ async function normalizePdfAnswerKey(buffer, layout, grading) {
   }
   const textResult = normalizePdfAnswerRows(textRows, layout, grading);
   if (textResult) return textResult;
+  if (textRows.length) {
+    const joinedText = textRows.map(row => row.text).filter(Boolean).join("\n");
+    const parsedFromText = parseCsv(joinedText) || parseAnswerKey(Buffer.from(joinedText, "utf8"), "answer-key.txt");
+    const normalizedFromText = normalizeParsedAnswerKey(parsedFromText);
+    if (normalizedFromText) return normalizedFromText;
+  }
   try {
     const ocrRows = await extractPdfOcrRows(buffer);
-    return normalizePdfAnswerRows(ocrRows, layout, grading);
+    const ocrTable = normalizePdfAnswerRows(ocrRows, layout, grading);
+    if (ocrTable) return ocrTable;
+    if (ocrRows.length) {
+      const joinedOcr = ocrRows.map(row => row.text).filter(Boolean).join("\n");
+      return normalizeParsedAnswerKey(parseAnswerKey(Buffer.from(joinedOcr, "utf8"), "answer-key.txt"));
+    }
+    return null;
   } catch (error) {
     console.warn("Could not OCR answer key PDF:", error.message);
     return null;
@@ -799,7 +856,7 @@ function normalizeQuestionKey(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function sectionQuestionAliases(section, questionNumber, statementId = "") {
+function sectionQuestionAliases(section, questionNumber, statementId = "", includeBareNumber = false) {
   const number = String(questionNumber);
   const sectionId = String(section.sectionId || section.order || "");
   const order = String(section.order || "");
@@ -808,7 +865,8 @@ function sectionQuestionAliases(section, questionNumber, statementId = "") {
     `part${order}-${number}`, `part${order}question${number}`, `section${sectionId}question${number}`,
     `section${order}question${number}`, `phan${sectionId}cau${number}`, `phan${order}cau${number}`,
     `phan${sectionId}${number}`, `phan${order}${number}`,
-    `cau${sectionId}${number}`, `cau${order}${number}`, `q${number}`, `cau${number}`, number
+    `cau${sectionId}${number}`, `cau${order}${number}`,
+    ...(includeBareNumber ? [`q${number}`, `cau${number}`, number] : [])
   ];
   if (!statementId) return bases.flatMap(base => [base, `Câu ${base}`]);
   const letter = String(statementId).toLowerCase();
@@ -828,27 +886,10 @@ function sequentialQuestionAliases(questionNumber, statementId = "") {
 }
 
 function resolveAnswer(source, aliases, usedKeys = new Set()) {
-  const keys = Object.keys(source || {});
   const normalizedAliases = aliases.map(normalizeQuestionKey);
   for (const alias of normalizedAliases) {
-    const key = keys.find(candidate => !usedKeys.has(candidate) && normalizeQuestionKey(candidate) === alias);
+    const key = Object.keys(source).find(candidate => !usedKeys.has(candidate) && normalizeQuestionKey(candidate) === alias);
     if (key != null) return { key, value: source[key] };
-  }
-
-  const compact = value => normalizeQuestionKey(value)
-    .replace(/^(?:cau|question|q|stt)/, "")
-    .replace(/^(?:phan|section|part)(?:i{1,3}|iv|v|\d+)/, "");
-  const aliasesCompact = new Set(normalizedAliases.map(compact));
-  const hasExplicitSection = value => /^(?:phan|section|part)(?:i{1,3}|iv|v|\d+)/.test(normalizeQuestionKey(value));
-
-  for (const key of keys) {
-    if (usedKeys.has(key)) continue;
-    const normalizedKey = normalizeQuestionKey(key);
-    // Never use a section-scoped key for a sequential question unless the
-    // configured aliases explicitly name that same section.
-    if (hasExplicitSection(key) && !aliasesCompact.has(compact(key))) continue;
-    const candidates = [normalizedKey, normalizedKey.replace(/^(?:cau|question|q|stt)/, ""), compact(key)];
-    if (candidates.some(candidate => aliasesCompact.has(candidate))) return { key, value: source[key] };
   }
   return null;
 }
@@ -877,19 +918,30 @@ function gradeConfiguredAnswers(answerKey, submittedAnswers, layout, grading) {
     for (let questionNumber = 1; questionNumber <= questionTotal; questionNumber++) {
       questionCount++;
       const sequentialNumber = precedingQuestionCount + questionNumber;
+      const includeBare = precedingQuestionCount === 0;
       const baseAliases = [
-        ...sectionQuestionAliases(section, questionNumber),
+        ...sectionQuestionAliases(section, questionNumber, "", includeBare),
         ...sequentialQuestionAliases(sequentialNumber)
       ];
       const questionId = `${section.sectionId || section.order}-${questionNumber}`;
 
       if (section.type === "true_false") {
-        const subResults = statementIds.map(statementId => {
+        const combinedExpected = resolveAnswer(answerKey.answers, baseAliases, usedAnswerKeys);
+        const combinedParsed = combinedExpected && typeof combinedExpected.value === "string"
+          ? parseTrueFalseCell(combinedExpected.value, statementIds.length)
+          : [];
+        if (combinedParsed.length === statementIds.length) {
+          usedAnswerKeys.add(combinedExpected.key);
+        }
+        const subResults = statementIds.map((statementId, stmtIdx) => {
           const aliases = [
-            ...sectionQuestionAliases(section, questionNumber, statementId),
+            ...sectionQuestionAliases(section, questionNumber, statementId, includeBare),
             ...sequentialQuestionAliases(sequentialNumber, statementId)
           ];
-          const expected = resolveAnswer(answerKey.answers, aliases, usedAnswerKeys);
+          let expected = resolveAnswer(answerKey.answers, aliases, usedAnswerKeys);
+          if (!expected && combinedParsed.length === statementIds.length) {
+            expected = { key: combinedExpected.key, value: combinedParsed[stmtIdx] };
+          }
           const submitted = resolveAnswer(submittedAnswers, aliases, usedSubmittedKeys);
           if (expected) usedAnswerKeys.add(expected.key);
           else missingAnswerIds.push(aliases[0]);
@@ -950,17 +1002,22 @@ function gradeConfiguredAnswers(answerKey, submittedAnswers, layout, grading) {
     precedingQuestionCount += questionTotal;
   }
 
+  if (usedAnswerKeys.size === 0) return null;
   const roundedEarned = Math.round(earnedPoints * 100) / 100;
   const roundedTotal = Math.round(totalPoints * 100) / 100;
   const scale = Number(grading.scale) > 0 ? Number(grading.scale) : roundedTotal;
+  const scaledScore = roundedTotal > 0 && scale > 0 && Math.abs(roundedTotal - scale) > 0.001
+    ? Math.round((earnedPoints / totalPoints) * scale * 100) / 100
+    : roundedEarned;
   return {
-    score: roundedEarned,
+    score: scaledScore,
     scale,
     earnedPoints: roundedEarned,
     totalPoints: roundedTotal,
     percent: roundedTotal ? Math.round(roundedEarned / roundedTotal * 100) : 0,
     correctCount,
     questionCount,
+    matchedAnswerCount: usedAnswerKeys.size,
     completeAnswerKey: missingAnswerIds.length === 0,
     missingAnswerCount: missingAnswerIds.length,
     missingAnswerIds,
