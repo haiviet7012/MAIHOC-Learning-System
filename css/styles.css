@@ -1125,3 +1125,47 @@ body.study-room-open .online-dashboard {
     gap: 8px;
   }
 }
+
+/* Topbar right-to-left ordering refinement: greeting -> notification bell -> action buttons */
+.topbar-actions > .account-greeting {
+  max-width: 240px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+/* Keep online user rows and role badges strictly inside the card boundary */
+.online-user-row {
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+.online-user-info {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.online-user-name-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.online-user-name-line strong {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.online-role-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

@@ -611,11 +611,7 @@ function renderOnlineUsersList() {
   listNode.innerHTML = filtered.map(u => {
     const isSelf = activeUser && Number(u.id) === Number(activeUser.id);
     const isAdmin = u.role === "admin";
-    const roleLabel = !isAdmin
-      ? "User"
-      : Number(u.adminLevel) >= 2
-        ? "Admin cao nhất"
-        : "Admin";
+    const roleLabel = isAdmin ? "Admin" : "User";
     const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
     return `
       <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""}">
@@ -1144,11 +1140,15 @@ window.addEventListener("maihoc-exam-progress", event => {
 if (localStorage.getItem("maihoc-online-sidebar-collapsed") === "1") {
   $("#app-body")?.classList.add("online-sidebar-collapsed");
 }
-setInterval(() => {
+document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshOnlineDashboard();
-    if ($("#account-progress-list") && activeUser) {
-      loadAccountCenterProgress();
-    }
+    if ($("#account-progress-list") && activeUser) loadAccountCenterProgress();
+  }
+});
+setInterval(() => {
+  refreshOnlineDashboard();
+  if (!document.hidden && $("#account-progress-list") && activeUser) {
+    loadAccountCenterProgress();
   }
 }, 4000);

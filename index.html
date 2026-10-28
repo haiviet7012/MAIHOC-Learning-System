@@ -16,14 +16,14 @@
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">LEARNING SYSTEM</span></span></button>
       <div class="topbar-actions">
+        <span class="account-greeting" id="user-greeting" hidden></span>
         <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
-        <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
         <div class="inline-actions" id="auth-actions">
           <button class="icon-button" id="login-open">Đăng nhập</button>
           <button class="button primary small" id="register-open">Đăng ký</button>
         </div>
         <div class="inline-actions" id="user-actions" hidden>
-          <span class="account-greeting" id="user-greeting"></span>
+          <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
           <button class="icon-button" id="user-dashboard-open" data-action="user-dashboard" title="Ẩn/Hiện bảng người dùng đang online">🟢 <span class="button-label">Online</span> <span class="online-pill-count" id="topbar-online-count">0</span></button>
           <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>

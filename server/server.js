@@ -284,7 +284,7 @@ app.post("/api/auth/logout",requireSameOrigin,(req,res)=>{
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_COOLDOWN_MS = 30 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-const ONLINE_WINDOW_MS = 90 * 1000;
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 function smtpConfigFromEnv() {
   const rawUser = String(process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER || "").trim();
@@ -653,7 +653,7 @@ function cleanPresenceAndListOnline(now = Date.now()) {
     JOIN users u ON u.id = p.user_id
     WHERE p.last_seen_at >= ?
       AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?)
-    ORDER BY CASE WHEN u.role = admin THEN 0 ELSE 1 END, p.last_seen_at DESC, u.name ASC
+    ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, p.last_seen_at DESC, u.name ASC
     LIMIT 200
   `).all(cutoff, now);
 }

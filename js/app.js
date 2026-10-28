@@ -1051,6 +1051,7 @@ function applyAuthUI() {
     if ($("#user-dashboard-open")) $("#user-dashboard-open").hidden = !signedIn;
     if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn;
     $("#admin-open").hidden = currentUser?.role !== "admin";
+    $("#user-greeting").hidden = !signedIn;
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
 }
 async function refreshAuthUI() {
