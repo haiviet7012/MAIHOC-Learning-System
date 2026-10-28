@@ -18,8 +18,33 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 ## 👥 Đội ngũ dự án
 
 ### 💻 Developers
-| Thành viên | Vai trò |
-|---|---|
+
+<div align="center">
+
+**Nguyễn Việt Hải**  
+*Developer*
+
+**Nguyễn Đức Hải**  
+*Developer*
+
+**Nguyễn Xuân Hoàng**  
+*Developer*
+
+</div>
+
+### 📈 Sales Managers
+
+<div align="center">
+
+**Phạm Quang Minh**  
+*Sales Manager*
+
+**Đỗ Gia Bách**  
+*Sales Manager*
+
+</div>
+
+---|---|
 | **Nguyễn Việt Hải** | Developer |
 | **Nguyễn Đức Hải** | Developer |
 | **Nguyễn Xuân Hoàng** | Developer |
