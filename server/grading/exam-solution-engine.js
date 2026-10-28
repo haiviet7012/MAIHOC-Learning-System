@@ -129,12 +129,38 @@ async function generateWithDeepSeek({ apiKey, modelName, baseUrl, prompt, source
   return parseModelJson(content);
 }
 
-export async function solveExamDocument({ buffer, filename, title, layout, grading, modelName, apiKey, provider = "gemini", baseUrl, referenceAnswerKey = null }) {
-  const targets = answerTargetsForLayout(layout);
+export async function solveExamDocument({
+  buffer,
+  filename,
+  title,
+  layout,
+  grading,
+  customTargets = null,
+  modelName,
+  apiKey,
+  provider = "gemini",
+  baseUrl,
+  referenceAnswerKey = null
+}) {
+  const layoutTargets = answerTargetsForLayout(layout);
+  const hasCustomTargets = Array.isArray(customTargets) && customTargets.length > 0;
+  const targets = hasCustomTargets
+    ? customTargets.map((t, idx) => ({
+        targetId: String(t.targetId || `I-${idx + 1}`),
+        questionId: String(t.questionId || t.targetId || `I-${idx + 1}`),
+        sectionId: String(t.sectionId || "I"),
+        number: Number(t.number) || idx + 1,
+        ...(t.statement ? { statement: String(t.statement) } : {}),
+        type: String(t.type || "multiple_choice"),
+        maximumPoints: Number(t.maximumPoints) || 0.25
+      }))
+    : layoutTargets;
+
   if (!targets.length) throw new Error("Không có criteria câu hỏi trong configs/exam-layouts.json.");
-  if (!grading || !(layout?.sections || []).filter(section => Number(section.count) > 0).every(section => section.grading)) {
+  if (!hasCustomTargets && (!grading || !(layout?.sections || []).filter(section => Number(section.count) > 0).every(section => section.grading))) {
     throw new Error("Thiếu criteria chấm điểm trong configs/exam-layouts.json.");
   }
+  const effectiveGrading = grading || { scale: 10 };
   const selectedProvider=String(provider||"gemini").toLowerCase();
   if (!apiKey) {
     const error = new Error("Chưa cấu hình GEMINI_API_KEY trong server/.env.");
@@ -145,16 +171,17 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
   const prompt = [
     "Bạn là engine giải đề và tạo dữ liệu chấm cho hệ thống thi. Đọc chính xác đề, kể cả bảng, ký hiệu và hình vẽ nếu nội dung đó được mô tả trong văn bản.",
     "Giải từng câu độc lập, không đoán nếu thiếu dữ kiện. Chép chính xác nội dung câu hỏi liên quan đến target; giữ công thức ở dạng LaTeX khi phù hợp.",
-    "Mỗi targetId là một đáp án nguyên tử. Trắc nghiệm trả về một chữ cái lựa chọn. Đúng/sai trả về true hoặc false cho đúng mệnh đề được nêu trong targetId. Trả lời ngắn ghi đáp án chuẩn và các bước tương đương vào explanation. Tự luận ghi kết luận, lời giải mẫu và rubric với điểm từng tiêu chí.",
-    "Rubric phải có tổng điểm không vượt quá tiêu chí của phần trong cấu hình. Nếu không đọc rõ câu, hình, mã đề hoặc không chắc đáp án, nêu rõ uncertainty và confidence thấp; tuyệt đối không tự bịa dữ kiện.",
+    "Mỗi targetId là một đáp án nguyên tử. Trắc nghiệm trả về một chữ cái lựa chọn (A, B, C hoặc D). Đúng/sai trả về true hoặc false cho đúng mệnh đề được nêu trong targetId. Trả lời ngắn ghi đáp án chuẩn và các bước tương đương vào explanation. Tự luận ghi kết luận, lời giải mẫu và rubric với điểm từng tiêu chí.",
+    "Rubric phải có tổng điểm khớp với maximumPoints của từng target. Nếu không đọc rõ câu, hình, mã đề hoặc không chắc đáp án, nêu rõ uncertainty và confidence thấp; tuyệt đối không tự bịa dữ kiện.",
     "Hãy trả về đúng một đối tượng JSON hợp lệ, không thêm markdown hay văn bản ngoài JSON, theo cấu trúc {\"questions\":[{\"targetId\":\"...\",\"questionText\":\"...\",\"answer\":\"...\",\"explanation\":\"...\",\"confidence\":0.0,\"uncertainty\":\"...\",\"rubric\":[{\"criterion\":\"...\",\"points\":0}]}]}.",
     `Tên đề: ${String(title || "").slice(0, 160)}`,
-    `Cấu hình chấm: ${JSON.stringify({ layout, grading })}`,
+    `Cấu hình chấm: ${JSON.stringify({ layout: layout || null, grading: effectiveGrading })}`,
     referenceAnswerKey?.answers ? `Đáp án file tham chiếu (chỉ dùng để đối chiếu độc lập, đề vẫn là nguồn chính): ${JSON.stringify(referenceAnswerKey.answers)}` : "Không có file đáp án tham chiếu; hãy tự giải từng câu.",
     `Các target bắt buộc: ${JSON.stringify(targets)}`
   ].join("\n\n");
 
   let generated;
+  let resolvedModelName = modelName || "gemini-2.5-flash";
   if(selectedProvider==="deepseek"){
     const source = extension === "docx" ? extractDocxText(Buffer.from(buffer))
       : extension === "txt" ? Buffer.from(buffer).toString("utf8") : "";
@@ -208,31 +235,69 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
   if(selectedProvider==="gemini"){
     contentParts.push({ text: prompt });
     const client = new GoogleGenerativeAI(apiKey);
-    const model = client.getGenerativeModel({
-      model: modelName || "gemini-3.6-flash",
-      generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: solutionSchema }
-    });
-    const response = await model.generateContent({ contents: [{ role: "user", parts: contentParts }] });
-    generated = parseModelJson(response.response.text());
+    const tryModels = [modelName || "gemini-2.5-flash"];
+    if (!tryModels.includes("gemini-2.5-flash")) tryModels.push("gemini-2.5-flash");
+    if (!tryModels.includes("gemini-2.0-flash")) tryModels.push("gemini-2.0-flash");
+
+    let lastErr = null;
+    for (const candidateModel of tryModels) {
+      try {
+        const model = client.getGenerativeModel({
+          model: candidateModel,
+          generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: solutionSchema }
+        });
+        const response = await model.generateContent({ contents: [{ role: "user", parts: contentParts }] });
+        generated = parseModelJson(response.response.text());
+        resolvedModelName = candidateModel;
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err?.message || "").toLowerCase();
+        if (msg.includes("404") || msg.includes("not found") || msg.includes("is not supported")) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (lastErr && !generated) throw lastErr;
   }
+
   const allowed = new Map(targets.map(target => [target.targetId, target]));
   const byId = new Map();
   for (const item of generated.questions || []) {
     const target = allowed.get(String(item.targetId || ""));
     if (!target || byId.has(target.targetId)) continue;
+    const maxPts = Number(target.maximumPoints) || 0.25;
+    let rawRubric = Array.isArray(item.rubric) ? item.rubric.slice(0, 20).map(row => ({
+      criterion: String(row.criterion || "").slice(0, 1000),
+      points: Math.max(0, Math.min(10, Number(row.points) || 0))
+    })).filter(r => r.criterion) : [];
+    const rubricSum = rawRubric.reduce((s, r) => s + r.points, 0);
+    if (!rawRubric.length) {
+      rawRubric = [{ criterion: `Đáp án đúng cho câu ${target.targetId}`, points: maxPts }];
+    } else if (target.type === "essay" && maxPts > 0 && Math.abs(rubricSum - maxPts) > 0.01) {
+      if (rubricSum > 0) {
+        rawRubric = rawRubric.map((r, idx, arr) => ({
+          ...r,
+          points: idx === arr.length - 1
+            ? Math.max(0, Math.round((maxPts - arr.slice(0, -1).reduce((acc, x) => acc + Math.round((x.points / rubricSum) * maxPts * 100) / 100, 0)) * 100) / 100)
+            : Math.round((r.points / rubricSum) * maxPts * 100) / 100
+        }));
+      } else {
+        rawRubric[0].points = maxPts;
+      }
+    }
     byId.set(target.targetId, {
       targetId: target.targetId,
       questionId: target.questionId,
       type: target.type,
-      maximumPoints: target.maximumPoints,
+      maximumPoints: maxPts,
       questionText: String(item.questionText || "").slice(0, 5000),
       answer: String(item.answer || "").trim().slice(0, 2000),
       referenceAnswer: referenceAnswerKey?.answers?.[target.targetId] == null ? "" : String(Array.isArray(referenceAnswerKey.answers[target.targetId]) ? referenceAnswerKey.answers[target.targetId].join(" | ") : referenceAnswerKey.answers[target.targetId]).slice(0, 2000),
       explanation: String(item.explanation || "").trim().slice(0, 12000),
-      rubric: Array.isArray(item.rubric) ? item.rubric.slice(0, 20).map(row => ({
-        criterion: String(row.criterion || "").slice(0, 1000),
-        points: Math.max(0, Math.min(10, Number(row.points) || 0))
-      })) : [],
+      rubric: rawRubric,
       confidence: Math.max(0, Math.min(1, Number(item.confidence) || 0)),
       uncertainty: String(item.uncertainty || "").slice(0, 2000),
       reviewStatus: "pending"
@@ -242,12 +307,12 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
     targetId: target.targetId,
     questionId: target.questionId,
     type: target.type,
-    maximumPoints: target.maximumPoints,
-    questionText: "Không đọc được câu này từ đề.",
+    maximumPoints: Number(target.maximumPoints) || 0.25,
+    questionText: target.questionText || "Không đọc được câu này từ đề.",
     answer: "",
     referenceAnswer: referenceAnswerKey?.answers?.[target.targetId] == null ? "" : String(referenceAnswerKey.answers[target.targetId]),
     explanation: "",
-    rubric: [],
+    rubric: [{ criterion: `Đáp án đúng cho câu ${target.targetId}`, points: Number(target.maximumPoints) || 0.25 }],
     confidence: 0,
     uncertainty: "AI không trả về target bắt buộc.",
     reviewStatus: "pending"
@@ -255,8 +320,8 @@ export async function solveExamDocument({ buffer, filename, title, layout, gradi
   return {
     schemaVersion: 1,
     provider:selectedProvider,
-    model: modelName || "gemini-3.6-flash",
-    scale: Number(grading?.scale) || 10,
+    model: resolvedModelName,
+    scale: Number(effectiveGrading?.scale) || 10,
     generatedAt: new Date().toISOString(),
     questions,
     answerCount: questions.filter(question => question.answer).length,

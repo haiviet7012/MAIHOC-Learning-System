@@ -818,14 +818,14 @@ function normalizeAnswer(value) {
     .replace(/\\(?:left|right)/g, "")
     .replace(/\s+/g, "")
     .trim();
-  if (/^\d+,\d+$/.test(normalized)) normalized = normalized.replace(",", ".");
+  if (/^[+-]?\d+,\d+$/.test(normalized)) normalized = normalized.replace(",", ".");
   const booleanText = normalized.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0110\u0111]/g, "d");
   if (["dung", "true"].includes(booleanText)) return "true";
   if (["sai", "false"].includes(booleanText)) return "false";
   return normalized;
 }
 
-function answersMatch(expected, submitted, answerType = "") {
+export function answersMatch(expected, submitted, answerType = "") {
   const normalizedExpected = normalizeAnswer(expected);
   const normalizedSubmitted = normalizeAnswer(submitted);
   if (normalizedExpected !== "" && normalizedExpected === normalizedSubmitted) return true;

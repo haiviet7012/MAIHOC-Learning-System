@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeAnswerKeyDocument, gradeAnswers, extractDocxText } from "../grading/engine.js";
+import { normalizeAnswerKeyDocument, gradeAnswers, extractDocxText, answersMatch } from "../grading/engine.js";
 import {
   upsertLearningResult,
   deleteLearningResultsByItemId,
@@ -29,7 +29,7 @@ function answerTargetsForLayout(layout) {
             number,
             statement,
             type: section.type,
-            maximumPoints: Number(section.grading?.pointsByCorrectStatements?.[String((section.statements || ["a", "b", "c", "d"]).length)]) || 0
+            maximumPoints: Number(section.grading?.pointsByCorrectStatements?.[String((section.statements || ["a", "b", "c", "d"]).length)]) || 1
           });
         }
       } else {
@@ -39,7 +39,7 @@ function answerTargetsForLayout(layout) {
           sectionId,
           number,
           type: section.type,
-          maximumPoints: Number(section.grading?.pointsPerCorrect) || 0
+          maximumPoints: Number(section.grading?.pointsPerCorrect) || (section.type === "essay" ? 0.5 : 0.25)
         });
       }
     }
@@ -154,7 +154,8 @@ export function parseQuestionsFromRawText(rawText) {
 }
 
 export function buildQuestionTargetsForTest({ parsedQuestions = [], layout = null, customQuestionCount = null }) {
-  if (parsedQuestions.length > 0 && parsedQuestions.length <= 15 && !customQuestionCount) {
+  const hasMultipleSections = new Set(parsedQuestions.map(q => q.sectionId).filter(Boolean)).size > 1;
+  if (parsedQuestions.length > 0 && parsedQuestions.length <= 15 && !hasMultipleSections && !customQuestionCount) {
     const targets = [];
     const totalQ = parsedQuestions.length;
     const defaultPoints = Math.round((10 / Math.max(1, totalQ)) * 100) / 100;
@@ -172,7 +173,7 @@ export function buildQuestionTargetsForTest({ parsedQuestions = [], layout = nul
             number: Number(qNum) || idx + 1,
             statement: stmt,
             type: "true_false",
-            maximumPoints: 0.25,
+            maximumPoints: 1,
             questionText: `Câu ${qNum}: ${q.text}${stmtText}`
           });
         }
@@ -193,15 +194,23 @@ export function buildQuestionTargetsForTest({ parsedQuestions = [], layout = nul
 
   const baseTargets = answerTargetsForLayout(layout);
   if (!baseTargets.length) {
-    return Array.from({ length: 10 }, (_, idx) => ({
-      targetId: `I-${idx + 1}`,
-      questionId: `I-${idx + 1}`,
-      sectionId: "I",
-      number: idx + 1,
-      type: "multiple_choice",
-      maximumPoints: 1,
-      questionText: parsedQuestions[idx]?.text ? `Câu ${idx + 1}: ${parsedQuestions[idx].text}` : `Câu I-${idx + 1} (Xem nội dung chi tiết trong đề gốc)`
-    }));
+    const fallbackCount = parsedQuestions.length > 0 ? parsedQuestions.length : 10;
+    const defaultPts = Math.round((10 / Math.max(1, fallbackCount)) * 100) / 100;
+    return Array.from({ length: fallbackCount }, (_, idx) => {
+      const pq = parsedQuestions[idx];
+      const qNum = pq?.number || String(idx + 1);
+      const secId = pq?.sectionId || "I";
+      const qId = `${secId}-${qNum}`;
+      return {
+        targetId: qId,
+        questionId: qId,
+        sectionId: secId,
+        number: Number(qNum) || idx + 1,
+        type: pq?.type || "multiple_choice",
+        maximumPoints: defaultPts,
+        questionText: pq?.text ? `Câu ${qNum}: ${pq.text}` : `Câu ${qId} (Xem nội dung chi tiết trong đề gốc)`
+      };
+    });
   }
 
   const byQuestionId = new Map();
@@ -495,10 +504,11 @@ export function installTestsModule({
         ? (Array.isArray(refAnswers[target.targetId]) ? refAnswers[target.targetId][0] : String(refAnswers[target.targetId]))
         : "";
       const defaultAnswer = prev?.answer || refAns || (target.type === "multiple_choice" ? "A" : target.type === "true_false" ? "true" : "");
-      const maxPts = Number(target.maximumPoints) || 0.25;
+      const maxPts = Number(target.maximumPoints) || (target.type === "essay" ? 0.5 : 0.25);
       return {
         targetId: target.targetId,
         questionId: target.questionId,
+        ...(target.statement ? { statement: target.statement } : {}),
         type: target.type,
         maximumPoints: maxPts,
         questionText: prev?.questionText && !prev.questionText.includes("Không đọc được") ? prev.questionText : target.questionText,
@@ -584,7 +594,7 @@ export function installTestsModule({
       } catch {}
     }
 
-    if (row.normalizedAnswerKey && row.answer_mode !== "deferred") {
+    if (row.normalizedAnswerKey && (row.answer_mode !== "deferred" || row.has_answer_key)) {
       try {
         const parsed = JSON.parse(row.normalizedAnswerKey);
         if (parsed?.answers && Object.keys(parsed.answers).length) {
@@ -594,6 +604,44 @@ export function installTestsModule({
     }
 
     return null;
+  }
+
+  function resolveSubmittedValue(submittedAnswers, target) {
+    if (!submittedAnswers || typeof submittedAnswers !== "object") return "";
+    const targetId = String(target.targetId || "");
+    const questionId = String(target.questionId || "");
+    if (submittedAnswers[targetId] !== undefined) return String(submittedAnswers[targetId] ?? "").trim();
+    if (questionId && submittedAnswers[questionId] !== undefined) return String(submittedAnswers[questionId] ?? "").trim();
+
+    const stmt = target.statement || (/^[ivx0-9]+-\d+([a-d])$/i.exec(targetId)?.[1]?.toLowerCase() || "");
+    const num = target.number != null ? String(target.number) : (/^[ivx0-9]+-(\d+)/i.exec(targetId)?.[1] || "");
+    if (stmt && num) {
+      for (const alias of [`${num}${stmt}`, `${num}.${stmt}`, `${num}-${stmt}`, `cau${num}${stmt}`]) {
+        if (submittedAnswers[alias] !== undefined) return String(submittedAnswers[alias] ?? "").trim();
+      }
+    } else if (num && String(target.sectionId || "I") === "I") {
+      for (const alias of [num, `cau${num}`, `q${num}`, `Câu ${num}`]) {
+        if (submittedAnswers[alias] !== undefined) return String(submittedAnswers[alias] ?? "").trim();
+      }
+    }
+    return "";
+  }
+
+  function resolveExpectedValue(answerKey, target, overrideObj = {}) {
+    if (overrideObj?.answer !== undefined && String(overrideObj.answer ?? "").trim() !== "") {
+      return overrideObj.answer;
+    }
+    const answers = answerKey?.answers;
+    if (!answers || typeof answers !== "object") return "";
+    const targetId = String(target.targetId || "");
+    const questionId = String(target.questionId || "");
+    if (answers[targetId] !== undefined) return answers[targetId];
+    if (questionId && answers[questionId] !== undefined) return answers[questionId];
+    const num = target.number != null ? String(target.number) : (/^[ivx0-9]+-(\d+)/i.exec(targetId)?.[1] || "");
+    if (num && String(target.sectionId || "I") === "I" && !target.statement) {
+      if (answers[num] !== undefined) return answers[num];
+    }
+    return "";
   }
 
   function evaluateTestSubmission({ testRow, submittedAnswers, answerKey, questionOverrides = null }) {
@@ -609,154 +657,291 @@ export function installTestsModule({
       });
     }
 
+    const effectiveOverrides = Array.isArray(questionOverrides) && questionOverrides.length
+      ? questionOverrides
+      : Array.isArray(answerKey?.questions) && answerKey.questions.length
+        ? answerKey.questions
+        : null;
+
     const isShortCustomTest = targets.length > 0 && targets.length <= 15 && !targets.some(t => t.type === "true_false");
-    if (questionOverrides && Array.isArray(questionOverrides) && questionOverrides.length) {
-      let totalPoints = 0;
-      let earnedPoints = 0;
-      let correctCount = 0;
-      const results = [];
 
-      const tfGroups = new Map();
-      const overrideMap = new Map(questionOverrides.map(item => [String(item.targetId), item]));
+    let totalPoints = 0;
+    let earnedPoints = 0;
+    let correctCount = 0;
+    const results = [];
 
-      for (const target of targets) {
-        const ov = overrideMap.get(target.targetId) || {};
-        const expectedAns = String(ov.answer ?? answerKey?.answers?.[target.targetId] ?? "").trim();
-        const rawUserAns = submittedAnswers?.[target.targetId] ?? submittedAnswers?.[target.questionId] ?? "";
-        const userAns = String(rawUserAns ?? "").trim();
+    const tfGroups = new Map();
+    const overrideMap = new Map(
+      (effectiveOverrides || []).map(item => [String(item.targetId), item])
+    );
 
-        const normExpected = expectedAns.toLowerCase();
-        const normUser = userAns.toLowerCase();
-        let isMatch = false;
-        if (target.type === "multiple_choice") {
-          isMatch = normExpected !== "" && normExpected === normUser;
-        } else if (target.type === "true_false") {
-          const mapTf = v => (["true", "dung", "đúng", "d", "t"].includes(v) ? "true" : ["false", "sai", "s", "f"].includes(v) ? "false" : v);
-          isMatch = mapTf(normExpected) !== "" && mapTf(normExpected) === mapTf(normUser);
-        } else {
-          isMatch = normExpected !== "" && normExpected.replace(/\s+/g, "") === normUser.replace(/\s+/g, "");
-        }
+    for (const target of targets) {
+      const targetId = String(target.targetId);
+      const ov = overrideMap.get(targetId) || {};
+      const type = String(ov.type || target.type || "multiple_choice").toLowerCase();
+      const stmtLetter = target.statement || (/^[ivx0-9]+-\d+([a-d])$/i.exec(targetId)?.[1]?.toLowerCase() || "");
+      const questionId = target.questionId && target.questionId !== targetId
+        ? String(target.questionId)
+        : (type === "true_false" && stmtLetter ? targetId.slice(0, -1) : targetId);
 
-        if (target.type === "true_false" && target.statement) {
-          if (!tfGroups.has(target.questionId)) {
-            tfGroups.set(target.questionId, {
-              questionId: target.questionId,
-              maximumPoints: Number(target.maximumPoints) || 1,
-              statements: [],
-              manualPointsSum: 0,
-              hasManualPoints: false
-            });
-          }
-          const grp = tfGroups.get(target.questionId);
-          grp.statements.push({
-            targetId: target.targetId,
-            statement: target.statement,
-            correct: isMatch,
-            userAnswer: userAns,
-            expectedAnswer: [expectedAns],
-            explanation: ov.explanation || ""
+      const rawExpected = resolveExpectedValue(answerKey, target, ov);
+      const expectedList = Array.isArray(rawExpected)
+        ? rawExpected.map(v => String(v ?? "").trim()).filter(Boolean)
+        : [String(rawExpected ?? "").trim()].filter(Boolean);
+      const expectedAns = expectedList[0] || "";
+      const userAns = resolveSubmittedValue(submittedAnswers, target);
+
+      const isMatch = expectedList.length > 0 && expectedList.some(exp => answersMatch(exp, userAns, type));
+
+      if (type === "true_false" && stmtLetter) {
+        if (!tfGroups.has(questionId)) {
+          tfGroups.set(questionId, {
+            questionId,
+            maximumPoints: 1.0,
+            statements: [],
+            manualPointsSum: 0,
+            hasManualPoints: false
           });
-          if (ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "") {
-            grp.hasManualPoints = true;
-            grp.manualPointsSum += Number(ov.pointsAwarded) || 0;
-          }
-          continue;
         }
-
-        const maxPts = Number(ov.maximumPoints ?? target.maximumPoints) || (isShortCustomTest ? Number((10 / targets.length).toFixed(2)) : 0.25);
-        const awarded = (ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "")
-          ? Math.max(0, Math.min(maxPts, Number(ov.pointsAwarded) || 0))
-          : (isMatch ? maxPts : 0);
-
-        totalPoints += maxPts;
-        earnedPoints += awarded;
-        const correct = awarded >= maxPts - 0.001 && maxPts > 0;
-        if (correct) correctCount++;
-
-        results.push({
-          question: target.targetId,
-          type: target.type,
-          correct,
+        const grp = tfGroups.get(questionId);
+        grp.statements.push({
+          targetId,
+          statement: stmtLetter,
+          correct: isMatch,
           userAnswer: userAns,
-          expectedAnswer: [expectedAns],
-          earnedPoints: Math.round(awarded * 100) / 100,
-          totalPoints: Math.round(maxPts * 100) / 100,
+          expectedAnswer: expectedList.length ? expectedList : [expectedAns],
           explanation: ov.explanation || ""
         });
+        if (ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "") {
+          grp.hasManualPoints = true;
+          grp.manualPointsSum += Number(ov.pointsAwarded) || 0;
+        }
+        continue;
       }
 
-      for (const grp of tfGroups.values()) {
-        const correctStmtCount = grp.statements.filter(s => s.correct).length;
-        const weights = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
-        const maxPts = 1.0;
-        const awarded = grp.hasManualPoints
-          ? Math.max(0, Math.min(maxPts, grp.manualPointsSum))
-          : (weights[correctStmtCount] ?? 0);
-        totalPoints += maxPts;
-        earnedPoints += awarded;
-        const correct = correctStmtCount === grp.statements.length;
-        if (correct) correctCount++;
-        results.push({
-          question: grp.questionId,
-          type: "true_false",
-          correct,
-          correctStatements: correctStmtCount,
-          statementCount: grp.statements.length,
-          statements: grp.statements,
-          earnedPoints: Math.round(awarded * 100) / 100,
-          totalPoints: maxPts
-        });
-      }
+      const defaultTypePts = isShortCustomTest
+        ? Number((10 / Math.max(1, targets.length)).toFixed(2))
+        : (type === "essay" ? 0.5 : 0.25);
+      const maxPts = Number(ov.maximumPoints ?? answerKey?.points?.[targetId] ?? target.maximumPoints) || defaultTypePts;
+      const hasManualOverride = ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "";
+      const awarded = hasManualOverride
+        ? Math.max(0, Math.min(maxPts, Number(ov.pointsAwarded) || 0))
+        : (isMatch ? maxPts : 0);
 
-      const scale = 10;
-      const roundedEarned = Math.round(earnedPoints * 100) / 100;
-      const roundedTotal = Math.round(totalPoints * 100) / 100 || 10;
-      const scaledScore = Math.abs(roundedTotal - scale) > 0.01
-        ? Math.round((roundedEarned / roundedTotal) * scale * 100) / 100
-        : roundedEarned;
-      const percent = Math.round((scaledScore / scale) * 100);
+      totalPoints += maxPts;
+      earnedPoints += awarded;
+      const correct = awarded >= maxPts - 0.001 && maxPts > 0;
+      if (correct) correctCount++;
 
-      return {
-        graded: true,
-        gradingStatus: "graded",
-        score: scaledScore,
-        scale,
-        earnedPoints: roundedEarned,
-        totalPoints: roundedTotal,
-        percent,
-        correctCount,
-        questionCount: results.length,
-        results
-      };
+      results.push({
+        question: targetId,
+        type,
+        correct,
+        userAnswer: userAns,
+        expectedAnswer: expectedList.length ? expectedList : [expectedAns],
+        earnedPoints: Math.round(awarded * 100) / 100,
+        totalPoints: Math.round(maxPts * 100) / 100,
+        ...(hasManualOverride ? { manualPointsOverride: Math.round(awarded * 100) / 100 } : {}),
+        explanation: ov.explanation || ""
+      });
     }
 
-    const grade = gradeAnswers(
-      answerKey,
-      submittedAnswers,
-      isShortCustomTest ? {} : (config || {})
-    );
+    for (const grp of tfGroups.values()) {
+      const correctStmtCount = grp.statements.filter(s => s.correct).length;
+      const weights = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
+      const maxPts = 1.0;
+      const awarded = grp.hasManualPoints
+        ? Math.max(0, Math.min(maxPts, grp.manualPointsSum))
+        : (weights[correctStmtCount] ?? 0);
+      totalPoints += maxPts;
+      earnedPoints += awarded;
+      const correct = correctStmtCount === grp.statements.length;
+      if (correct) correctCount++;
+      results.push({
+        question: grp.questionId,
+        type: "true_false",
+        correct,
+        correctStatements: correctStmtCount,
+        statementCount: grp.statements.length,
+        statements: grp.statements,
+        earnedPoints: Math.round(awarded * 100) / 100,
+        totalPoints: maxPts
+      });
+    }
+
     const scale = 10;
-    const totalPts = Number(grade.totalPoints) || 10;
-    const earnedPts = Number(grade.earnedPoints) || 0;
-    const score = grade.score != null
-      ? Number(grade.score)
-      : (totalPts > 0 ? Math.round((earnedPts / totalPts) * scale * 100) / 100 : 0);
+    const roundedEarned = Math.round(earnedPoints * 100) / 100;
+    const roundedTotal = Math.round(totalPoints * 100) / 100 || 10;
+    const scaledScore = Math.abs(roundedTotal - scale) > 0.01
+      ? Math.round((roundedEarned / roundedTotal) * scale * 100) / 100
+      : roundedEarned;
+    const percent = Math.round((scaledScore / scale) * 100);
 
     return {
       graded: true,
       gradingStatus: "graded",
-      ...grade,
-      score,
+      score: scaledScore,
       scale,
-      percent: Math.round((score / scale) * 100)
+      earnedPoints: roundedEarned,
+      totalPoints: roundedTotal,
+      percent,
+      correctCount,
+      questionCount: results.length,
+      results
     };
+  }
+
+  function regradeTestSubmissionsForTest(testId, reviewerUser = null) {
+    const id = String(testId || "");
+    const testRow = db.prepare("SELECT * FROM tests WHERE id = ?").get(id);
+    if (!testRow) return { gradedCount: 0, newlyGradedCount: 0 };
+
+    db.prepare("UPDATE tests SET has_answer_key = 1 WHERE id = ?").run(id);
+    const approvedKey = getApprovedAnswerKeyForTest(id);
+    if (!approvedKey) return { gradedCount: 0, newlyGradedCount: 0 };
+
+    const submissions = db.prepare(`
+      SELECT ts.*, u.name AS userName, u.email AS userEmail
+      FROM test_submissions ts
+      JOIN users u ON u.id = ts.user_id
+      WHERE ts.test_id = ?
+    `).all(id);
+
+    if (!submissions.length) return { gradedCount: 0, newlyGradedCount: 0 };
+
+    const nowIso = new Date().toISOString();
+    const reviewerId = reviewerUser?.id || null;
+    const reviewerName = reviewerUser?.name || "Giảng viên";
+    let newlyGradedCount = 0;
+
+    const tx = db.transaction(() => {
+      for (const sub of submissions) {
+        const wasPending = sub.grading_status === "pending_grade" || !sub.graded;
+        let studentAns = {};
+        try { studentAns = JSON.parse(sub.answers_json || "{}"); } catch {}
+
+        const evaluated = evaluateTestSubmission({
+          testRow,
+          submittedAnswers: studentAns,
+          answerKey: approvedKey,
+          questionOverrides: (approvedKey.questions || []).map(q => ({ ...q, pointsAwarded: undefined }))
+        });
+
+        const fullResult = {
+          ...evaluated,
+          submissionId: sub.id,
+          attemptId: sub.id,
+          isTest: true,
+          testId: sub.test_id,
+          title: sub.title,
+          subject: sub.subject,
+          grade: sub.grade,
+          gradedBy: reviewerName,
+          gradedAt: nowIso,
+          teacherNote: sub.teacher_note || "",
+          saved: true
+        };
+
+        db.prepare(`
+          UPDATE test_submissions
+          SET grading_status = 'graded',
+              graded = 1,
+              score = ?,
+              scale = ?,
+              percent = ?,
+              correct_count = ?,
+              question_count = ?,
+              answer_key_json = ?,
+              result_json = ?,
+              graded_at = datetime('now'),
+              graded_by = COALESCE(?, graded_by)
+          WHERE id = ?
+        `).run(
+          Number(evaluated.score),
+          Number(evaluated.scale || 10),
+          Number(evaluated.percent || 0),
+          Number(evaluated.correctCount || 0),
+          Number(evaluated.questionCount || 0),
+          JSON.stringify({ answers: approvedKey.answers, points: approvedKey.points || {} }),
+          JSON.stringify(fullResult),
+          reviewerId,
+          sub.id
+        );
+
+        db.prepare(`
+          UPDATE user_progress
+          SET score = ?, status = 'completed', progress_percent = 100, updated_at = datetime('now')
+          WHERE user_id = ? AND item_type = 'test' AND item_id = ?
+        `).run(Number(evaluated.score), sub.user_id, sub.test_id);
+
+        db.prepare(`
+          UPDATE exam_attempts
+          SET graded = 1, score = ?, scale = ?, percent = ?, correct_count = ?, question_count = ?,
+              answer_key_json = ?, result_json = ?
+          WHERE user_id = ? AND document_id = ?
+        `).run(
+          Number(evaluated.score),
+          Number(evaluated.scale || 10),
+          Number(evaluated.percent || 0),
+          Number(evaluated.correctCount || 0),
+          Number(evaluated.questionCount || 0),
+          JSON.stringify({ answers: approvedKey.answers, points: approvedKey.points || {} }),
+          JSON.stringify(fullResult),
+          sub.user_id,
+          sub.test_id
+        );
+
+        upsertLearningResult({
+          recordKey: `test:${sub.test_id}:user:${sub.user_id}`,
+          userId: sub.user_id,
+          userName: sub.userName,
+          userEmail: sub.userEmail,
+          subject: sub.subject,
+          grade: sub.grade,
+          category: "test",
+          itemId: sub.test_id,
+          itemTitle: sub.title,
+          attemptId: sub.id,
+          completionStatus: "completed",
+          gradingStatus: "graded",
+          progressPercent: 100,
+          score: Number(evaluated.score),
+          scale: Number(evaluated.scale || 10),
+          percentScore: Number(evaluated.percent || 0),
+          correctCount: evaluated.correctCount,
+          questionCount: evaluated.questionCount,
+          durationMinutes: sub.duration_minutes,
+          timeSpentSeconds: sub.time_spent_seconds,
+          fullscreenExitAutoSubmit: Boolean(sub.auto_submitted_fullscreen),
+          openAt: testRow.open_at,
+          closeAt: testRow.close_at,
+          submittedAt: sub.submitted_at,
+          gradedAt: nowIso,
+          gradedById: reviewerId,
+          gradedByName: reviewerName
+        });
+
+        if (wasPending) {
+          newlyGradedCount++;
+          notifyUser(
+            sub.user_id,
+            "test_graded",
+            `Đã có điểm: ${sub.title}`,
+            `Giảng viên đã duyệt đáp án và chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(evaluated.score).toFixed(2)}/${evaluated.scale || 10}.`
+          );
+        }
+      }
+    });
+    tx();
+
+    return { gradedCount: submissions.length, newlyGradedCount };
   }
 
   app.get("/api/tests", (req, res) => {
     const rows = db.prepare(`
       SELECT t.*,
              d.filename, d.original_name AS originalName, d.size, d.content_type AS contentType,
-             es.status AS solutionStatus,
+             es.status AS solutionStatus, es.phase AS solutionPhase, es.model AS solutionModel, es.progress AS solutionProgress,
              ak.original_name AS answerKeyOriginalName,
              (SELECT COUNT(*) FROM test_submissions ts WHERE ts.test_id = t.id) AS totalSubmissionsCount,
              (SELECT COUNT(*) FROM test_submissions ts WHERE ts.test_id = t.id AND ts.grading_status = 'pending_grade') AS pendingGradingCount
@@ -801,6 +986,9 @@ export function installTestsModule({
         row.solutionStatus === "ready" ||
         (row.answerKeyOriginalName && row.answer_mode !== "deferred")
       );
+      const solutionMode = row.solutionModel === "Nhập thủ công" || row.solutionPhase === "Nhập đáp án thủ công"
+        ? "manual"
+        : "ai";
 
       let parsedTargets = [];
       try { parsedTargets = JSON.parse(row.questions_json || "[]"); } catch {}
@@ -818,12 +1006,16 @@ export function installTestsModule({
         answerMode: row.answer_mode,
         hasApprovedAnswers,
         solutionStatus: row.solutionStatus || (row.answer_mode === "deferred" ? "deferred" : "not_started"),
+        solutionMode,
+        solutionPhase: row.solutionPhase || null,
+        solutionProgress: Number(row.solutionProgress) || 0,
         filename: row.filename,
         originalName: row.originalName,
         fileUrl: `/api/documents/${encodeURIComponent(row.id)}/file`,
         url: `/api/documents/${encodeURIComponent(row.id)}/file`,
         content: /\.txt$/i.test(row.originalName || "") && row.raw_text_cache ? row.raw_text_cache : undefined,
         questionCount: parsedTargets.length || 22,
+        questionTargets: parsedTargets,
         completed,
         completionStatus: completed ? "completed" : "incomplete",
         completionLabel: completed ? "Đã hoàn thành" : "Chưa hoàn thành",
@@ -973,7 +1165,7 @@ export function installTestsModule({
 
         let solutionJob = null;
         if (answerMode === "immediate") {
-          if (answerEntryMethod === "ai" && String(process.env.GEMINI_API_KEY || "").trim()) {
+          if (answerEntryMethod === "ai") {
             createExamSolutionJob(id);
             solutionJob = { id, status: "queued", mode: "ai", phase: "AI đang giải đề kiểm tra" };
           } else {
@@ -989,7 +1181,9 @@ export function installTestsModule({
           solutionJob,
           message: answerMode === "deferred"
             ? "Đã tạo bài kiểm tra ở chế độ Chưa nhập đáp án ngay (Học viên nộp bài sẽ hiện 'Đang chờ chấm')."
-            : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
+            : answerEntryMethod === "ai"
+              ? "Đã tạo bài kiểm tra. AI đang giải đề để giảng viên duyệt lại."
+              : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
         });
       } catch (error) {
         console.error("Create test error:", error);
@@ -1057,13 +1251,7 @@ export function installTestsModule({
     const approvedKey = getApprovedAnswerKeyForTest(testId);
     let resultPayload;
 
-    if (approvedKey && testRow.answer_mode !== "deferred") {
-      resultPayload = evaluateTestSubmission({
-        testRow,
-        submittedAnswers: answers,
-        answerKey: approvedKey
-      });
-    } else if (approvedKey && testRow.has_answer_key) {
+    if (approvedKey) {
       resultPayload = evaluateTestSubmission({
         testRow,
         submittedAnswers: answers,
@@ -1340,11 +1528,14 @@ export function installTestsModule({
              t.open_at AS openAt, t.close_at AS closeAt, t.duration_minutes AS durationMinutes,
              t.raw_text_cache AS rawTextCache, t.questions_json AS questionsJson,
              d.original_name AS originalName, d.file_data AS fileData,
+             ak.normalized_json AS referenceAnswerJson,
+             es.status AS solutionStatus, es.phase AS solutionPhase, es.model AS solutionModel,
              es.approved_json AS approvedSolution, es.generated_json AS generatedSolution
       FROM test_submissions ts
       JOIN users u ON u.id = ts.user_id
       JOIN tests t ON t.id = ts.test_id
       JOIN documents d ON d.id = t.document_id
+      LEFT JOIN answer_keys ak ON ak.document_id = t.id
       LEFT JOIN exam_solutions es ON es.document_id = t.id
       WHERE ts.id = ?
     `).get(submissionId);
@@ -1375,17 +1566,26 @@ export function installTestsModule({
     try { studentAnswers = JSON.parse(sub.answers_json || "{}"); } catch {}
 
     let savedAnswerKey = {};
-    let savedQuestionMeta = new Map();
+    const savedQuestionMeta = new Map();
     try {
-      const fromSub = JSON.parse(sub.answer_key_json || "null");
-      if (fromSub?.answers) savedAnswerKey = { ...fromSub.answers };
+      const fromRef = JSON.parse(sub.referenceAnswerJson || "null");
+      if (fromRef?.answers) savedAnswerKey = { ...fromRef.answers };
     } catch {}
     try {
       const fromSol = JSON.parse(sub.approvedSolution || sub.generatedSolution || "null");
-      if (fromSol?.answers) savedAnswerKey = { ...fromSol.answers, ...savedAnswerKey };
+      if (fromSol?.answers) savedAnswerKey = { ...savedAnswerKey, ...fromSol.answers };
       for (const q of fromSol?.questions || []) {
-        if (q?.targetId) savedQuestionMeta.set(String(q.targetId), q);
+        if (q?.targetId) {
+          savedQuestionMeta.set(String(q.targetId), q);
+          if (q.answer && !savedAnswerKey[q.targetId]) {
+            savedAnswerKey[q.targetId] = q.answer;
+          }
+        }
       }
+    } catch {}
+    try {
+      const fromSub = JSON.parse(sub.answer_key_json || "null");
+      if (fromSub?.answers) savedAnswerKey = { ...savedAnswerKey, ...fromSub.answers };
     } catch {}
 
     let prevResult = {};
@@ -1393,19 +1593,27 @@ export function installTestsModule({
     const prevResultByQuestion = new Map();
     for (const r of prevResult?.results || []) {
       if (r?.question) prevResultByQuestion.set(String(r.question), r);
+      if (Array.isArray(r?.statements)) {
+        for (const s of r.statements) {
+          if (s?.targetId) prevResultByQuestion.set(String(s.targetId), s);
+          else if (r.question && s?.statement) prevResultByQuestion.set(`${r.question}${s.statement}`, s);
+        }
+      }
     }
 
     const isShortCustomTest = targets.length > 0 && targets.length <= 15 && !targets.some(t => t.type === "true_false");
     const questions = targets.map(target => {
       const meta = savedQuestionMeta.get(target.targetId) || {};
-      const prevRow = prevResultByQuestion.get(target.targetId) || prevResultByQuestion.get(target.questionId);
-      const studentAns = String(studentAnswers[target.targetId] ?? studentAnswers[target.questionId] ?? "").trim();
-      const currentCorrectAns = String(
-        savedAnswerKey[target.targetId] ??
-        meta.answer ??
-        ""
-      ).trim();
-      const maxPts = Number(meta.maximumPoints ?? target.maximumPoints) || (isShortCustomTest ? Number((10 / targets.length).toFixed(2)) : 0.25);
+      const prevRow = prevResultByQuestion.get(target.targetId) || (!target.statement ? prevResultByQuestion.get(target.questionId) : null);
+      const studentAns = resolveSubmittedValue(studentAnswers, target);
+      const rawCorrectAns = savedAnswerKey[target.targetId] ?? meta.answer ?? "";
+      const currentCorrectAns = Array.isArray(rawCorrectAns)
+        ? String(rawCorrectAns[0] ?? "").trim()
+        : String(rawCorrectAns ?? "").trim();
+      const defaultTypePts = isShortCustomTest
+        ? Number((10 / Math.max(1, targets.length)).toFixed(2))
+        : (target.type === "essay" ? 0.5 : target.type === "true_false" ? 1 : 0.25);
+      const maxPts = Number(meta.maximumPoints ?? target.maximumPoints) || defaultTypePts;
       const rubric = Array.isArray(meta.rubric) && meta.rubric.length
         ? meta.rubric
         : [{ criterion: `Đáp án đúng cho câu ${target.targetId}`, points: maxPts }];
@@ -1413,6 +1621,7 @@ export function installTestsModule({
       return {
         targetId: target.targetId,
         questionId: target.questionId,
+        ...(target.statement ? { statement: target.statement } : {}),
         type: target.type,
         maximumPoints: maxPts,
         questionText: meta.questionText || target.questionText || `Câu ${target.targetId}`,
@@ -1420,9 +1629,14 @@ export function installTestsModule({
         answer: currentCorrectAns,
         explanation: meta.explanation || prevRow?.explanation || "",
         rubric,
-        earnedPoints: prevRow?.earnedPoints ?? null
+        earnedPoints: prevRow?.earnedPoints ?? null,
+        manualPointsOverride: prevRow?.manualPointsOverride ?? null
       };
     });
+
+    const solutionMode = sub.solutionModel === "Nhập thủ công" || sub.solutionPhase === "Nhập đáp án thủ công"
+      ? "manual"
+      : "ai";
 
     return res.json({
       submissionId: sub.id,
@@ -1443,6 +1657,8 @@ export function installTestsModule({
       timeSpentSeconds: sub.time_spent_seconds,
       autoSubmittedFullscreen: Boolean(sub.auto_submitted_fullscreen),
       teacherNote: sub.teacher_note || "",
+      solutionStatus: sub.solutionStatus || "not_started",
+      solutionMode,
       questions
     });
   });
@@ -1473,33 +1689,42 @@ export function installTestsModule({
     const saveAsTestAnswerKey = req.body?.saveAsTestAnswerKey !== false;
     const teacherNote = String(req.body?.teacherNote || "").trim().slice(0, 1000);
 
+    let baseTargets = [];
+    try { baseTargets = JSON.parse(testRow.questions_json || "[]"); } catch {}
+    const baseTargetMap = new Map((Array.isArray(baseTargets) ? baseTargets : []).map(t => [String(t.targetId), t]));
+
     const answersMap = {};
     const pointsMap = {};
     const normalizedQuestions = [];
 
     for (const q of submittedQuestions) {
       const targetId = String(q.targetId || "").trim();
-      const answer = String(q.answer ?? "").trim();
       if (!targetId) continue;
-      if (!answer) {
+      const baseTarget = baseTargetMap.get(targetId) || {};
+      const type = String(q.type || baseTarget.type || "multiple_choice").toLowerCase();
+      const answer = String(q.answer ?? "").trim();
+      const hasPointsOverride = q.pointsAwarded !== undefined && q.pointsAwarded !== null && q.pointsAwarded !== "";
+
+      if (!answer && type !== "essay" && !hasPointsOverride) {
         return res.status(400).json({ error: `Vui lòng chọn hoặc nhập đáp án đúng cho câu ${targetId}.` });
       }
-      answersMap[targetId] = answer;
-      const maxPts = Number(q.maximumPoints) || 0.25;
+      if (answer) {
+        answersMap[targetId] = answer;
+      }
+      const maxPts = Number(q.maximumPoints || baseTarget.maximumPoints) || (type === "essay" ? 0.5 : type === "true_false" ? 1 : 0.25);
       pointsMap[targetId] = maxPts;
       normalizedQuestions.push({
         targetId,
-        questionId: q.questionId || targetId,
-        type: q.type || "multiple_choice",
+        questionId: q.questionId || baseTarget.questionId || targetId,
+        ...(baseTarget.statement || q.statement ? { statement: baseTarget.statement || q.statement } : {}),
+        type,
         maximumPoints: maxPts,
-        questionText: String(q.questionText || `Câu ${targetId}`),
+        questionText: String(q.questionText || baseTarget.questionText || `Câu ${targetId}`),
         aiAnswer: answer,
         answer,
         explanation: String(q.explanation || "").trim(),
-        rubric: Array.isArray(q.rubric) ? q.rubric : [{ criterion: `Đáp án chuẩn câu ${targetId}`, points: maxPts }],
-        pointsAwarded: q.pointsAwarded !== undefined && q.pointsAwarded !== null && q.pointsAwarded !== ""
-          ? Number(q.pointsAwarded)
-          : undefined,
+        rubric: Array.isArray(q.rubric) && q.rubric.length ? q.rubric : [{ criterion: `Đáp án chuẩn câu ${targetId}`, points: maxPts }],
+        pointsAwarded: hasPointsOverride ? Number(q.pointsAwarded) : undefined,
         confidence: 1,
         uncertainty: "",
         reviewStatus: "manual"
@@ -1655,7 +1880,7 @@ export function installTestsModule({
             updated_at = datetime('now')
         `).run(
           sub.test_id,
-          JSON.stringify({ ...answerKeyPayload, answerCount: normalizedQuestions.length, requiredCount: normalizedQuestions.length }),
+          JSON.stringify({ ...answerKeyPayload, answerCount: normalizedQuestions.filter(q => q.answer).length, requiredCount: normalizedQuestions.length }),
           JSON.stringify(answerKeyPayload),
           req.user.id
         );
@@ -1711,6 +1936,22 @@ export function installTestsModule({
             SET score = ?, status = 'completed', progress_percent = 100, updated_at = datetime('now')
             WHERE user_id = ? AND item_type = 'test' AND item_id = ?
           `).run(Number(otherEval.score), other.user_id, other.test_id);
+          db.prepare(`
+            UPDATE exam_attempts
+            SET graded = 1, score = ?, scale = ?, percent = ?, correct_count = ?, question_count = ?,
+                answer_key_json = ?, result_json = ?
+            WHERE user_id = ? AND document_id = ?
+          `).run(
+            Number(otherEval.score),
+            Number(otherEval.scale || 10),
+            Number(otherEval.percent || 0),
+            Number(otherEval.correctCount || 0),
+            Number(otherEval.questionCount || 0),
+            JSON.stringify({ answers: answersMap, points: pointsMap }),
+            JSON.stringify(otherFull),
+            other.user_id,
+            other.test_id
+          );
 
           upsertLearningResult({
             recordKey: `test:${other.test_id}:user:${other.user_id}`,
@@ -1817,4 +2058,9 @@ export function installTestsModule({
     const created = ensureSubjectRegistered(name, defaultScale, req.body?.metadata || {});
     return res.status(201).json({ ok: true, subject: created, subjects: listRegisteredSubjects() });
   });
+
+  return {
+    regradeTestSubmissionsForTest,
+    initManualSolutionForDocument
+  };
 }

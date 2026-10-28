@@ -819,15 +819,30 @@ async function loadAnswerKeySections(){
       if(!docs.length){list.innerHTML='<p class="muted">Chưa có tài liệu.</p>';continue;}
       list.innerHTML=docs.map(doc=>{
         let statusLabel="",statusClass="";
+        const isManualReview=doc.solutionStatus==="review"&&(doc.solutionMode==="manual"||doc.solutionPhase==="Nhập đáp án thủ công");
         if(category==="theory"){statusLabel="Không cần đáp án";}
         else if(["queued","reading","solving"].includes(doc.solutionStatus)){statusLabel=doc.solutionPhase||"AI đang xử lý";statusClass="";}
-        else if(doc.solutionStatus==="review"){statusLabel="Chờ admin duyệt";statusClass="";}
+        else if(isManualReview){statusLabel="Đang nhập thủ công (Chờ lưu)";statusClass="";}
+        else if(doc.solutionStatus==="review"){statusLabel="Chờ duyệt lời giải AI";statusClass="";}
         else if(doc.solutionStatus==="ready"){statusLabel="Đã duyệt, sẵn sàng chấm";statusClass="is-ready";}
         else if(doc.solutionStatus==="failed"){statusLabel="AI chưa tạo được đáp án";statusClass="is-missing";}
         else if(doc.hasAnswerKey){statusLabel="Có tệp đáp án tham khảo";statusClass="";}
         else {statusLabel="Chưa có đáp án";statusClass="is-missing";}
         const status=`<div class="answer-key-statuses answer-key-status-row"><span class="answer-key-status ${statusClass}">${esc(statusLabel)}${["queued","reading","solving"].includes(doc.solutionStatus)?` · ${esc(doc.solutionProgress||0)}%`:""}</span></div>`;
-        const solution=category==="theory"?"":`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-open="${esc(doc.id)}">${doc.solutionStatus==="review"?"Duyệt lời giải AI":doc.solutionStatus==="ready"?"Xem bộ chấm đã duyệt":["queued","reading","solving"].includes(doc.solutionStatus)?"Xem tiến trình":doc.solutionStatus==="failed"?"Thử giải lại":"Giải đề bằng AI"}</button>${["ready","queued","reading","solving"].includes(doc.solutionStatus)?"":`<button class="button secondary small" data-solution-manual="${esc(doc.id)}">Nhập đáp án thủ công</button>`}</div>`;
+        let solution="";
+        if(category!=="theory"){
+          if(doc.solutionStatus==="ready"){
+            solution=`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-open="${esc(doc.id)}">✓ Xem bộ chấm</button><button class="button secondary small" data-solution-generate="${esc(doc.id)}">🤖 AI giải lại</button><button class="button secondary small" data-solution-manual="${esc(doc.id)}">✍️ Sửa thủ công</button></div>`;
+          }else if(["queued","reading","solving"].includes(doc.solutionStatus)){
+            solution=`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-open="${esc(doc.id)}">⏳ Xem tiến trình AI</button><button class="button secondary small" data-solution-manual="${esc(doc.id)}">✍️ Nhập thủ công</button></div>`;
+          }else if(isManualReview){
+            solution=`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-generate="${esc(doc.id)}">🤖 Giải đề bằng AI</button><button class="button primary small" data-solution-manual="${esc(doc.id)}">✍️ Tiếp tục nhập thủ công</button></div>`;
+          }else if(doc.solutionStatus==="review"){
+            solution=`<div class="exam-solution-admin-actions"><button class="button primary small" data-solution-open="${esc(doc.id)}">🤖 Duyệt lời giải AI</button><button class="button secondary small" data-solution-manual="${esc(doc.id)}">✍️ Nhập đáp án thủ công</button></div>`;
+          }else{
+            solution=`<div class="exam-solution-admin-actions"><button class="button secondary small" data-solution-generate="${esc(doc.id)}">${doc.solutionStatus==="failed"?"🤖 Thử giải lại bằng AI":"🤖 Giải đề bằng AI"}</button><button class="button secondary small" data-solution-manual="${esc(doc.id)}">✍️ Nhập đáp án thủ công</button></div>`;
+          }
+        }
         return `<article class="answer-key-row"><div class="answer-key-main"><strong>${esc(doc.title)}</strong><span class="muted tiny">Lớp ${esc(doc.grade)}${doc.originalName?" · "+esc(doc.originalName):""}</span><div class="answer-key-statuses"><a class="text-button" href="/api/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">Xem đề</a></div>${status}${solution}</div></article>`;
       }).join("");
     }
@@ -836,7 +851,7 @@ async function loadAnswerKeySections(){
   }
 }
 
-function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
+function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ giảng viên / admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
 function solutionMathText(value){
   let text=String(value??"")
     .replace(/\\\\/g,"\n")
@@ -846,7 +861,7 @@ function solutionMathText(value){
     .replace(/\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle|left|right|quad|qquad)\b/g,"")
     .replace(/\\(?:,|;|:|!)/g," ");
   const superscript={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","+":"⁺","-":"⁻","=":"⁼","(":"⁽",")":"⁾","n":"ⁿ","i":"ⁱ"};
-  const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎","i":"ᵢ","n":"ₙ","x":"ₓ"};
+  const subscript={"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"⁷","8":"₈","9":"₉","+":"₊","-":"₋","=":"₌","(":"₍",")":"₎","i":"ᵢ","n":"ₙ","x":"ₓ"};
   const replaceScript=(match,raw,map)=>{
     const value=raw.trim();
     if(/^[0-9+\-=()ni x]+$/.test(value)) return [...value.replace(/\s/g,"")].map(ch=>map[ch]||ch).join("");
@@ -892,6 +907,7 @@ function solutionQuestionMarkup(item,editable,manualMode=false){
   const rawAiAnswer=String(item.aiAnswer??item.answer??"").trim();
   const aiAnswer=/^(none|null|undefined)$/i.test(rawAiAnswer)?"":solutionMathText(rawAiAnswer);
   const type=String(item.type||"").toLowerCase();
+  const maxPts=Number(item.maximumPoints)||(type==="essay"?0.5:0.25);
   const answer=String(item.answer||"");
   let answerEditor;
   if(type==="multiple_choice"){
@@ -902,7 +918,7 @@ function solutionQuestionMarkup(item,editable,manualMode=false){
     const selected=["true","dung","d","t"].includes(normalized)?"true":["false","sai","s","f"].includes(normalized)?"false":"";
     answerEditor=`<input data-solution-answer type="hidden" value="${selected}" ${editable?"":"disabled"}><div class="solution-answer-choice-group solution-answer-choice-group-two" role="group" aria-label="Chọn Đúng hoặc Sai">${[["true","Đúng"],["false","Sai"]].map(([option,label])=>`<button type="button" class="solution-answer-choice ${selected===option?"is-selected":""}" data-solution-option="${option}" aria-pressed="${selected===option}" ${editable?"":"disabled"}>${label}</button>`).join("")}</div>`;
   }else{
-    answerEditor=`<input data-solution-answer value="${esc(solutionMathText(answer))}" ${editable?"":"disabled"}>`;
+    answerEditor=`<input data-solution-answer type="text" placeholder="Nhập đáp án chuẩn (ví dụ: 12,5 hoặc -3)..." value="${esc(solutionMathText(answer))}" ${editable?"":"disabled"}>`;
   }
   const leftPane=manualMode
     ?`<section class="solution-review-pane solution-review-manual-index"><h4>MÃ CÂU</h4><p class="solution-manual-question-id"><strong>${esc(solutionMathText(item.targetId||"Câu hỏi"))}</strong></p></section>`
@@ -910,9 +926,9 @@ function solutionQuestionMarkup(item,editable,manualMode=false){
   const reviewControls=editable?(manualMode
     ?`<div class="solution-review-controls"><span class="answer-key-status">Đáp án thủ công sẽ được lưu sau khi bấm “Lưu đáp án chuẩn đã duyệt”.</span></div>`
     :`<div class="solution-review-controls"><button type="button" class="button secondary small" data-solution-decision="incorrect">Sai, tôi đã sửa</button><button type="button" class="button secondary small" data-solution-decision="correct">Đúng</button><span class="answer-key-status" data-solution-decision-label>Chưa xác nhận</span></div>`)
-    :`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":item.reviewStatus==="manual"?"Admin đã nhập thủ công":"Admin đã xác nhận"}</span></div>`;
-  const answerPane=`<section class="solution-review-pane ${manualMode?"solution-review-manual-answer":""}"><h4>${editable?"ĐÁP ÁN ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label>${manualMode?"":`<label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify(rubric.map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label>`}</section>`;
-  return `<article class="solution-review-item ${manualMode?"is-manual-solution-review":""}" data-solution-item="${esc(item.targetId)}" data-original-answer="${esc(item.answer||"")}">
+    :`<div class="solution-review-controls"><span class="answer-key-status is-ready">${item.reviewStatus==="corrected"?"Admin đã sửa":item.reviewStatus==="manual"?"Đã nhập thủ công":"Đã xác nhận chuẩn"}</span></div>`;
+  const answerPane=`<section class="solution-review-pane ${manualMode?"solution-review-manual-answer":""}"><h4>${editable?"ĐÁP ÁN GIẢNG VIÊN / ADMIN XÁC NHẬN":"ĐÁP ÁN ĐÃ DUYỆT"}</h4><label>Đáp án chuẩn${answerEditor}</label>${manualMode?"":`<label>Lời giải / ghi chú<textarea data-solution-explanation ${editable?"":"disabled"}>${esc(solutionMathText(item.explanation||""))}</textarea></label><label>Rubric theo tiêu chí (JSON)<textarea data-solution-rubric ${editable?"":"disabled"}>${esc(JSON.stringify((rubric.length?rubric:[{criterion:`Đáp án đúng cho câu ${item.targetId}`,points:maxPts}]).map(row=>({...row,criterion:solutionMathText(row.criterion)})),null,2))}</textarea></label>`}</section>`;
+  return `<article class="solution-review-item ${manualMode?"is-manual-solution-review":""}" data-solution-item="${esc(item.targetId)}" data-max-points="${esc(maxPts)}" data-original-answer="${esc(item.answer||"")}">
     <div class="solution-review-head"><h3>${esc(item.targetId)}${manualMode?"":` · ${esc(item.type||"")}`}</h3><span class="answer-key-status ${manualMode?"":Number(item.confidence)<0.7?"is-missing":""}">${manualMode?"Nhập thủ công":`AI tin cậy ${Math.round((Number(item.confidence)||0)*100)}%${showUncertainty?" · Cần kiểm tra":""}`}</span></div>
     <div class="solution-review-grid ${manualMode?"solution-review-grid-manual":""}">${leftPane}${answerPane}</div>
     ${reviewControls}
@@ -923,29 +939,53 @@ function setSolutionReviewReady(){
   if(!dialog||!save)return;
   const items=[...dialog.querySelectorAll("[data-solution-item]")];
   const manualMode=dialog.dataset.solutionMode==="manual";
-  save.disabled=!items.length||items.some(item=>(!manualMode&&!item.dataset.decision)||!item.querySelector("[data-solution-answer]")?.value.trim());
+  save.disabled=!items.length;
+  if(items.length){
+    const readyCount=items.filter(item=>(manualMode||Boolean(item.dataset.decision))&&Boolean(item.querySelector("[data-solution-answer]")?.value.trim())).length;
+    save.textContent=readyCount===items.length
+      ?"Lưu đáp án chuẩn đã duyệt"
+      :`Lưu đáp án chuẩn đã duyệt (${readyCount}/${items.length})`;
+  }else{
+    save.textContent="Lưu đáp án chuẩn đã duyệt";
+  }
 }
 function renderSolutionState(data){
   const dialog=$("#exam-solution-dialog");if(!dialog)return;
   const title=dialog.querySelector("[data-solution-title]"),status=dialog.querySelector("[data-solution-status]"),bar=dialog.querySelector("[data-solution-progress]"),label=dialog.querySelector("[data-solution-progress-label]"),error=dialog.querySelector("[data-solution-error]"),content=dialog.querySelector("[data-solution-review-content]"),retry=dialog.querySelector("[data-solution-retry]"),save=dialog.querySelector("[data-solution-save]"),download=dialog.querySelector("[data-solution-download]");
+  const switchAiBtn=dialog.querySelector("[data-solution-switch-ai]"),switchManualBtn=dialog.querySelector("[data-solution-switch-manual]"),approveAllBtn=dialog.querySelector("[data-solution-approve-all]");
   activeSolutionId=data.id;
   if(title)title.textContent=data.title||"Lời giải đề thi";
   if(status)status.textContent=solutionLabel(data.status)+(data.phase&&data.phase!==solutionLabel(data.status)?` · ${data.phase}`:"");
   if(bar)bar.value=Number(data.progress)||0;if(label)label.textContent=`${Number(data.progress)||0}%`;
   if(error){error.hidden=!data.errorMessage;error.textContent=data.errorMessage||"";}
   const ready=data.status==="review",approved=data.status==="ready";
-  const manualMode=(approved?data.approved?.source:data.generated?.source)==="manual-entry";
+  const activePayload=approved?(data.approved||data.generated):(data.generated||data.approved);
+  const manualMode=activePayload?.source==="manual-entry"||data.model==="Nhập thủ công"||data.phase==="Nhập đáp án thủ công";
   dialog.dataset.solutionMode=manualMode?"manual":"ai";
   if(title&&manualMode)title.textContent=`${data.title||"Đề thi"} · Nhập đáp án thủ công`;
-  const items=approved?data.approved?.questions:data.generated?.questions;
+  if(switchAiBtn){
+    switchAiBtn.classList.toggle("primary",!manualMode&&data.status!=="not_started");
+    switchAiBtn.classList.toggle("secondary",manualMode||data.status==="not_started");
+    switchAiBtn.disabled=["queued","reading","solving"].includes(data.status);
+  }
+  if(switchManualBtn){
+    switchManualBtn.classList.toggle("primary",manualMode);
+    switchManualBtn.classList.toggle("secondary",!manualMode);
+  }
+  const items=activePayload?.questions;
+  if(approveAllBtn){
+    approveAllBtn.hidden=!(ready&&!manualMode&&Array.isArray(items)&&items.length>0);
+  }
   if(content){
     if(Array.isArray(items)&&items.length){
-      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được admin xác nhận.":manualMode?`Chế độ nhập thủ công: điền đáp án cho ${data.generated.requiredCount} mục theo mã câu. Không gọi AI.`:`AI tạo ${data.generated.answerCount}/${data.generated.requiredCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready,manualMode)).join("")}`;
+      const reqCount=activePayload?.requiredCount||items.length;
+      const ansCount=activePayload?.answerCount??items.filter(q=>String(q?.answer||"").trim()).length;
+      content.innerHTML=`<p class="muted">${approved?"Bộ đáp án chuẩn đã được xác nhận. Bạn có thể bấm “🤖 AI giải đề & Duyệt lại” hoặc “✍️ Nhập đáp án thủ công” ở trên nếu muốn chỉnh sửa lại.":manualMode?`Chế độ nhập thủ công: điền đáp án cho ${reqCount} mục theo mã câu. Không gọi AI.`:`AI tạo ${ansCount}/${reqCount} đáp án. Đối chiếu từng câu với đề và nguồn đáp án (hoặc bấm “✓ Xác nhận nhanh tất cả đáp án AI”) trước khi lưu.`}${data.model?` · ${esc(data.model)}`:""}</p><p>${data.originalName?`<a class="text-button" href="/api/documents/${encodeURIComponent(data.id)}/file" target="_blank" rel="noopener">Mở đề gốc</a>`:""}${data.referenceAnswerName?` · <a class="text-button" href="/api/admin/documents/${encodeURIComponent(data.id)}/answer-key" target="_blank" rel="noopener">Mở file đáp án tham chiếu (${esc(data.referenceAnswerName)})</a>`:""}</p>${items.map(item=>solutionQuestionMarkup(item,ready,manualMode)).join("")}`;
     }else content.innerHTML="";
   }
   if(retry)retry.hidden=data.status!=="failed"&&data.status!=="not_started";
   if(save)save.hidden=!ready;
-  if(download){download.hidden=!data.generated;download.href=`/api/admin/documents/${encodeURIComponent(data.id)}/solution?download=json`;download.setAttribute("download",`loi-giai-${data.id}.json`);}
+  if(download){download.hidden=!activePayload;download.href=`/api/admin/documents/${encodeURIComponent(data.id)}/solution?download=json`;download.setAttribute("download",`loi-giai-${data.id}.json`);}
   setSolutionReviewReady();
   if(["queued","reading","solving"].includes(data.status)){
     clearTimeout(solutionPollTimer);solutionPollTimer=setTimeout(()=>loadSolutionState(data.id),1200);
@@ -967,21 +1007,30 @@ function showSolutionLoadError(error){
   if(retry)retry.hidden=false;
   if(save)save.hidden=true;
 }
-async function openSolutionDialog(id){
+async function openSolutionDialog(id, preferredMode=null){
   const dialog=$("#exam-solution-dialog");if(!dialog)return;
   activeSolutionId=String(id);dialog.querySelector("[data-solution-title]").textContent="Đang tải lời giải";
   dialog.querySelector("[data-solution-review-content]").replaceChildren();dialog.querySelector("[data-solution-error]").hidden=true;
   if(!dialog.open)dialog.showModal();
   try{
+    if(preferredMode==="manual"){
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
+    }else if(preferredMode==="ai"){
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/generate`,{method:"POST"});
+    }
     let data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
-    if(data.status==="not_started"){
+    if(data.status==="not_started"&&preferredMode!=="manual"){
       await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/generate`,{method:"POST"});
       data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
     }
     renderSolutionState(data);
   }catch(error){showSolutionLoadError(error);}
 }
-window.addEventListener("maihoc-exam-solution-job",event=>{if(activeUser?.role==="admin"&&event.detail?.id)openSolutionDialog(event.detail.id);});
+window.addEventListener("maihoc-exam-solution-job",event=>{
+  if(activeUser?.role==="admin"&&event.detail?.id){
+    openSolutionDialog(event.detail.id, event.detail.preferredMode||null);
+  }
+});
 document.addEventListener("click",event=>{
   const option=event.target.closest("[data-solution-option]");if(!option||option.disabled)return;
   const item=option.closest("[data-solution-item]");const answer=item?.querySelector("[data-solution-answer]");if(!item||!answer)return;
@@ -1010,7 +1059,8 @@ async function loadAdminProgress(){
      });
      const actionCell=document.createElement("td");
      if(p.itemType==="test"&&p.testSubmissionId){
-       const link=document.createElement("button");link.type="button";link.className="button secondary small";
+       const link=document.createElement("button");link.type="button";
+       link.className="button secondary small";
        link.dataset.action="view-test-submission";link.dataset.id=String(p.testSubmissionId);
        link.textContent=p.gradingStatus==="pending_grade"?"Đang chờ chấm":"Xem kết quả";
        actionCell.append(link);
@@ -1037,14 +1087,95 @@ document.addEventListener("click",async e=>{
   if(solutionManual){
     const id=solutionManual.dataset.solutionManual;
     try{
-      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
-      await openSolutionDialog(id);
+      await openSolutionDialog(id, "manual");
       await loadAnswerKeySections();
+      window.dispatchEvent(new Event("maihoc-tests-rerender"));
+      window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
     }catch(error){toastNotice(error.message||"Không thể mở chế độ nhập đáp án thủ công.","error");}
+    return;
+  }
+  const solutionGenerate=e.target.closest("[data-solution-generate]");
+  if(solutionGenerate){
+    const id=solutionGenerate.dataset.solutionGenerate;
+    try{
+      await openSolutionDialog(id, "ai");
+      await loadAnswerKeySections();
+      window.dispatchEvent(new Event("maihoc-tests-rerender"));
+      window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
+    }catch(error){toastNotice(error.message||"Không thể khởi chạy AI giải đề.","error");}
     return;
   }
   const solutionOpen=e.target.closest("[data-solution-open]");
   if(solutionOpen){openSolutionDialog(solutionOpen.dataset.solutionOpen);return;}
+  if(e.target.closest("[data-solution-switch-ai]")){
+    if(!activeSolutionId)return;
+    try{
+      await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/generate`,{method:"POST"});
+      await loadSolutionState(activeSolutionId);
+      await loadAnswerKeySections();
+      window.dispatchEvent(new Event("maihoc-tests-rerender"));
+      window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
+      toastNotice("Đã chuyển sang chế độ AI giải đề -> Giảng viên duyệt lại.","success");
+    }catch(error){
+      const node=$("[data-solution-error]");if(node){node.hidden=false;node.textContent=error.message;}
+    }
+    return;
+  }
+  if(e.target.closest("[data-solution-switch-manual]")){
+    if(!activeSolutionId)return;
+    try{
+      await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/manual`,{method:"POST"});
+      await loadSolutionState(activeSolutionId);
+      await loadAnswerKeySections();
+      window.dispatchEvent(new Event("maihoc-tests-rerender"));
+      window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
+      toastNotice("Đã chuyển sang chế độ Nhập đáp án thủ công.","success");
+    }catch(error){
+      const node=$("[data-solution-error]");if(node){node.hidden=false;node.textContent=error.message;}
+    }
+    return;
+  }
+  if(e.target.closest("[data-solution-approve-all]")){
+    const dialog=$("#exam-solution-dialog");if(!dialog)return;
+    const items=[...dialog.querySelectorAll("[data-solution-item]")];
+    let firstMissing=null;
+    for(const item of items){
+      const answer=item.querySelector("[data-solution-answer]");
+      if(!answer?.value?.trim()&&item.dataset.originalAnswer){
+        answer.value=item.dataset.originalAnswer;
+      }
+      if(answer?.value?.trim()){
+        item.dataset.decision="correct";
+        const label=item.querySelector("[data-solution-decision-label]");
+        if(label){
+          label.textContent="Đã xác nhận đúng";
+          label.classList.add("decision-status-correct");
+          label.classList.remove("decision-status-incorrect");
+        }
+        const controls=item.querySelector(".solution-review-controls");
+        if(controls){
+          controls.classList.add("decision-confirmed-correct");
+          controls.classList.remove("decision-confirmed-incorrect");
+        }
+        item.querySelectorAll("[data-solution-decision]").forEach(btn=>{
+          const isCorr=btn.dataset.solutionDecision==="correct";
+          btn.classList.toggle("is-selected",isCorr);
+          btn.classList.toggle("decision-button-correct",isCorr);
+          btn.classList.remove("decision-button-incorrect");
+        });
+      }else if(!firstMissing){
+        firstMissing=item;
+      }
+    }
+    setSolutionReviewReady();
+    if(firstMissing){
+      firstMissing.scrollIntoView({behavior:"smooth",block:"center"});
+      toastNotice(`Đã xác nhận các câu có sẵn đáp án. Vui lòng điền bổ sung câu ${firstMissing.dataset.solutionItem}.`, "error");
+    }else{
+      toastNotice("Đã xác nhận Đúng cho tất cả đáp án AI. Bạn có thể bấm Lưu đáp án chuẩn đã duyệt.", "success");
+    }
+    return;
+  }
   const decisionButton=e.target.closest("[data-solution-decision]");
   if(decisionButton){
     const item=decisionButton.closest("[data-solution-item]");
@@ -1079,20 +1210,52 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("[data-solution-save]")){
     if(!activeSolutionId)return;
     const button=e.target.closest("[data-solution-save]");button.disabled=true;
+    const errNode=$("[data-solution-error]");if(errNode)errNode.hidden=true;
     try{
-      const manualMode=$("#exam-solution-dialog").dataset.solutionMode==="manual";
-      const questions=[...$("#exam-solution-dialog").querySelectorAll("[data-solution-item]")].map(item=>{
-        const rubricText=item.querySelector("[data-solution-rubric]").value;
-        let rubric=[];try{rubric=JSON.parse(rubricText);}catch{throw new Error(`Rubric ${item.dataset.solutionItem} phải là JSON hợp lệ.`);}
-        return {targetId:item.dataset.solutionItem,decision:manualMode?"manual":item.dataset.decision,answer:item.querySelector("[data-solution-answer]").value,
-          explanation:item.querySelector("[data-solution-explanation]").value,rubric};
+      const dialog=$("#exam-solution-dialog");
+      const manualMode=dialog.dataset.solutionMode==="manual";
+      const items=[...dialog.querySelectorAll("[data-solution-item]")];
+      for(const item of items){
+        const targetId=item.dataset.solutionItem;
+        const ansVal=String(item.querySelector("[data-solution-answer]")?.value||"").trim();
+        if(!ansVal){
+          item.scrollIntoView({behavior:"smooth",block:"center"});
+          throw new Error(`Thiếu đáp án chuẩn cho câu ${targetId}. Vui lòng chọn hoặc nhập đáp án vào câu ${targetId} trước khi lưu.`);
+        }
+        if(!manualMode&&!item.dataset.decision){
+          item.scrollIntoView({behavior:"smooth",block:"center"});
+          throw new Error(`Câu ${targetId} chưa được xác nhận. Hãy bấm “Đúng” / “Sai, tôi đã sửa” ở câu ${targetId}, hoặc bấm “✓ Xác nhận nhanh tất cả đáp án AI” ở thanh phía trên.`);
+        }
+      }
+      const questions=items.map(item=>{
+        const targetId=item.dataset.solutionItem;
+        const answerVal=String(item.querySelector("[data-solution-answer]")?.value||"").trim();
+        const explanationEl=item.querySelector("[data-solution-explanation]");
+        const rubricEl=item.querySelector("[data-solution-rubric]");
+        const maxPts=Number(item.dataset.maxPoints)||0.25;
+        let rubric=[];
+        if(rubricEl&&rubricEl.value.trim()){
+          try{rubric=JSON.parse(rubricEl.value);}catch{throw new Error(`Rubric ${targetId} phải là JSON hợp lệ.`);}
+        }else{
+          rubric=[{criterion:`Đáp án đúng cho câu ${targetId}: ${answerVal}`,points:maxPts}];
+        }
+        return {
+          targetId,
+          decision:manualMode?"manual":(item.dataset.decision||"correct"),
+          answer:answerVal,
+          explanation:explanationEl?explanationEl.value.trim():"",
+          rubric
+        };
       });
-      await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/review`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({questions})});
+      const saveRes=await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/review`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({questions})});
       await loadSolutionState(activeSolutionId);await loadAnswerKeySections();
       window.dispatchEvent(new Event("maihoc-tests-rerender"));
       window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
-      toastNotice(manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
-    }catch(error){const node=$("[data-solution-error]");node.hidden=false;node.textContent=error.message;}
+      const autoGradeNote=Number(saveRes?.regradedSubmissionsCount)>0
+        ?` (Đã tự động chấm điểm ${saveRes.regradedSubmissionsCount} bài nộp của học viên)`
+        :"";
+      toastNotice((manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của giảng viên / admin.")+autoGradeNote,"success");
+    }catch(error){if(errNode){errNode.hidden=false;errNode.textContent=error.message;}}
     finally{setSolutionReviewReady();}
     return;
   }

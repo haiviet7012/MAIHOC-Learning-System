@@ -46,7 +46,7 @@ function assessmentConfigFor(subject,category){
     const config=JSON.parse(fs.readFileSync(path.join(root,"configs","exam-layouts.json"),"utf8"));
     const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[đĐ]/g,"d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g,"");
     const match=Object.keys(config.subjects||{}).find(name=>normalize(name)===normalize(subject));
-    const subjectConfig=match?config.subjects[match]:null;
+    const subjectConfig=match?config.subjects[match]:(normalize(subject)==="dethithptquocgia"?config.subjects["Toán"]:null);
     if(!subjectConfig)return null;
     const lookupCat = category === "test" ? "exam" : category;
     return {layout:subjectConfig[lookupCat]||subjectConfig.assessment||null,grading:subjectConfig.grading||null};
@@ -79,10 +79,11 @@ function notifyUser(userId,type,title,message,link=null){db.prepare("INSERT INTO
 
 function notifyAdmins(type,title,message,link=null){const admins=db.prepare("SELECT id FROM users WHERE role='admin'").all();for(const a of admins)notifyUser(a.id,type,title,message,link);}
 
+let testsModule=null;
 const activeSolutionJobs=new Set();
 function examSolverConfig(){
   return {provider:"gemini",apiKey:String(process.env.GEMINI_API_KEY||"").trim(),
-    modelName:String(process.env.GEMINI_SOLUTION_MODEL||"gemini-3.6-flash").trim()};
+    modelName:String(process.env.GEMINI_SOLUTION_MODEL||process.env.GEMINI_MODEL||"gemini-2.5-flash").trim()};
 }
 function updateSolutionJob(documentId,values){
   const fields=Object.keys(values);if(!fields.length)return;
@@ -97,8 +98,9 @@ function queueExamSolution(documentId){
     let solver=examSolverConfig();
     try{
       const document=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,
+        t.questions_json AS test_questions_json,
         ak.normalized_json AS reference_answer_json,ak.original_name AS reference_answer_name
-        FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
+        FROM documents d LEFT JOIN tests t ON t.id=d.id LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
       if(!document||!['exam','practice','test'].includes(document.category))return;
       const state=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
       if(!state||!['queued','reading','solving'].includes(state.status))return;
@@ -110,12 +112,13 @@ function queueExamSolution(documentId){
       }
       const config=assessmentConfigFor(document.subject,document.category);
       let referenceAnswerKey=null;try{referenceAnswerKey=JSON.parse(document.reference_answer_json||"null");}catch{}
+      let customTargets=null;if(document.category==="test"&&document.test_questions_json){try{const parsedT=JSON.parse(document.test_questions_json);if(Array.isArray(parsedT)&&parsedT.length)customTargets=parsedT;}catch{}}
       updateSolutionJob(id,{status:"reading",progress:10,phase:"Đang đọc đề",error_code:null,error_message:null,model:solver.modelName});
       const sourceHash=crypto.createHash("sha256").update(Buffer.from(document.file_data)).digest("hex");
       updateSolutionJob(id,{status:"solving",progress:25,phase:`${solver.provider} đang giải từng câu`,source_hash:sourceHash});
       const solution=await solveExamDocument({
         buffer:Buffer.from(document.file_data),filename:document.original_name,title:document.title,
-        layout:config?.layout,grading:config?.grading,
+        layout:config?.layout,grading:config?.grading,customTargets,
         referenceAnswerKey,
         provider:solver.provider,modelName:solver.modelName,baseUrl:solver.baseUrl,
         apiKey:solver.apiKey
@@ -1260,7 +1263,7 @@ app.get("/api/admin/answer-keys",requireAdmin,(req,res)=>{
     ak.original_name AS answerKeyOriginalName,ak.content_type AS answerKeyContentType,
     ak.source_format AS answerKeySourceFormat,ak.normalized_json AS normalizedAnswerKey,
     ak.normalization_error AS normalizationError,ak.grading_available AS gradingAvailable,
-    es.status AS solutionStatus,es.progress AS solutionProgress,es.phase AS solutionPhase,
+    es.status AS solutionStatus,es.progress AS solutionProgress,es.phase AS solutionPhase,es.model AS solutionModel,
     es.error_code AS solutionErrorCode,es.error_message AS solutionErrorMessage
     FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
     LEFT JOIN exam_solutions es ON es.document_id=d.id
@@ -1276,6 +1279,7 @@ app.get("/api/admin/answer-keys",requireAdmin,(req,res)=>{
       normalizationError:row.normalizationError||null,
       gradingAvailable:Boolean(row.gradingAvailable&&row.normalizedAnswerKey),
       solutionStatus:row.solutionStatus||"not_started",solutionProgress:Number(row.solutionProgress)||0,
+      solutionMode:(row.solutionModel==="Nhập thủ công"||row.solutionPhase==="Nhập đáp án thủ công")?"manual":"ai",
       solutionPhase:row.solutionPhase||"Chưa tạo lời giải",solutionErrorCode:row.solutionErrorCode||null,
       solutionErrorMessage:row.solutionErrorMessage||null
     });
@@ -1334,8 +1338,9 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   }
   const config=assessmentConfigFor(row.subject,row.category);
   const isManualSource=generated.source==="manual-entry";
-  if(!isManualSource&&(!config?.grading||!(config.layout?.sections||[]).filter(section=>Number(section.count)>0).every(section=>section.grading)))return res.status(409).json({error:"Thiếu criteria chấm điểm bắt buộc trong configs/exam-layouts.json."});
+  if(!isManualSource&&row.category!=="test"&&(!config?.grading||!(config.layout?.sections||[]).filter(section=>Number(section.count)>0).every(section=>section.grading)))return res.status(409).json({error:"Thiếu criteria chấm điểm bắt buộc trong configs/exam-layouts.json."});
   const answers={};
+  const points={};
   const reviewed=[];
   for(const original of generated.questions){
     const item=submittedById.get(original.targetId);
@@ -1354,22 +1359,37 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
       else if(["sai","false","s","f"].includes(truth))answers[original.targetId]="false";
       else return res.status(400).json({error:`Đáp án ${original.targetId} phải là Đúng hoặc Sai.`});
     }else answers[original.targetId]=answer;
-    const rubric=Array.isArray(item.rubric)?item.rubric.slice(0,20).map(criterion=>({
+    const expectedPoints=Number(original.maximumPoints)||(original.type==="essay"?0.5:0.25);
+    points[original.targetId]=expectedPoints;
+    let rubric=Array.isArray(item.rubric)?item.rubric.slice(0,20).map(criterion=>({
       criterion:String(criterion.criterion||"").trim().slice(0,1000),points:Math.max(0,Math.min(10,Number(criterion.points)||0))
-    })).filter(criterion=>criterion.criterion):original.rubric||[];
-    if(original.type==="essay"&&!isManualSource){
+    })).filter(criterion=>criterion.criterion):(Array.isArray(original.rubric)?original.rubric:[]);
+    if(!rubric.length){
+      rubric=[{criterion:`Đáp án đúng cho câu ${original.targetId}: ${answers[original.targetId]}`,points:expectedPoints}];
+    }else if(original.type==="essay"&&expectedPoints>0){
       const rubricTotal=rubric.reduce((sum,criterion)=>sum+criterion.points,0);
-      const expectedPoints=Number(original.maximumPoints)||0;
-      if(!rubric.length||Math.abs(rubricTotal-expectedPoints)>0.01)return res.status(400).json({error:`Rubric ${original.targetId} phải phân bổ đủ ${expectedPoints} điểm theo config.`});
+      if(Math.abs(rubricTotal-expectedPoints)>0.01){
+        if(rubricTotal>0){
+          rubric=rubric.map((r,idx,arr)=>({
+            ...r,
+            points:idx===arr.length-1
+              ?Math.max(0,Math.round((expectedPoints-arr.slice(0,-1).reduce((acc,x)=>acc+Math.round((x.points/rubricTotal)*expectedPoints*100)/100,0))*100)/100)
+              :Math.round((r.points/rubricTotal)*expectedPoints*100)/100
+          }));
+        }else{
+          rubric[0].points=expectedPoints;
+        }
+      }
     }
     const uncertainty=String(original.uncertainty||"").trim();
-    reviewed.push({...original,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
+    reviewed.push({...original,maximumPoints:expectedPoints,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
       uncertainty:/^(none|null|undefined|n\/a)$/i.test(uncertainty)?"":uncertainty,
       reviewStatus:item.decision==="manual"?"manual":item.decision==="correct"?"approved":"corrected"});
   }
   const approved={schemaVersion:1,source:isManualSource?"manual-entry":"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
-    version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,questions:reviewed,
+    version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,points,questions:reviewed,
     reviewedAt:new Date().toISOString(),reviewedBy:req.user.id};
+  let regradeStats={gradedCount:0,newlyGradedCount:0};
   const review=db.transaction(()=>{
     const insertAudit=db.prepare(`INSERT INTO exam_solution_reviews(document_id,solution_version,target_id,decision,before_json,after_json,reviewed_by)
       VALUES(?,?,?,?,?,?,?)`);
@@ -1385,7 +1405,10 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     }
   });
   review();
-  res.json({ok:true,status:"ready",version:approved.version,scale:approved.scale,questionCount:reviewed.length});
+  if(row.category==="test"&&testsModule?.regradeTestSubmissionsForTest){
+    try{regradeStats=testsModule.regradeTestSubmissionsForTest(documentId,req.user);}catch(err){console.error("Could not auto-regrade test submissions:",err.message);}
+  }
+  res.json({ok:true,status:"ready",version:approved.version,scale:approved.scale,questionCount:reviewed.length,regradedSubmissionsCount:regradeStats.gradedCount,newlyGradedCount:regradeStats.newlyGradedCount});
 });
 
 app.post("/api/admin/documents/:id/answer-key",requireSameOrigin,requireAdmin,upload.single("answerKey"),async(req,res)=>{
@@ -1561,7 +1584,7 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 
 
 
-installTestsModule({
+testsModule = installTestsModule({
   app,
   db,
   upload,

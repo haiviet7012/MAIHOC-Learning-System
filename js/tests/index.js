@@ -68,6 +68,40 @@ export function openCreateTestDialog() {
   openDialog("create-test-dialog");
 }
 
+function renderTestAnswerActionButtons(t, compact = false) {
+  const isAiRunning = ["queued", "reading", "solving"].includes(t.solutionStatus);
+  const isAiReview = t.solutionStatus === "review" && t.solutionMode !== "manual";
+  const isManualReview = t.solutionStatus === "review" && t.solutionMode === "manual";
+  const aiLabel = isAiRunning
+    ? `⏳ AI (${t.solutionProgress || 0}%)`
+    : isAiReview
+      ? "🤖 Duyệt lời giải AI"
+      : t.solutionStatus === "failed"
+        ? "🤖 Thử giải lại AI"
+        : t.hasApprovedAnswers
+          ? "🤖 AI giải lại"
+          : "🤖 AI giải đề";
+  const manualLabel = t.hasApprovedAnswers
+    ? "✍️ Sửa thủ công"
+    : isManualReview
+      ? "✍️ Tiếp tục nhập thủ công"
+      : "✍️ Nhập thủ công";
+
+  const viewReadyBtn = t.hasApprovedAnswers
+    ? `<button type="button" class="button secondary small" data-test-answer-view="${escapeHTML(t.id)}" title="Xem bộ đáp án chuẩn đã duyệt">✓ Đáp án</button>`
+    : "";
+
+  return `
+    ${viewReadyBtn}
+    <button type="button" class="button ${isAiReview ? "primary" : "secondary"} small" data-test-answer-ai="${escapeHTML(t.id)}" title="Chọn AI giải đề rồi giảng viên duyệt lại">
+      ${escapeHTML(compact && !isAiReview && !isAiRunning ? "🤖 AI giải" : aiLabel)}
+    </button>
+    <button type="button" class="button ${isManualReview ? "primary" : "secondary"} small" data-test-answer-manual="${escapeHTML(t.id)}" title="Nhập đáp án chuẩn thủ công theo từng câu">
+      ${escapeHTML(compact && !isManualReview ? "✍️ Thủ công" : manualLabel)}
+    </button>
+  `;
+}
+
 export function renderTestsQueuePage(currentUser) {
   const isAdmin = currentUser?.role === "admin";
   const filtered = cachedTests.filter(t => {
@@ -134,9 +168,7 @@ export function renderTestsQueuePage(currentUser) {
 
           const adminControlsHtml = isAdmin
             ? `
-              <button type="button" class="button secondary small" data-test-answer-pipeline="${escapeHTML(test.id)}" title="Nhập hoặc duyệt đáp án theo pipeline">
-                ${test.hasApprovedAnswers ? "✓ Đáp án" : "＋ Nhập đáp án"}
-              </button>
+              ${renderTestAnswerActionButtons(test, true)}
               <button type="button" class="button danger small" data-delete-test="${escapeHTML(test.id)}" title="Xóa bài kiểm tra">Xóa</button>
             `
             : "";
@@ -336,9 +368,11 @@ function renderGradingQuestions(data) {
     .map(item => {
       const type = String(item.type || "multiple_choice").toLowerCase();
       const targetId = String(item.targetId);
+      const questionId = String(item.questionId || targetId);
+      const statement = String(item.statement || "");
       const studentAnswer = String(item.studentAnswer || "").trim();
       const currentAnswer = String(item.answer || (type === "multiple_choice" ? "A" : type === "true_false" ? "true" : "")).trim();
-      const maxPts = Number(item.maximumPoints) || 0.25;
+      const maxPts = Number(item.maximumPoints) || (type === "essay" ? 0.5 : type === "true_false" ? 1 : 0.25);
       const rubric = Array.isArray(item.rubric) && item.rubric.length
         ? item.rubric
         : [{ criterion: `Chọn đúng đáp án ${currentAnswer || "chuẩn"} (${maxPts} điểm)`, points: maxPts }];
@@ -389,17 +423,18 @@ function renderGradingQuestions(data) {
           </div>
         `;
       } else {
+        const manualOverrideVal = item.manualPointsOverride != null ? escapeHTML(item.manualPointsOverride) : "";
         answerEditorHtml = `
-          <input data-grading-answer type="text" value="${escapeHTML(currentAnswer)}" placeholder="Nhập đáp án đúng chuẩn...">
+          <input data-grading-answer type="text" value="${escapeHTML(currentAnswer)}" placeholder="Nhập đáp án đúng chuẩn (hoặc chấm điểm trực tiếp bên dưới)...">
           <label style="margin-top:8px">
             Điểm chấm trực tiếp cho câu này (Tối đa ${maxPts} điểm — để trống sẽ tự khớp đáp án)
-            <input data-grading-points-override type="number" step="0.05" min="0" max="${maxPts}" value="${item.earnedPoints != null ? escapeHTML(item.earnedPoints) : ""}" placeholder="Tự động theo đáp án đúng (${maxPts}đ)">
+            <input data-grading-points-override type="number" step="0.05" min="0" max="${maxPts}" value="${manualOverrideVal}" placeholder="Tự động theo đáp án đúng (${maxPts}đ)">
           </label>
         `;
       }
 
       return `
-        <article class="solution-review-item" data-grading-item="${escapeHTML(targetId)}" data-grading-type="${escapeHTML(type)}" data-grading-max-points="${maxPts}" data-student-answer="${escapeHTML(studentAnswer)}">
+        <article class="solution-review-item" data-grading-item="${escapeHTML(targetId)}" data-grading-question-id="${escapeHTML(questionId)}" data-grading-statement="${escapeHTML(statement)}" data-grading-question-text="${escapeHTML(item.questionText || `Câu ${targetId}`)}" data-grading-type="${escapeHTML(type)}" data-grading-max-points="${maxPts}" data-student-answer="${escapeHTML(studentAnswer)}">
           <div class="solution-review-head">
             <h3>${escapeHTML(targetId)} · ${escapeHTML(type)}</h3>
             <span class="grading-match-chip" data-grading-item-status>Đang đối chiếu…</span>
@@ -436,6 +471,12 @@ function renderGradingQuestions(data) {
     .join("");
 }
 
+function normalizeMathAnswerClient(val) {
+  let s = String(val || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (/^[+-]?\d+,\d+$/.test(s)) s = s.replace(",", ".");
+  return s;
+}
+
 function recalculateLiveGradingScore() {
   const dialog = document.getElementById("test-grading-dialog");
   if (!dialog) return;
@@ -449,7 +490,7 @@ function recalculateLiveGradingScore() {
   for (const item of items) {
     const targetId = item.dataset.gradingItem;
     const type = item.dataset.gradingType;
-    const maxPts = Number(item.dataset.gradingMaxPoints) || 0.25;
+    const maxPts = Number(item.dataset.gradingMaxPoints) || (type === "essay" ? 0.5 : 0.25);
     const studentAns = String(item.dataset.studentAnswer || "").trim().toLowerCase();
     const correctAns = String(item.querySelector("[data-grading-answer]")?.value || "").trim().toLowerCase();
     const overrideInput = item.querySelector("[data-grading-points-override]");
@@ -463,18 +504,22 @@ function recalculateLiveGradingScore() {
       const normTf = v => (["true", "dung", "đúng", "d", "t"].includes(v) ? "true" : ["false", "sai", "s", "f"].includes(v) ? "false" : v);
       isMatch = normTf(correctAns) !== "" && normTf(studentAns) === normTf(correctAns);
     } else {
-      isMatch = correctAns !== "" && studentAns.replace(/\s+/g, "") === correctAns.replace(/\s+/g, "");
+      const normCorr = normalizeMathAnswerClient(correctAns);
+      const normStud = normalizeMathAnswerClient(studentAns);
+      isMatch = normCorr !== "" && normCorr === normStud;
     }
 
-    if (type === "true_false" && /^[ivx]+-\d+[a-d]$/i.test(targetId)) {
-      const qId = targetId.slice(0, -1);
-      if (!tfGroups.has(qId)) tfGroups.set(qId, { correctCount: 0, total: 0 });
+    const isTfStatement = type === "true_false" && (item.dataset.gradingStatement || /^[ivx0-9]+-\d+[a-d]$/i.test(targetId));
+    if (isTfStatement) {
+      const qId = item.dataset.gradingQuestionId && item.dataset.gradingQuestionId !== targetId
+        ? item.dataset.gradingQuestionId
+        : targetId.slice(0, -1);
+      if (!tfGroups.has(qId)) tfGroups.set(qId, { correctCount: 0, total: 0, chips: [] });
       const g = tfGroups.get(qId);
       g.total++;
       if (isMatch) g.correctCount++;
       if (statusChip) {
-        statusChip.textContent = isMatch ? "✓ Học viên làm Đúng ý này" : "✗ Học viên làm Sai / Chưa khớp";
-        statusChip.className = `grading-match-chip ${isMatch ? "is-correct" : "is-wrong"}`;
+        g.chips.push({ chip: statusChip, isMatch });
       }
       continue;
     }
@@ -493,10 +538,15 @@ function recalculateLiveGradingScore() {
     }
   }
 
-  for (const g of tfGroups.values()) {
+  for (const [qId, g] of tfGroups.entries()) {
     const weights = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
+    const groupPts = weights[g.correctCount] ?? 0;
     totalMax += 1.0;
-    totalEarned += weights[g.correctCount] ?? 0;
+    totalEarned += groupPts;
+    for (const { chip, isMatch } of g.chips) {
+      chip.textContent = `${isMatch ? "✓ Đúng ý này" : "✗ Sai ý này"} (${qId}: ${g.correctCount}/${g.total} ý → +${groupPts.toFixed(2)}/1.00đ)`;
+      chip.className = `grading-match-chip ${isMatch ? "is-correct" : "is-wrong"}`;
+    }
   }
 
   const scaled = totalMax > 0 && Math.abs(totalMax - 10) > 0.01
@@ -522,7 +572,7 @@ export async function loadAdminTestsAndPendingGrading() {
         <div>
           <span class="pill">GIẢNG VIÊN & ADMIN · QUẢN LÝ KIỂM TRA & CHẤM ĐIỂM</span>
           <h2>Bài kiểm tra chờ chấm</h2>
-          <p class="muted">Khi giảng viên chọn chưa nhập đáp án ngay lúc đăng đề, bài làm của học viên sẽ xuất hiện tại đây với trạng thái “Đang chờ chấm”. Nhấn vào từng bài để mở khung đối chiếu đề bài (trái) và đáp án đúng (phải).</p>
+          <p class="muted">Khi giảng viên chọn chưa nhập đáp án ngay lúc đăng đề, bài làm của học viên sẽ xuất hiện tại đây với trạng thái “Đang chờ chấm”. Giảng viên có thể chấm trực tiếp từng bài, hoặc chọn <strong>🤖 AI giải đề -> Duyệt lại</strong> / <strong>✍️ Nhập đáp án thủ công</strong> để hệ thống tự động chấm toàn bộ bài nộp cùng đề.</p>
         </div>
         <div class="tests-header-actions">
           <button type="button" class="button primary small" data-open-create-test>＋ Thêm bài kiểm tra</button>
@@ -533,7 +583,7 @@ export async function loadAdminTestsAndPendingGrading() {
       <div class="section-head" style="margin-top:28px">
         <div>
           <h2>Danh sách Bài kiểm tra trên hệ thống</h2>
-          <p class="muted">Quản lý đề kiểm tra, thời gian đóng/mở, nhập/duyệt đáp án chuẩn và xuất bảng điểm theo từng đề.</p>
+          <p class="muted">Quản lý đề kiểm tra, thời gian đóng/mở, chọn <strong>🤖 AI giải đề &amp; duyệt lại</strong> hoặc <strong>✍️ Nhập đáp án thủ công</strong> (tương tự phần duyệt đáp án cho tài liệu / đề thi thử) và xuất bảng điểm.</p>
         </div>
       </div>
       <div id="admin-tests-table-box"><p class="muted">Đang tải danh sách bài kiểm tra…</p></div>
@@ -589,9 +639,17 @@ export async function loadAdminTestsAndPendingGrading() {
                           <strong>${isPending ? "Đang chờ chấm" : `${Number(sub.score ?? 0).toFixed(2)}/${sub.scale || 10}`}</strong>
                         </td>
                         <td>
-                          <button type="button" class="button ${isPending ? "primary" : "secondary"} small" data-open-grade-submission="${sub.id}">
-                            ${isPending ? "✎ Chấm bài" : "Xem / Chấm lại"}
-                          </button>
+                          <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <button type="button" class="button ${isPending ? "primary" : "secondary"} small" data-open-grade-submission="${sub.id}">
+                              ${isPending ? "✎ Chấm bài" : "Xem / Chấm lại"}
+                            </button>
+                            <button type="button" class="button secondary small" data-test-answer-ai="${escapeHTML(sub.testId)}" title="Dùng AI giải đề và duyệt đáp án cho đề kiểm tra này">
+                              🤖 AI giải đề
+                            </button>
+                            <button type="button" class="button secondary small" data-test-answer-manual="${escapeHTML(sub.testId)}" title="Nhập đáp án chuẩn thủ công cho đề kiểm tra này">
+                              ✍️ Nhập ĐA thủ công
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     `;
@@ -623,47 +681,53 @@ export async function loadAdminTestsAndPendingGrading() {
                   <th>Môn / Lớp</th>
                   <th>Ngày mở — Hạn cuối</th>
                   <th>Thời gian làm</th>
-                  <th>Cơ chế đáp án</th>
+                  <th>Trạng thái đáp án</th>
                   <th>Lượt nộp</th>
-                  <th>Thao tác</th>
+                  <th>Nhập / Duyệt đáp án &amp; Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 ${cachedTests
-                  .map(
-                    t => `
-                  <tr>
-                    <td>
-                      <strong>${escapeHTML(t.title)}</strong><br>
-                      <span class="muted tiny">${escapeHTML(t.originalName || t.filename || "")}</span>
-                    </td>
-                    <td>${escapeHTML(t.subject)} · Lớp ${escapeHTML(t.grade)}</td>
-                    <td>
-                      <span class="tiny">Mở: <strong>${escapeHTML(formatTestDateTime(t.openAt))}</strong></span><br>
-                      <span class="tiny">Đóng: <strong>${escapeHTML(formatTestDateTime(t.closeAt))}</strong></span>
-                    </td>
-                    <td>${t.durationMinutes ? `${t.durationMinutes} phút` : "Không giới hạn"}</td>
-                    <td>
-                      <span class="answer-key-status ${t.hasApprovedAnswers ? "is-ready" : ""}">
-                        ${t.hasApprovedAnswers ? "Đã có đáp án chuẩn" : "Chưa nhập đáp án (Chờ chấm)"}
-                      </span>
-                    </td>
-                    <td>
-                      ${t.totalSubmissionsCount || 0} bài nộp
-                      ${t.pendingGradingCount > 0 ? `<br><strong style="color:#d97706">${t.pendingGradingCount} chờ chấm</strong>` : ""}
-                    </td>
-                    <td>
-                      <div style="display:flex;gap:6px;flex-wrap:wrap">
-                        <button type="button" class="button secondary small" data-test-answer-pipeline="${escapeHTML(t.id)}">
-                          ${t.hasApprovedAnswers ? "Xem / Sửa đáp án" : "Nhập đáp án"}
-                        </button>
-                        <a class="button secondary small" href="/api/admin/tests/export-sheets?testId=${encodeURIComponent(t.id)}&format=xlsx" target="_blank" rel="noopener">Xuất điểm</a>
-                        <button type="button" class="button danger small" data-delete-test="${escapeHTML(t.id)}">Xóa</button>
-                      </div>
-                    </td>
-                  </tr>
-                `
-                  )
+                  .map(t => {
+                    let statusBadgeHtml = "";
+                    if (t.hasApprovedAnswers) {
+                      statusBadgeHtml = `<span class="answer-key-status is-ready">Đã duyệt đáp án chuẩn</span>`;
+                    } else if (["queued", "reading", "solving"].includes(t.solutionStatus)) {
+                      statusBadgeHtml = `<span class="answer-key-status">${escapeHTML(t.solutionPhase || "AI đang giải đề")} · ${t.solutionProgress || 0}%</span>`;
+                    } else if (t.solutionStatus === "review") {
+                      statusBadgeHtml = `<span class="answer-key-status">${t.solutionMode === "manual" ? "Đang nhập thủ công (Chờ lưu)" : "Chờ duyệt lời giải AI"}</span>`;
+                    } else if (t.solutionStatus === "failed") {
+                      statusBadgeHtml = `<span class="answer-key-status is-missing">AI giải lỗi (Có thể thử lại / Nhập tay)</span>`;
+                    } else {
+                      statusBadgeHtml = `<span class="answer-key-status">Chưa nhập đáp án (Chờ chấm)</span>`;
+                    }
+                    return `
+                      <tr>
+                        <td>
+                          <strong>${escapeHTML(t.title)}</strong><br>
+                          <span class="muted tiny">${escapeHTML(t.originalName || t.filename || "")}</span>
+                        </td>
+                        <td>${escapeHTML(t.subject)} · Lớp ${escapeHTML(t.grade)}</td>
+                        <td>
+                          <span class="tiny">Mở: <strong>${escapeHTML(formatTestDateTime(t.openAt))}</strong></span><br>
+                          <span class="tiny">Đóng: <strong>${escapeHTML(formatTestDateTime(t.closeAt))}</strong></span>
+                        </td>
+                        <td>${t.durationMinutes ? `${t.durationMinutes} phút` : "Không giới hạn"}</td>
+                        <td>${statusBadgeHtml}</td>
+                        <td>
+                          ${t.totalSubmissionsCount || 0} bài nộp
+                          ${t.pendingGradingCount > 0 ? `<br><strong style="color:#d97706">${t.pendingGradingCount} chờ chấm</strong>` : ""}
+                        </td>
+                        <td>
+                          <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            ${renderTestAnswerActionButtons(t, false)}
+                            <a class="button secondary small" href="/api/admin/tests/export-sheets?testId=${encodeURIComponent(t.id)}&format=xlsx" target="_blank" rel="noopener">Xuất điểm</a>
+                            <button type="button" class="button danger small" data-delete-test="${escapeHTML(t.id)}">Xóa</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `;
+                  })
                   .join("")}
               </tbody>
             </table>
@@ -690,12 +754,12 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
       window.dispatchEvent(new Event("maihoc-tests-rerender"));
       return;
     }
-    const answerModeRadio = event.target.closest('input[name="answerMode"]');
-    if (answerModeRadio) {
-      const form = answerModeRadio.closest("form");
+    const answerModeControl = event.target.closest('input[name="answerMode"], select[name="answerMode"]');
+    if (answerModeControl) {
+      const form = answerModeControl.closest("form");
       const immediateBox = form?.querySelector("[data-immediate-answer-options]");
       if (immediateBox) {
-        immediateBox.hidden = answerModeRadio.value === "deferred";
+        immediateBox.hidden = answerModeControl.value === "deferred";
       }
     }
   });
@@ -737,19 +801,70 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
       return;
     }
 
-    const pipelineBtn = event.target.closest("[data-test-answer-pipeline]");
-    if (pipelineBtn) {
+    const aiPipelineBtn = event.target.closest("[data-test-answer-ai]");
+    if (aiPipelineBtn) {
       event.preventDefault();
-      const testId = pipelineBtn.dataset.testAnswerPipeline;
-      try {
-        await fetch(`/api/admin/documents/${encodeURIComponent(testId)}/solution/manual`, {
-          method: "POST",
-          credentials: "same-origin"
-        });
-        window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job", { detail: { id: testId } }));
-      } catch (error) {
-        toast(error.message || "Không thể mở trình quản lý đáp án.", "error");
-      }
+      const testId = aiPipelineBtn.dataset.testAnswerAi;
+      const testObj = findCachedTest(testId);
+      const isAlreadyAiReviewOrRunning =
+        testObj &&
+        (["queued", "reading", "solving"].includes(testObj.solutionStatus) ||
+          (testObj.solutionStatus === "review" && testObj.solutionMode !== "manual"));
+      window.dispatchEvent(
+        new CustomEvent("maihoc-exam-solution-job", {
+          detail: { id: testId, preferredMode: isAlreadyAiReviewOrRunning ? null : "ai" }
+        })
+      );
+      return;
+    }
+
+    const manualPipelineBtn = event.target.closest("[data-test-answer-manual], [data-test-answer-pipeline]");
+    if (manualPipelineBtn) {
+      event.preventDefault();
+      const testId = manualPipelineBtn.dataset.testAnswerManual || manualPipelineBtn.dataset.testAnswerPipeline;
+      window.dispatchEvent(
+        new CustomEvent("maihoc-exam-solution-job", {
+          detail: { id: testId, preferredMode: "manual" }
+        })
+      );
+      return;
+    }
+
+    const viewKeyBtn = event.target.closest("[data-test-answer-view]");
+    if (viewKeyBtn) {
+      event.preventDefault();
+      const testId = viewKeyBtn.dataset.testAnswerView;
+      window.dispatchEvent(
+        new CustomEvent("maihoc-exam-solution-job", {
+          detail: { id: testId, preferredMode: null }
+        })
+      );
+      return;
+    }
+
+    if (event.target.closest("[data-grading-use-ai]")) {
+      event.preventDefault();
+      if (!activeGradingContext?.testId) return;
+      const testId = activeGradingContext.testId;
+      closeDialog("test-grading-dialog");
+      window.dispatchEvent(
+        new CustomEvent("maihoc-exam-solution-job", {
+          detail: { id: testId, preferredMode: "ai" }
+        })
+      );
+      return;
+    }
+
+    if (event.target.closest("[data-grading-use-manual-key]")) {
+      event.preventDefault();
+      if (!activeGradingContext?.testId) return;
+      const testId = activeGradingContext.testId;
+      closeDialog("test-grading-dialog");
+      window.dispatchEvent(
+        new CustomEvent("maihoc-exam-solution-job", {
+          detail: { id: testId, preferredMode: "manual" }
+        })
+      );
       return;
     }
 
@@ -835,24 +950,36 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
         const items = [...dialog.querySelectorAll("[data-grading-item]")];
         const questions = items.map(item => {
           const targetId = item.dataset.gradingItem;
+          const questionId = item.dataset.gradingQuestionId || targetId;
+          const statement = item.dataset.gradingStatement || undefined;
+          const questionText = item.dataset.gradingQuestionText || `Câu ${targetId}`;
           const type = item.dataset.gradingType;
-          const maximumPoints = Number(item.dataset.gradingMaxPoints) || 0.25;
+          const maximumPoints = Number(item.dataset.gradingMaxPoints) || (type === "essay" ? 0.5 : 0.25);
           const answer = String(item.querySelector("[data-grading-answer]")?.value || "").trim();
-          if (!answer) {
+          const overrideEl = item.querySelector("[data-grading-points-override]");
+          const pointsAwarded = overrideEl && overrideEl.value.trim() !== "" ? Number(overrideEl.value) : undefined;
+
+          if (!answer && type !== "essay" && pointsAwarded === undefined) {
+            item.scrollIntoView({ behavior: "smooth", block: "center" });
             throw new Error(`Vui lòng chọn hoặc nhập đáp án đúng cho câu ${targetId}.`);
           }
           const explanation = String(item.querySelector("[data-grading-explanation]")?.value || "").trim();
           const rubricText = String(item.querySelector("[data-grading-rubric]")?.value || "[]").trim();
           let rubric = [];
-          try {
-            rubric = JSON.parse(rubricText);
-          } catch {
-            throw new Error(`Rubric câu ${targetId} phải là JSON hợp lệ.`);
+          if (rubricText) {
+            try {
+              rubric = JSON.parse(rubricText);
+            } catch {
+              throw new Error(`Rubric câu ${targetId} phải là JSON hợp lệ.`);
+            }
+          } else {
+            rubric = [{ criterion: `Đáp án chuẩn câu ${targetId}`, points: maximumPoints }];
           }
-          const overrideEl = item.querySelector("[data-grading-points-override]");
-          const pointsAwarded = overrideEl && overrideEl.value.trim() !== "" ? Number(overrideEl.value) : undefined;
           return {
             targetId,
+            questionId,
+            ...(statement ? { statement } : {}),
+            questionText,
             type,
             maximumPoints,
             answer,

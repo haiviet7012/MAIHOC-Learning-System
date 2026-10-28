@@ -205,9 +205,41 @@ function readerPage() {
         <aside class="reader-side"><h3>Tài liệu cùng lớp</h3>${related.length ? related.map(item => `<button class="button ghost small" data-action="read-doc" data-id="${escapeHTML(item.id)}">${escapeHTML(item.title)}</button>`).join("") : `<p class="muted">Chưa có tài liệu liên quan.</p>`}</aside>
       </div>`;
 }
+function questionsFromTestTargets(targets = []) {
+    const byQ = new Map();
+    const romanOrderMap = { I: 1, II: 2, III: 3, IV: 4, V: 5 };
+    targets.forEach((t, idx) => {
+        const qId = String(t.questionId || t.targetId || `I-${idx + 1}`);
+        const secId = String(t.sectionId || qId.split("-")[0] || "I");
+        const num = String(t.number || qId.split("-").pop() || (idx + 1));
+        const type = String(t.type || "multiple_choice");
+        const secOrder = romanOrderMap[secId.toUpperCase()] || Number(secId) || 1;
+        if (!byQ.has(qId)) {
+            byQ.set(qId, {
+                id: qId,
+                answerId: qId,
+                number: num,
+                sectionId: secId,
+                layoutSectionOrder: secOrder,
+                type,
+                text: t.questionText || `Câu ${num}`,
+                options: type === "multiple_choice" ? ["A", "B", "C", "D"].map(id => ({ id, text: "" })) : [],
+                statements: type === "true_false" ? ["a", "b", "c", "d"].map(id => ({ id, text: "" })) : [],
+                documentOrder: idx
+            });
+        }
+    });
+    return [...byQ.values()];
+}
 function questionsFor(doc) {
     if (activeExamQuestionsFor === String(doc?.id)) return activeExamQuestions;
     const layout = assessmentLayoutFor(doc);
+    if (doc?.category === "test" && Array.isArray(doc?.questionTargets) && doc.questionTargets.length) {
+        const isShortCustom = doc.questionTargets.length <= 15 && !doc.questionTargets.some(t => t.type === "true_false");
+        if (isShortCustom || !layout) {
+            return questionsFromTestTargets(doc.questionTargets);
+        }
+    }
     const parsedSource = parseQuestionText(doc?.content || "");
     const isShortOrSample = Boolean((doc?.sample && doc?.content) || (parsedSource.length > 0 && parsedSource.length <= 15));
     if (parsedSource.length) {
@@ -220,13 +252,18 @@ function questionsFor(doc) {
     if (layout && !doc?.content) {
         return applyQuestionLayout([], layout, { fillMissing: true });
     }
+    if (Array.isArray(doc?.questionTargets) && doc.questionTargets.length) {
+        return questionsFromTestTargets(doc.questionTargets);
+    }
     return [];
 }
 function assessmentLayoutFor(doc) {
     if (!doc || !["practice", "exam", "test"].includes(doc.category)) return null;
     const normalizeKey = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
     const subjectKey = Object.keys(examLayoutConfig?.subjects || {}).find(key => normalizeKey(key) === normalizeKey(doc.subject));
-    const subjectConfig = subjectKey ? examLayoutConfig.subjects[subjectKey] : null;
+    const subjectConfig = subjectKey
+        ? examLayoutConfig.subjects[subjectKey]
+        : (normalizeKey(doc.subject) === "dethithptquocgia" ? examLayoutConfig?.subjects?.["Toán"] : null);
     return subjectConfig?.[doc.category] || subjectConfig?.assessment || null;
 }
 function gradingScaleFor(doc) {
