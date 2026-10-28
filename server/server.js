@@ -1,3 +1,9 @@
+import {
+  uploadToR2,
+  readFromR2,
+  deleteFromR2
+} from "./r2-storage.js";
+
 import express from "express";
 import http from "node:http";
 import { setupChat } from "./chat.js";
@@ -22,6 +28,7 @@ import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import { upsertLearningResult, deleteLearningResultsByUserId, deleteLearningResultsByItemId } from "./tests-module/results-db.js";
 
+
 import {
 
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
@@ -40,6 +47,15 @@ dotenv.config();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 
 const root=path.resolve(__dirname,"..");
+
+function createR2Key(folder, fileId, originalName) {
+  const extension = path.extname(originalName).toLowerCase();
+  const safeId = String(fileId).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  return `${folder}/${new Date().getUTCFullYear()}/` +
+    `${Date.now()}-${crypto.randomUUID()}-${safeId}${extension}`;
+}
+
 
 function assessmentConfigFor(subject,category){
   try{
@@ -1092,6 +1108,35 @@ function storedFilename(originalName){
   const safe=path.basename(originalName).replace(/[^a-zA-Z0-9._-]/g,"_");
   return `${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
 }
+
+async function saveFileToR2(folder, fileId, file) {
+  const key = createR2Key(folder, fileId, file.originalname);
+
+  await uploadToR2({
+    key,
+    body: file.buffer,
+    contentType: file.mimetype ||
+      contentTypeFor(file.originalname)
+  });
+
+  return key;
+}
+
+async function getFileFromR2(key) {
+  if (!key) {
+    throw new Error("Không tìm thấy R2 key của tài liệu.");
+  }
+
+  const object = await readFromR2(key);
+
+  if (!object.Body) {
+    throw new Error("R2 không trả về nội dung file.");
+  }
+
+  return Buffer.from(await object.Body.transformToByteArray());
+}
+
+
 
 function documentResponse(row){
   const fileUrl=`/api/documents/${encodeURIComponent(row.id)}/file`;
