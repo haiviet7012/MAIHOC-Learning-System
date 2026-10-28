@@ -11,10 +11,10 @@ fs.mkdirSync(dataDir, { recursive: true });
 export const resultsDbPath = path.join(dataDir, "learning-results.sqlite");
 export const resultsDb = new Database(resultsDbPath);
 
-db.pragma('journal_mode = WAL');
-db.pragma('synchronous = NORMAL');
-db.pragma('busy_timeout = 5000');
-db.pragma('temp_store = MEMORY');
+resultsDb.pragma('journal_mode = WAL');
+resultsDb.pragma('synchronous = NORMAL');
+resultsDb.pragma('busy_timeout = 5000');
+resultsDb.pragma('temp_store = MEMORY');
 
 
 resultsDb.exec(`
