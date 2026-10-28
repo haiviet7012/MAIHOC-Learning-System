@@ -345,6 +345,16 @@ document.addEventListener("click", async event => {
     }
     return;
   }
+  const onlineUserRow = event.target.closest("[data-online-user-id]");
+  if (onlineUserRow) {
+    const userId = Number(onlineUserRow.dataset.onlineUserId);
+    if (userId) {
+      window.dispatchEvent(new CustomEvent("maihoc-open-direct-chat", {
+        detail: { userId }
+      }));
+    }
+    return;
+  }
   const filterBtn = event.target.closest("[data-online-filter]");
   if (filterBtn) {
     onlineFilter = filterBtn.dataset.onlineFilter || "all";
@@ -353,6 +363,14 @@ document.addEventListener("click", async event => {
     });
     renderOnlineUsersList();
     return;
+  }
+});
+
+document.addEventListener("keydown", event => {
+  const row = event.target.closest("#online-dashboard-list [data-online-user-id]");
+  if (row && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    row.click();
   }
 });
 
@@ -619,7 +637,8 @@ function renderOnlineUsersList() {
     const roleLabel = isAdmin ? "Admin" : "User";
     const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
     return `
-      <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""}">
+      <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""} ${isSelf ? "" : "is-clickable"}"
+        ${isSelf ? "" : `data-online-user-id="${Number(u.id)}" role="button" tabindex="0" aria-label="Nhắn tin riêng với ${esc(u.name)}"`}>
         <div class="online-user-avatar">
           <span>${initial}</span>
           <i class="online-status-dot" title="Đang online"></i>
