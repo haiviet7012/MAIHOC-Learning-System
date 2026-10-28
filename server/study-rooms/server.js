@@ -220,6 +220,20 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     if (!monitor && !isCreator && room.passwordHash && !verifyRoomPassword(String(req.body?.password || ""), room.passwordHash)) {
       return fail(res, 403, "Mật khẩu phòng không đúng.");
     }
+
+
+    // Admin chỉ giữ 1 phiên trong mỗi phòng: đổi chế độ (ẩn <-> thường) thì gỡ phiên cũ.
+    if (isAdmin) {
+      for (const [pid, m] of room.members) {
+        if (m.userId === req.user.id && Boolean(m.isAdminObserver) !== monitor) {
+          room.members.delete(pid);
+          addEvent(room, m.isAdminObserver ? "stealth-peer-left" : "participant-left", { participantId: pid }, m);
+        }
+      }
+    }
+
+
+
     const existing = [...room.members.values()].find(
       member => member.userId === req.user.id && Boolean(member.isAdminObserver) === monitor
     );
@@ -229,7 +243,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
         participant: publicMember(existing),
         participantToken: existing.participantId,
         room: publicRoom(room, isAdmin),
-        members: visibleMembersFor(room, monitor || isAdmin),
+        members: visibleMembersFor(room, monitor),
         messages: room.chatHistory.slice(-100),
         lastEventId: room.eventSequence
       });
@@ -259,7 +273,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       participant: publicMember(member),
       participantToken: participantId,
       room: publicRoom(room, isAdmin),
-      members: visibleMembersFor(room, monitor || isAdmin),
+      members: visibleMembersFor(room, monitor),
       messages: room.chatHistory.slice(-100),
       lastEventId: room.eventSequence
     });

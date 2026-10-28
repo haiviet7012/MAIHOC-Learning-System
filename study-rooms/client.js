@@ -195,7 +195,7 @@ export function mountStudyRooms(container, user) {
         ${isAdmin ? `
           <div class="study-room-admin-stealth-card">
             <strong>👁️ Quyền Giám sát Admin</strong>
-            <span>Bạn có thể tham gia giám sát bất kỳ phòng học nào mà không cần mật khẩu và không giới hạn sĩ số. Các thành viên trong phòng sẽ hoàn toàn không biết Admin đã tham gia.</span>
+            <span>Với mỗi phòng, bạn chọn <b>Tham gia</b> (như học viên: bật cam/mic, chat, mọi người thấy bạn, cần mật khẩu nếu có) hoặc <b>Giám sát ẩn</b> (không cần mật khẩu, không giới hạn sĩ số, thành viên không biết bạn có mặt).</span>
           </div>
         ` : ""}
 
@@ -261,7 +261,8 @@ export function mountStudyRooms(container, user) {
   function roomCard(room, isAdmin = false) {
     const isOwner = user?.id === room.creatorId;
     const canClose = isOwner || isAdmin;
-    const isAdminStealthJoin = isAdmin && !isOwner;
+    
+    const joinLabel = room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia";
     return `
       <article class="study-room-card ${isOwner ? "is-own-room" : ""}" data-room-card="${escapeHtml(room.id)}" data-has-password="${String(Boolean(room.hasPassword))}" data-is-owner="${String(isOwner)}">
         <div class="study-room-card-top">
@@ -276,10 +277,12 @@ export function mountStudyRooms(container, user) {
         <div class="study-room-card-bottom">
           <span class="study-room-roomid">Mã: <strong>${escapeHtml(room.id)}</strong></span>
           <div class="study-room-card-actions">
-            ${isAdminStealthJoin
-              ? `<button type="button" class="button primary small" data-room-monitor="${escapeHtml(room.id)}">👁️ Tham gia giám sát</button>`
-              : `<button type="button" class="button primary small" data-room-join="${escapeHtml(room.id)}" ${room.isFull && !isOwner ? "disabled" : ""}>${room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia"}</button>`}
-            ${isAdmin && isOwner ? `<button type="button" class="button secondary small" data-room-monitor="${escapeHtml(room.id)}">👁️ Giám sát ẩn</button>` : ""}
+            
+            <button type="button" class="button primary small" data-room-join="${escapeHtml(room.id)}" ${room.isFull && !isOwner ? "disabled" : ""}>${room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia"}</button>
+            ${isAdmin ? `<button type="button" class="button secondary small" data-room-monitor="${escapeHtml(room.id)}" title="Vào ẩn danh: không bật cam/mic, học viên không thấy bạn">👁️ Giám sát ẩn</button>` : ""}
+
+
+
             ${canClose ? `<button type="button" class="button danger small" data-room-close-lobby="${escapeHtml(room.id)}">Đóng phòng</button>` : ""}
           </div>
         </div>
@@ -1117,7 +1120,7 @@ export function mountStudyRooms(container, user) {
       const isOwn = join.dataset.roomOwn === "true" || card?.dataset.isOwner === "true";
       const hasPassword = card?.dataset.hasPassword === "true";
       let password = "";
-      if (hasPassword && !isOwn && user?.role !== "admin") {
+      if (hasPassword && !isOwn) {
         const entered = prompt("Phòng học này có mật khẩu. Vui lòng nhập mật khẩu để vào phòng:");
         if (entered === null) return;
         password = entered;
