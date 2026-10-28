@@ -525,8 +525,6 @@ export async function loadAdminTestsAndPendingGrading() {
           <p class="muted">Khi giảng viên chọn chưa nhập đáp án ngay lúc đăng đề, bài làm của học viên sẽ xuất hiện tại đây với trạng thái “Đang chờ chấm”. Nhấn vào từng bài để mở khung đối chiếu đề bài (trái) và đáp án đúng (phải).</p>
         </div>
         <div class="tests-header-actions">
-          <button type="button" class="button secondary small" data-export-teacher-sheets="xlsx">📊 Xuất điểm ra Sheets (.xlsx)</button>
-          <button type="button" class="button secondary small" data-export-teacher-sheets="csv">📄 Xuất CSV (.csv)</button>
           <button type="button" class="button primary small" data-open-create-test>＋ Thêm bài kiểm tra</button>
         </div>
       </div>
