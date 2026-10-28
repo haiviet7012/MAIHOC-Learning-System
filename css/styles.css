@@ -737,6 +737,17 @@ body.study-room-open .online-dashboard {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 
+.online-user-row.is-clickable {
+  cursor: pointer;
+}
+
+.online-user-row.is-clickable:hover,
+.online-user-row.is-clickable:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  outline: none;
+}
+
 .online-user-avatar {
   position: relative;
   width: 34px;
