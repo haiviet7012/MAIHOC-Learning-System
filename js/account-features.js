@@ -56,7 +56,8 @@ function routeToActivityLabel(route) {
     "saved-result": "Đang xem kết quả thi",
     admin: "Đang ở trang Quản trị",
     "study-rooms": "Đang ở Phòng tự học",
-    "account-center": "Trung tâm tài khoản"
+    "account-center": "Trung tâm tài khoản",
+    tests: "Đang ở mục Bài kiểm tra"
   };
   return map[route] || "Đang trực tuyến";
 }
@@ -333,7 +334,6 @@ document.addEventListener("click", async event => {
     return;
   }
   if (
-    event.target.closest("#user-dashboard-open") ||
     event.target.closest("#online-dashboard-collapse") ||
     event.target.closest("#online-dashboard-launcher")
   ) {
@@ -538,16 +538,23 @@ async function loadAccountCenterProgress() {
       const percent = Math.max(0, Math.min(100, Number(item.progressPercent) || 0));
       const isCompleted = percent >= 100 || item.status === "completed";
       const typeLabel =
+        item.itemType === "test" ? "Bài kiểm tra" :
         item.itemType === "exam" ? "Đề thi / Ôn tập" :
         item.itemType === "practice" ? "Đề ôn tập" :
         item.itemType === "document" ? "Tài liệu lý thuyết" : "Bài học";
       const startedText = formatVietnameseDate(item.startedAt || item.updatedAt);
-      const scoreText = item.score != null ? ` · Điểm: ${Number(item.score).toFixed(2)}` : "";
-      const actionBtn = item.itemType === "exam" && item.latestAttemptId
-        ? `<button type="button" class="button secondary small" data-action="view-exam-result" data-id="${esc(item.latestAttemptId)}">Xem kết quả</button>`
-        : item.itemType === "document"
-          ? `<button type="button" class="button secondary small" data-action="read-doc" data-id="${esc(item.itemId)}">Đọc tiếp</button>`
-          : `<button type="button" class="button secondary small" data-action="start-exam" data-id="${esc(item.itemId)}">Mở đề</button>`;
+      const scoreText = item.gradingStatus === "pending_grade"
+        ? " · Trạng thái: Đang chờ chấm"
+        : item.score != null
+          ? ` · Điểm: ${Number(item.score).toFixed(2)}/10`
+          : "";
+      const actionBtn = item.itemType === "test" && item.testSubmissionId
+        ? `<button type="button" class="button secondary small" data-action="view-test-submission" data-id="${esc(item.testSubmissionId)}">Xem kết quả</button>`
+        : (item.itemType === "exam" || item.itemType === "test") && item.latestAttemptId
+          ? `<button type="button" class="button secondary small" data-action="view-exam-result" data-id="${esc(item.latestAttemptId)}">Xem kết quả</button>`
+          : item.itemType === "document"
+            ? `<button type="button" class="button secondary small" data-action="read-doc" data-id="${esc(item.itemId)}">Đọc tiếp</button>`
+            : `<button type="button" class="button secondary small" data-action="start-exam" data-id="${esc(item.itemId)}">Mở đề</button>`;
 
       return `
         <article class="account-progress-cell ${isCompleted ? "is-completed" : "is-in-progress"}" data-progress-cell="${idx + 1}">
@@ -584,12 +591,10 @@ async function loadAccountCenterProgress() {
 function renderOnlineUsersList() {
   const listNode = $("#online-dashboard-list");
   const countNode = $("#online-dashboard-count");
-  const topbarCount = $("#topbar-online-count");
   const launcherCount = $("#launcher-online-count");
   const totalOnline = latestOnlineUsers.length;
 
   if (countNode) countNode.textContent = String(totalOnline);
-  if (topbarCount) topbarCount.textContent = String(totalOnline);
   if (launcherCount) launcherCount.textContent = String(totalOnline);
   if (!listNode) return;
 
@@ -647,14 +652,15 @@ async function loadUser() {
   } catch {
     activeUser = null;
   }
+  $("#user-dashboard-open")?.remove();
   const bell = $("#notifications-open"),
         upload = $("#upload-open"),
-        accountCenter = $("#account-center-open"),
-        dashboardBtn = $("#user-dashboard-open");
+        testsBtn = $("#tests-open"),
+        accountCenter = $("#account-center-open");
   if (bell) bell.hidden = !activeUser;
   if (upload) upload.hidden = !activeUser;
+  if (testsBtn) testsBtn.hidden = !activeUser;
   if (accountCenter) accountCenter.hidden = !activeUser;
-  if (dashboardBtn) dashboardBtn.hidden = !activeUser;
   if (activeUser) {
     refreshNotifications();
     const reader = $("#reader-layout");
@@ -791,6 +797,7 @@ function addAdminReviewPanel() {
   panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div><button type="button" class="button primary" data-answer-key-open>Quản lý đáp án</button></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2></div></div><div id="admin-progress-list"><p class="muted">Loading...</p></div>';
 
   $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();loadAdminProgress();
+  window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
 }
 async function loadApprovedDocuments(){
   const box=$("#approved-documents");if(!box)return;
@@ -803,10 +810,10 @@ async function loadApprovedDocuments(){
 }
 async function loadAnswerKeySections(){
   const dialog=$("#answer-key-dialog");if(!dialog)return;
-  for(const category of ["theory","practice","exam"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML='<p class="muted">Đang tải...</p>';}
+  for(const category of ["theory","practice","exam","test"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML='<p class="muted">Đang tải...</p>';}
   try{
     const data=await request("/api/admin/answer-keys");
-    for(const category of ["theory","practice","exam"]){
+    for(const category of ["theory","practice","exam","test"]){
       const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(!list)continue;
       const docs=data.sections?.[category]||[];
       if(!docs.length){list.innerHTML='<p class="muted">Chưa có tài liệu.</p>';continue;}
@@ -825,7 +832,7 @@ async function loadAnswerKeySections(){
       }).join("");
     }
   }catch(error){
-    for(const category of ["theory","practice","exam"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML=`<p class="auth-error">${esc(error.message)}</p>`;}
+    for(const category of ["theory","practice","exam","test"]){const list=dialog.querySelector(`[data-answer-key-list="${category}"]`);if(list)list.innerHTML=`<p class="auth-error">${esc(error.message)}</p>`;}
   }
 }
 
@@ -977,7 +984,12 @@ async function loadAdminProgress(){
        const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);
      });
      const actionCell=document.createElement("td");
-     if(p.itemType==="exam"&&p.latestAttemptId){
+     if(p.itemType==="test"&&p.testSubmissionId){
+       const link=document.createElement("button");link.type="button";link.className="button secondary small";
+       link.dataset.action="view-test-submission";link.dataset.id=String(p.testSubmissionId);
+       link.textContent=p.gradingStatus==="pending_grade"?"Đang chờ chấm":"Xem kết quả";
+       actionCell.append(link);
+     }else if((p.itemType==="exam"||p.itemType==="test")&&p.latestAttemptId){
        const link=document.createElement("button");link.type="button";link.className="button secondary small";
        link.dataset.action="view-exam-result";link.dataset.id=String(p.latestAttemptId);link.textContent="Xem kết quả";
        actionCell.append(link);
@@ -1052,6 +1064,8 @@ document.addEventListener("click",async e=>{
       });
       await request(`/api/admin/documents/${encodeURIComponent(activeSolutionId)}/solution/review`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({questions})});
       await loadSolutionState(activeSolutionId);await loadAnswerKeySections();
+      window.dispatchEvent(new Event("maihoc-tests-rerender"));
+      window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
       toastNotice(manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của admin.","success");
     }catch(error){const node=$("[data-solution-error]");node.hidden=false;node.textContent=error.message;}
     finally{setSolutionReviewReady();}

@@ -1,0 +1,1820 @@
+import fs from "node:fs";
+import path from "node:path";
+import { normalizeAnswerKeyDocument, gradeAnswers, extractDocxText } from "../grading/engine.js";
+import {
+  upsertLearningResult,
+  deleteLearningResultsByItemId,
+  syncFromMainDatabase,
+  buildTeacherScoresSheetExport,
+  buildUserLearningResultsSheetExport,
+  listRegisteredSubjects,
+  ensureSubjectRegistered
+} from "./results-db.js";
+
+const ALLOWED_DURATIONS = new Set([0, 30, 45, 60, 90, 120]);
+
+function answerTargetsForLayout(layout) {
+  const targets = [];
+  for (const section of layout?.sections || []) {
+    const sectionId = String(section.sectionId || section.order || "");
+    const count = Math.max(0, Math.floor(Number(section.count) || 0));
+    for (let number = 1; number <= count; number++) {
+      const questionId = `${sectionId}-${number}`;
+      if (section.type === "true_false") {
+        for (const statement of (section.statements || ["a", "b", "c", "d"]).map(String)) {
+          targets.push({
+            targetId: `${questionId}${statement}`,
+            questionId,
+            sectionId,
+            number,
+            statement,
+            type: section.type,
+            maximumPoints: Number(section.grading?.pointsByCorrectStatements?.[String((section.statements || ["a", "b", "c", "d"]).length)]) || 0
+          });
+        }
+      } else {
+        targets.push({
+          targetId: questionId,
+          questionId,
+          sectionId,
+          number,
+          type: section.type,
+          maximumPoints: Number(section.grading?.pointsPerCorrect) || 0
+        });
+      }
+    }
+  }
+  return targets;
+}
+
+async function extractRawTextFromBuffer(buffer, filename = "") {
+  if (!buffer || !buffer.length) return "";
+  const ext = path.extname(String(filename || "")).toLowerCase();
+  try {
+    if (ext === ".txt") {
+      return Buffer.from(buffer).toString("utf8");
+    }
+    if (ext === ".docx") {
+      return extractDocxText(Buffer.from(buffer));
+    }
+    if (ext === ".pdf") {
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const loadingTask = pdfjs.getDocument({
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        isEvalSupported: false
+      });
+      const pdf = await loadingTask.promise;
+      const pages = [];
+      try {
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const text = content.items.map(item => `${item.str || ""}${item.hasEOL ? "\n" : " "}`).join("");
+          pages.push(text);
+          page.cleanup?.();
+        }
+      } finally {
+        await loadingTask.destroy();
+      }
+      return pages.join("\n\n").trim();
+    }
+  } catch (error) {
+    console.warn("Could not extract text from test file:", error.message);
+  }
+  return "";
+}
+
+export function parseQuestionsFromRawText(rawText) {
+  const text = String(rawText || "").replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").trim();
+  if (!text) return [];
+
+  const flat = text.replace(/[\t\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  const headings = [...flat.matchAll(/\b(?:câu|cau|bài|bai|question|q)\s*(\d+)\s*[.:)]/giu)];
+  if (!headings.length) return [];
+
+  const sectionMatches = [...flat.matchAll(/\b(?:phần|phan)\s+(i{1,3}|iv|v|\d+)\b/giu)];
+  const romanMap = { I: 1, II: 2, III: 3, IV: 4, V: 5 };
+  const sections = sectionMatches.map((m, idx) => {
+    const token = m[1].toUpperCase();
+    const order = /^\d+$/.test(token) ? Number(token) : (romanMap[token] || idx + 1);
+    const nextIdx = sectionMatches[idx + 1]?.index ?? flat.length;
+    const snippet = flat.slice(m.index, Math.min(nextIdx, m.index + 800)).toLowerCase();
+    let type = null;
+    if (/đúng\s*\/?\s*sai|dung\s*\/?\s*sai/.test(snippet)) type = "true_false";
+    else if (/trả lời ngắn|tra loi ngan|tự luận|tu luan/.test(snippet)) type = "essay";
+    else if (/trắc nghiệm|trac nghiem/.test(snippet)) type = "multiple_choice";
+    return { id: token, order, index: m.index, type };
+  });
+
+  const sectionForPos = pos => {
+    for (let i = sections.length - 1; i >= 0; i--) {
+      if (sections[i].index < pos) return sections[i];
+    }
+    return null;
+  };
+
+  const results = [];
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i];
+    const qNum = String(Number(h[1]));
+    const sec = sectionForPos(h.index);
+    const start = h.index + h[0].length;
+    const end = headings[i + 1]?.index ?? flat.length;
+    const body = flat.slice(start, end).trim();
+
+    const hasMcOptions = /(?:^|\s)A\s*[).]\s*.+(?:\s)B\s*[).]/su.test(body);
+    const hasTfStatements = /(?:^|\s)a\s*[).]\s*.+(?:\s)b\s*[).]/su.test(body);
+
+    let type = sec?.type || (hasTfStatements ? "true_false" : hasMcOptions ? "multiple_choice" : "multiple_choice");
+    const sectionId = sec?.id || (type === "true_false" ? "II" : type === "essay" ? "III" : "I");
+
+    const statements = {};
+    if (type === "true_false") {
+      const stmtMatches = [...body.matchAll(/(?:^|\s)([a-d])\s*[).]\s*/gu)];
+      for (let sIdx = 0; sIdx < stmtMatches.length; sIdx++) {
+        const sm = stmtMatches[sIdx];
+        const letter = sm[1].toLowerCase();
+        const sStart = sm.index + sm[0].length;
+        const sEnd = stmtMatches[sIdx + 1]?.index ?? body.length;
+        statements[letter] = body.slice(sStart, sEnd).trim();
+      }
+    }
+
+    results.push({
+      number: qNum,
+      sectionId,
+      questionId: `${sectionId}-${qNum}`,
+      type,
+      text: body,
+      statements
+    });
+  }
+  return results;
+}
+
+export function buildQuestionTargetsForTest({ parsedQuestions = [], layout = null, customQuestionCount = null }) {
+  if (parsedQuestions.length > 0 && parsedQuestions.length <= 15 && !customQuestionCount) {
+    const targets = [];
+    const totalQ = parsedQuestions.length;
+    const defaultPoints = Math.round((10 / Math.max(1, totalQ)) * 100) / 100;
+    parsedQuestions.forEach((q, idx) => {
+      const qNum = q.number || String(idx + 1);
+      const secId = q.sectionId || "I";
+      const qId = `${secId}-${qNum}`;
+      if (q.type === "true_false") {
+        for (const stmt of ["a", "b", "c", "d"]) {
+          const stmtText = q.statements?.[stmt] ? ` — Ý ${stmt}) ${q.statements[stmt]}` : ` — Mệnh đề ${stmt})`;
+          targets.push({
+            targetId: `${qId}${stmt}`,
+            questionId: qId,
+            sectionId: secId,
+            number: Number(qNum) || idx + 1,
+            statement: stmt,
+            type: "true_false",
+            maximumPoints: 0.25,
+            questionText: `Câu ${qNum}: ${q.text}${stmtText}`
+          });
+        }
+      } else {
+        targets.push({
+          targetId: qId,
+          questionId: qId,
+          sectionId: secId,
+          number: Number(qNum) || idx + 1,
+          type: q.type || "multiple_choice",
+          maximumPoints: defaultPoints,
+          questionText: `Câu ${qNum}: ${q.text}`
+        });
+      }
+    });
+    return targets;
+  }
+
+  const baseTargets = answerTargetsForLayout(layout);
+  if (!baseTargets.length) {
+    return Array.from({ length: 10 }, (_, idx) => ({
+      targetId: `I-${idx + 1}`,
+      questionId: `I-${idx + 1}`,
+      sectionId: "I",
+      number: idx + 1,
+      type: "multiple_choice",
+      maximumPoints: 1,
+      questionText: parsedQuestions[idx]?.text ? `Câu ${idx + 1}: ${parsedQuestions[idx].text}` : `Câu I-${idx + 1} (Xem nội dung chi tiết trong đề gốc)`
+    }));
+  }
+
+  const byQuestionId = new Map();
+  parsedQuestions.forEach((q, idx) => {
+    byQuestionId.set(q.questionId, q);
+    byQuestionId.set(`seq-${idx + 1}`, q);
+  });
+
+  let seqQuestionCounter = 0;
+  let lastQuestionId = null;
+
+  return baseTargets.map(target => {
+    if (target.questionId !== lastQuestionId) {
+      seqQuestionCounter++;
+      lastQuestionId = target.questionId;
+    }
+    const matched = byQuestionId.get(target.questionId) || byQuestionId.get(`seq-${seqQuestionCounter}`);
+    let questionText = `Câu ${target.questionId}${target.statement ? ` — Mệnh đề ${target.statement})` : ""} (Đối chiếu nội dung trong đề gốc)`;
+    if (matched?.text) {
+      const stmtSuffix = target.statement && matched.statements?.[target.statement]
+        ? `\nÝ ${target.statement}): ${matched.statements[target.statement]}`
+        : target.statement
+          ? ` (Xét mệnh đề ${target.statement})`
+          : "";
+      questionText = `Câu ${target.questionId}: ${matched.text}${stmtSuffix}`;
+    }
+    return {
+      ...target,
+      questionText
+    };
+  });
+}
+
+export function installTestsModule({
+  app,
+  db,
+  upload,
+  requireAuth,
+  requireAdmin,
+  requireSameOrigin,
+  assessmentConfigFor,
+  createExamSolutionJob,
+  saveAnswerKeyRecord,
+  storedFilename,
+  contentTypeFor,
+  documentsDir,
+  notifyUser,
+  notifyAdmins
+}) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tests (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT 'Toán',
+      grade TEXT NOT NULL DEFAULT '10',
+      open_at TEXT NOT NULL,
+      close_at TEXT NOT NULL,
+      duration_minutes INTEGER,
+      answer_mode TEXT NOT NULL DEFAULT 'immediate' CHECK(answer_mode IN ('immediate', 'deferred')),
+      has_answer_key INTEGER NOT NULL DEFAULT 0 CHECK(has_answer_key IN (0, 1)),
+      raw_text_cache TEXT,
+      questions_json TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS tests_open_close_idx ON tests(open_at, close_at);
+
+    CREATE TABLE IF NOT EXISTS test_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      test_id TEXT NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT 'Toán',
+      grade TEXT NOT NULL DEFAULT '10',
+      grading_status TEXT NOT NULL DEFAULT 'pending_grade' CHECK(grading_status IN ('pending_grade', 'graded')),
+      graded INTEGER NOT NULL DEFAULT 0 CHECK(graded IN (0, 1)),
+      score REAL,
+      scale REAL NOT NULL DEFAULT 10,
+      percent INTEGER,
+      correct_count INTEGER,
+      question_count INTEGER,
+      duration_minutes INTEGER,
+      time_spent_seconds INTEGER,
+      auto_submitted_fullscreen INTEGER NOT NULL DEFAULT 0 CHECK(auto_submitted_fullscreen IN (0, 1)),
+      answers_json TEXT NOT NULL,
+      answer_key_json TEXT,
+      result_json TEXT NOT NULL,
+      teacher_note TEXT,
+      started_at TEXT,
+      submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      graded_at TEXT,
+      graded_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS test_submissions_test_user_idx ON test_submissions(test_id, user_id, id DESC);
+    CREATE INDEX IF NOT EXISTS test_submissions_status_idx ON test_submissions(grading_status, submitted_at DESC);
+  `);
+
+  function seedInitialSampleTests() {
+    const migrationName = "seed-sample-tests-v1";
+    if (db.prepare("SELECT 1 FROM app_migrations WHERE name = ?").get(migrationName)) return;
+
+    const sampleTests = [
+      {
+        id: "test-sample-toan10-dinh-ky-01",
+        title: "Bài kiểm tra định kỳ Toán 10 — Hàm số & Vectơ (Số 01)",
+        subject: "Toán",
+        grade: "10",
+        openAt: "2026-10-01T08:00",
+        closeAt: "2027-12-31T23:59",
+        durationMinutes: 45,
+        answerMode: "immediate",
+        hasAnswerKey: 1,
+        content: [
+          "BÀI KIỂM TRA ĐỊNH KỲ TOÁN 10 — HÀM SỐ & VECTƠ",
+          "Thời gian làm bài: 45 phút",
+          "",
+          "Phần I. Trắc nghiệm",
+          "Câu 1. Tập xác định của hàm số y = √(x - 3) là: A. [3; +∞) B. (3; +∞) C. (-∞; 3] D. R",
+          "Câu 2. Đỉnh của parabol y = x² - 4x + 3 có tọa độ là: A. I(2; 1) B. I(2; -1) C. I(-2; 15) D. I(4; 3)",
+          "Câu 3. Cho hai vectơ a = (2; -1) và b = (1; 4). Tọa độ của vectơ a + b là: A. (3; 3) B. (1; -5) C. (2; -4) D. (3; -3)",
+          "Câu 4. Nghiệm của phương trình x² - 5x + 6 = 0 là: A. x=1; x=6 B. x=-2; x=-3 C. x=2; x=3 D. Vô nghiệm"
+        ].join("\n"),
+        approvedAnswers: {
+          "I-1": "A",
+          "I-2": "B",
+          "I-3": "A",
+          "I-4": "C"
+        },
+        approvedPoints: {
+          "I-1": 2.5,
+          "I-2": 2.5,
+          "I-3": 2.5,
+          "I-4": 2.5
+        }
+      },
+      {
+        id: "test-sample-toan10-cho-cham-02",
+        title: "Bài kiểm tra 30 phút Toán 10 — Mệnh đề & Tập hợp (Chờ giảng viên chấm)",
+        subject: "Toán",
+        grade: "10",
+        openAt: "2026-10-15T08:00",
+        closeAt: "2027-12-31T23:59",
+        durationMinutes: 30,
+        answerMode: "deferred",
+        hasAnswerKey: 0,
+        content: [
+          "BÀI KIỂM TRA 30 PHÚT TOÁN 10 — MỆNH ĐỀ & TẬP HỢP",
+          "Thời gian làm bài: 30 phút",
+          "",
+          "Phần I. Trắc nghiệm",
+          "Câu 1. Trong các câu sau, câu nào là một mệnh đề toán học? A. Hôm nay trời đẹp quá! B. Số 15 là số lẻ. C. Bạn học lớp mấy? D. Hãy làm bài tập đi!",
+          "Câu 2. Cho tập hợp A = {1; 2; 3; 4} và B = {3; 4; 5}. Tập hợp A ∩ B là: A. {1; 2} B. {3; 4} C. {1; 2; 3; 4; 5} D. {5}",
+          "Câu 3. Phủ định của mệnh đề '∀x ∈ R, x² ≥ 0' là: A. ∃x ∈ R, x² < 0 B. ∃x ∈ R, x² ≤ 0 C. ∀x ∈ R, x² < 0 D. ∃x ∈ R, x² > 0",
+          "Câu 4. Số tập con của tập hợp X = {a; b; c} là: A. 3 B. 6 C. 8 D. 9"
+        ].join("\n"),
+        approvedAnswers: null
+      }
+    ];
+
+    const tx = db.transaction(() => {
+      for (const sample of sampleTests) {
+        const buf = Buffer.from(sample.content, "utf8");
+        const filename = `${sample.id}.txt`;
+        const filePath = path.join(documentsDir, filename);
+        if (!fs.existsSync(filePath)) {
+          fs.writeFileSync(filePath, buf);
+        }
+        db.prepare(`
+          INSERT OR IGNORE INTO documents (
+            id, subject, grade, category, title, filename, original_name, size, content_type, file_data
+          ) VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 'text/plain; charset=utf-8', ?)
+        `).run(sample.id, sample.subject, sample.grade, sample.title, filename, filename, buf.length, buf);
+
+        const parsedQ = parseQuestionsFromRawText(sample.content);
+        const targets = buildQuestionTargetsForTest({ parsedQuestions: parsedQ });
+
+        db.prepare(`
+          INSERT OR IGNORE INTO tests (
+            id, document_id, title, subject, grade, open_at, close_at,
+            duration_minutes, answer_mode, has_answer_key, raw_text_cache, questions_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          sample.id,
+          sample.id,
+          sample.title,
+          sample.subject,
+          sample.grade,
+          sample.openAt,
+          sample.closeAt,
+          sample.durationMinutes,
+          sample.answerMode,
+          sample.hasAnswerKey,
+          sample.content,
+          JSON.stringify(targets)
+        );
+
+        if (sample.approvedAnswers) {
+          const questions = targets.map(t => ({
+            targetId: t.targetId,
+            questionId: t.questionId,
+            type: t.type,
+            maximumPoints: sample.approvedPoints?.[t.targetId] || t.maximumPoints || 2.5,
+            questionText: t.questionText,
+            aiAnswer: sample.approvedAnswers[t.targetId] || "",
+            answer: sample.approvedAnswers[t.targetId] || "",
+            explanation: `Đáp án chuẩn câu ${t.targetId}: ${sample.approvedAnswers[t.targetId]}`,
+            rubric: [{ criterion: `Chọn đúng đáp án ${sample.approvedAnswers[t.targetId]}`, points: sample.approvedPoints?.[t.targetId] || 2.5 }],
+            confidence: 1,
+            uncertainty: "",
+            reviewStatus: "manual"
+          }));
+          const approvedPayload = {
+            schemaVersion: 1,
+            source: "manual-entry",
+            model: "manual",
+            version: 1,
+            scale: 10,
+            answers: sample.approvedAnswers,
+            points: sample.approvedPoints || {},
+            questions,
+            reviewedAt: new Date().toISOString()
+          };
+          db.prepare(`
+            INSERT OR IGNORE INTO exam_solutions (
+              document_id, status, progress, phase, model, generated_json, approved_json, solution_version, generated_at, approved_at
+            ) VALUES (?, 'ready', 100, 'Đã duyệt, sẵn sàng chấm', 'manual', ?, ?, 1, datetime('now'), datetime('now'))
+          `).run(sample.id, JSON.stringify({ ...approvedPayload, answerCount: questions.length, requiredCount: questions.length }), JSON.stringify(approvedPayload));
+        }
+      }
+      db.prepare("INSERT OR IGNORE INTO app_migrations(name) VALUES(?)").run(migrationName);
+    });
+    tx();
+  }
+
+  seedInitialSampleTests();
+  syncFromMainDatabase(db);
+
+  async function initManualSolutionForDocument(documentId) {
+    const doc = db.prepare(`
+      SELECT d.*, t.raw_text_cache AS testRawText, t.questions_json AS testQuestionsJson,
+             ak.normalized_json AS referenceAnswerJson
+      FROM documents d
+      LEFT JOIN tests t ON t.id = d.id
+      LEFT JOIN answer_keys ak ON ak.document_id = d.id
+      WHERE d.id = ?
+    `).get(String(documentId));
+
+    if (!doc) throw new Error("Không tìm thấy đề bài.");
+
+    const config = assessmentConfigFor(doc.subject, doc.category === "test" ? "exam" : doc.category);
+    const rawText = doc.testRawText || await extractRawTextFromBuffer(doc.file_data, doc.original_name);
+    const parsedQuestions = parseQuestionsFromRawText(rawText);
+
+    let targets = [];
+    if (doc.testQuestionsJson) {
+      try {
+        const cached = JSON.parse(doc.testQuestionsJson);
+        if (Array.isArray(cached) && cached.length) targets = cached;
+      } catch {}
+    }
+    if (!targets.length) {
+      targets = buildQuestionTargetsForTest({
+        parsedQuestions,
+        layout: config?.layout
+      });
+    }
+
+    let refAnswers = {};
+    try {
+      const parsedRef = JSON.parse(doc.referenceAnswerJson || "null");
+      if (parsedRef?.answers) refAnswers = parsedRef.answers;
+    } catch {}
+
+    const existingSol = db.prepare("SELECT generated_json, approved_json, solution_version FROM exam_solutions WHERE document_id = ?").get(String(documentId));
+    const existingMap = new Map();
+    if (existingSol) {
+      try {
+        const prev = JSON.parse(existingSol.approved_json || existingSol.generated_json || "null");
+        for (const q of prev?.questions || []) {
+          if (q?.targetId) existingMap.set(String(q.targetId), q);
+        }
+      } catch {}
+    }
+
+    const questions = targets.map(target => {
+      const prev = existingMap.get(target.targetId);
+      const refAns = refAnswers[target.targetId] != null
+        ? (Array.isArray(refAnswers[target.targetId]) ? refAnswers[target.targetId][0] : String(refAnswers[target.targetId]))
+        : "";
+      const defaultAnswer = prev?.answer || refAns || (target.type === "multiple_choice" ? "A" : target.type === "true_false" ? "true" : "");
+      const maxPts = Number(target.maximumPoints) || 0.25;
+      return {
+        targetId: target.targetId,
+        questionId: target.questionId,
+        type: target.type,
+        maximumPoints: maxPts,
+        questionText: prev?.questionText && !prev.questionText.includes("Không đọc được") ? prev.questionText : target.questionText,
+        aiAnswer: defaultAnswer,
+        answer: defaultAnswer,
+        referenceAnswer: refAns,
+        explanation: prev?.explanation || "",
+        rubric: Array.isArray(prev?.rubric) && prev.rubric.length
+          ? prev.rubric
+          : [{ criterion: `Đáp án đúng cho câu ${target.targetId}`, points: maxPts }],
+        confidence: 1,
+        uncertainty: "",
+        reviewStatus: "manual"
+      };
+    });
+
+    const manualPayload = {
+      schemaVersion: 1,
+      source: "manual-entry",
+      provider: "manual",
+      model: "Nhập thủ công",
+      scale: Number(config?.grading?.scale) || 10,
+      generatedAt: new Date().toISOString(),
+      questions,
+      answerCount: questions.filter(q => String(q.answer || "").trim()).length,
+      requiredCount: questions.length
+    };
+
+    db.prepare(`
+      INSERT INTO exam_solutions (
+        document_id, status, progress, phase, model, generated_json, solution_version, generated_at, updated_at
+      ) VALUES (?, 'review', 100, 'Nhập đáp án thủ công', 'Nhập thủ công', ?, 1, datetime('now'), datetime('now'))
+      ON CONFLICT(document_id) DO UPDATE SET
+        status = 'review',
+        progress = 100,
+        phase = 'Nhập đáp án thủ công',
+        model = 'Nhập thủ công',
+        generated_json = excluded.generated_json,
+        error_code = NULL,
+        error_message = NULL,
+        generated_at = datetime('now'),
+        updated_at = datetime('now')
+    `).run(String(documentId), JSON.stringify(manualPayload));
+
+    return manualPayload;
+  }
+
+  app.post("/api/admin/documents/:id/solution/manual", requireSameOrigin, requireAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const payload = await initManualSolutionForDocument(id);
+      return res.json({ ok: true, id, status: "review", mode: "manual", requiredCount: payload.requiredCount });
+    } catch (error) {
+      return res.status(400).json({ error: error.message || "Không thể khởi tạo chế độ nhập đáp án thủ công." });
+    }
+  });
+
+  function getApprovedAnswerKeyForTest(testId) {
+    const row = db.prepare(`
+      SELECT t.id, t.subject, t.grade, t.answer_mode, t.has_answer_key, t.questions_json,
+             ak.normalized_json AS normalizedAnswerKey,
+             es.status AS solutionStatus, es.approved_json AS approvedSolution
+      FROM tests t
+      LEFT JOIN answer_keys ak ON ak.document_id = t.id
+      LEFT JOIN exam_solutions es ON es.document_id = t.id
+      WHERE t.id = ?
+    `).get(String(testId));
+
+    if (!row) return null;
+
+    if (row.approvedSolution && (row.solutionStatus === "ready" || row.has_answer_key)) {
+      try {
+        const parsed = JSON.parse(row.approvedSolution);
+        if (parsed?.answers && Object.keys(parsed.answers).length) {
+          const points = { ...(parsed.points || {}) };
+          for (const q of parsed.questions || []) {
+            if (q?.targetId && Number(q.maximumPoints) > 0 && !points[q.targetId]) {
+              points[q.targetId] = Number(q.maximumPoints);
+            }
+          }
+          return { answers: parsed.answers, points, questions: parsed.questions || [] };
+        }
+      } catch {}
+    }
+
+    if (row.normalizedAnswerKey && row.answer_mode !== "deferred") {
+      try {
+        const parsed = JSON.parse(row.normalizedAnswerKey);
+        if (parsed?.answers && Object.keys(parsed.answers).length) {
+          return { answers: parsed.answers, points: parsed.points || {}, questions: [] };
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+  function evaluateTestSubmission({ testRow, submittedAnswers, answerKey, questionOverrides = null }) {
+    const config = assessmentConfigFor(testRow.subject, "exam");
+    let targets = [];
+    try {
+      targets = JSON.parse(testRow.questions_json || "[]");
+    } catch {}
+    if (!Array.isArray(targets) || !targets.length) {
+      targets = buildQuestionTargetsForTest({
+        parsedQuestions: parseQuestionsFromRawText(testRow.raw_text_cache || ""),
+        layout: config?.layout
+      });
+    }
+
+    const isShortCustomTest = targets.length > 0 && targets.length <= 15 && !targets.some(t => t.type === "true_false");
+    if (questionOverrides && Array.isArray(questionOverrides) && questionOverrides.length) {
+      let totalPoints = 0;
+      let earnedPoints = 0;
+      let correctCount = 0;
+      const results = [];
+
+      const tfGroups = new Map();
+      const overrideMap = new Map(questionOverrides.map(item => [String(item.targetId), item]));
+
+      for (const target of targets) {
+        const ov = overrideMap.get(target.targetId) || {};
+        const expectedAns = String(ov.answer ?? answerKey?.answers?.[target.targetId] ?? "").trim();
+        const rawUserAns = submittedAnswers?.[target.targetId] ?? submittedAnswers?.[target.questionId] ?? "";
+        const userAns = String(rawUserAns ?? "").trim();
+
+        const normExpected = expectedAns.toLowerCase();
+        const normUser = userAns.toLowerCase();
+        let isMatch = false;
+        if (target.type === "multiple_choice") {
+          isMatch = normExpected !== "" && normExpected === normUser;
+        } else if (target.type === "true_false") {
+          const mapTf = v => (["true", "dung", "đúng", "d", "t"].includes(v) ? "true" : ["false", "sai", "s", "f"].includes(v) ? "false" : v);
+          isMatch = mapTf(normExpected) !== "" && mapTf(normExpected) === mapTf(normUser);
+        } else {
+          isMatch = normExpected !== "" && normExpected.replace(/\s+/g, "") === normUser.replace(/\s+/g, "");
+        }
+
+        if (target.type === "true_false" && target.statement) {
+          if (!tfGroups.has(target.questionId)) {
+            tfGroups.set(target.questionId, {
+              questionId: target.questionId,
+              maximumPoints: Number(target.maximumPoints) || 1,
+              statements: [],
+              manualPointsSum: 0,
+              hasManualPoints: false
+            });
+          }
+          const grp = tfGroups.get(target.questionId);
+          grp.statements.push({
+            targetId: target.targetId,
+            statement: target.statement,
+            correct: isMatch,
+            userAnswer: userAns,
+            expectedAnswer: [expectedAns],
+            explanation: ov.explanation || ""
+          });
+          if (ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "") {
+            grp.hasManualPoints = true;
+            grp.manualPointsSum += Number(ov.pointsAwarded) || 0;
+          }
+          continue;
+        }
+
+        const maxPts = Number(ov.maximumPoints ?? target.maximumPoints) || (isShortCustomTest ? Number((10 / targets.length).toFixed(2)) : 0.25);
+        const awarded = (ov.pointsAwarded !== undefined && ov.pointsAwarded !== null && ov.pointsAwarded !== "")
+          ? Math.max(0, Math.min(maxPts, Number(ov.pointsAwarded) || 0))
+          : (isMatch ? maxPts : 0);
+
+        totalPoints += maxPts;
+        earnedPoints += awarded;
+        const correct = awarded >= maxPts - 0.001 && maxPts > 0;
+        if (correct) correctCount++;
+
+        results.push({
+          question: target.targetId,
+          type: target.type,
+          correct,
+          userAnswer: userAns,
+          expectedAnswer: [expectedAns],
+          earnedPoints: Math.round(awarded * 100) / 100,
+          totalPoints: Math.round(maxPts * 100) / 100,
+          explanation: ov.explanation || ""
+        });
+      }
+
+      for (const grp of tfGroups.values()) {
+        const correctStmtCount = grp.statements.filter(s => s.correct).length;
+        const weights = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5, 4: 1.0 };
+        const maxPts = 1.0;
+        const awarded = grp.hasManualPoints
+          ? Math.max(0, Math.min(maxPts, grp.manualPointsSum))
+          : (weights[correctStmtCount] ?? 0);
+        totalPoints += maxPts;
+        earnedPoints += awarded;
+        const correct = correctStmtCount === grp.statements.length;
+        if (correct) correctCount++;
+        results.push({
+          question: grp.questionId,
+          type: "true_false",
+          correct,
+          correctStatements: correctStmtCount,
+          statementCount: grp.statements.length,
+          statements: grp.statements,
+          earnedPoints: Math.round(awarded * 100) / 100,
+          totalPoints: maxPts
+        });
+      }
+
+      const scale = 10;
+      const roundedEarned = Math.round(earnedPoints * 100) / 100;
+      const roundedTotal = Math.round(totalPoints * 100) / 100 || 10;
+      const scaledScore = Math.abs(roundedTotal - scale) > 0.01
+        ? Math.round((roundedEarned / roundedTotal) * scale * 100) / 100
+        : roundedEarned;
+      const percent = Math.round((scaledScore / scale) * 100);
+
+      return {
+        graded: true,
+        gradingStatus: "graded",
+        score: scaledScore,
+        scale,
+        earnedPoints: roundedEarned,
+        totalPoints: roundedTotal,
+        percent,
+        correctCount,
+        questionCount: results.length,
+        results
+      };
+    }
+
+    const grade = gradeAnswers(
+      answerKey,
+      submittedAnswers,
+      isShortCustomTest ? {} : (config || {})
+    );
+    const scale = 10;
+    const totalPts = Number(grade.totalPoints) || 10;
+    const earnedPts = Number(grade.earnedPoints) || 0;
+    const score = grade.score != null
+      ? Number(grade.score)
+      : (totalPts > 0 ? Math.round((earnedPts / totalPts) * scale * 100) / 100 : 0);
+
+    return {
+      graded: true,
+      gradingStatus: "graded",
+      ...grade,
+      score,
+      scale,
+      percent: Math.round((score / scale) * 100)
+    };
+  }
+
+  app.get("/api/tests", (req, res) => {
+    const rows = db.prepare(`
+      SELECT t.*,
+             d.filename, d.original_name AS originalName, d.size, d.content_type AS contentType,
+             es.status AS solutionStatus,
+             ak.original_name AS answerKeyOriginalName,
+             (SELECT COUNT(*) FROM test_submissions ts WHERE ts.test_id = t.id) AS totalSubmissionsCount,
+             (SELECT COUNT(*) FROM test_submissions ts WHERE ts.test_id = t.id AND ts.grading_status = 'pending_grade') AS pendingGradingCount
+      FROM tests t
+      JOIN documents d ON d.id = t.document_id
+      LEFT JOIN exam_solutions es ON es.document_id = t.id
+      LEFT JOIN answer_keys ak ON ak.document_id = t.id
+      ORDER BY t.open_at DESC, t.created_at DESC
+    `).all();
+
+    const userSubmissionsByTest = new Map();
+    if (req.user?.id) {
+      const subs = db.prepare(`
+        SELECT *
+        FROM test_submissions
+        WHERE user_id = ?
+        ORDER BY id DESC
+      `).all(req.user.id);
+      for (const s of subs) {
+        if (!userSubmissionsByTest.has(s.test_id)) {
+          userSubmissionsByTest.set(s.test_id, s);
+        }
+      }
+    }
+
+    const nowMs = Date.now();
+    const parseTimeMs = val => {
+      if (!val) return null;
+      const d = new Date(val);
+      return Number.isNaN(d.getTime()) ? null : d.getTime();
+    };
+
+    const formatted = rows.map(row => {
+      const sub = userSubmissionsByTest.get(row.id) || null;
+      const completed = Boolean(sub);
+      const openMs = parseTimeMs(row.open_at);
+      const closeMs = parseTimeMs(row.close_at);
+      const isNotOpenYet = openMs != null && nowMs < openMs;
+      const isExpired = closeMs != null && nowMs > closeMs;
+      const hasApprovedAnswers = Boolean(
+        row.has_answer_key ||
+        row.solutionStatus === "ready" ||
+        (row.answerKeyOriginalName && row.answer_mode !== "deferred")
+      );
+
+      let parsedTargets = [];
+      try { parsedTargets = JSON.parse(row.questions_json || "[]"); } catch {}
+
+      return {
+        id: row.id,
+        documentId: row.document_id,
+        title: row.title,
+        subject: row.subject,
+        grade: row.grade,
+        category: "test",
+        openAt: row.open_at,
+        closeAt: row.close_at,
+        durationMinutes: row.duration_minutes ? Number(row.duration_minutes) : null,
+        answerMode: row.answer_mode,
+        hasApprovedAnswers,
+        solutionStatus: row.solutionStatus || (row.answer_mode === "deferred" ? "deferred" : "not_started"),
+        filename: row.filename,
+        originalName: row.originalName,
+        fileUrl: `/api/documents/${encodeURIComponent(row.id)}/file`,
+        url: `/api/documents/${encodeURIComponent(row.id)}/file`,
+        content: /\.txt$/i.test(row.originalName || "") && row.raw_text_cache ? row.raw_text_cache : undefined,
+        questionCount: parsedTargets.length || 22,
+        completed,
+        completionStatus: completed ? "completed" : "incomplete",
+        completionLabel: completed ? "Đã hoàn thành" : "Chưa hoàn thành",
+        availability: isNotOpenYet ? "upcoming" : isExpired ? "closed" : "open",
+        totalSubmissionsCount: Number(row.totalSubmissionsCount) || 0,
+        pendingGradingCount: Number(row.pendingGradingCount) || 0,
+        submission: sub
+          ? {
+              id: sub.id,
+              gradingStatus: sub.grading_status,
+              graded: Boolean(sub.graded),
+              score: sub.graded && sub.score != null ? Number(sub.score) : null,
+              scale: Number(sub.scale || 10),
+              percent: sub.percent != null ? Number(sub.percent) : null,
+              correctCount: sub.correct_count,
+              questionCount: sub.question_count,
+              submittedAt: sub.submitted_at,
+              gradedAt: sub.graded_at,
+              autoSubmittedFullscreen: Boolean(sub.auto_submitted_fullscreen)
+            }
+          : null
+      };
+    });
+
+    formatted.sort((a, b) => {
+      if (a.completed !== b.completed) {
+        return a.completed ? 1 : -1;
+      }
+      if (!a.completed) {
+        const aClose = parseTimeMs(a.closeAt) || Number.MAX_SAFE_INTEGER;
+        const bClose = parseTimeMs(b.closeAt) || Number.MAX_SAFE_INTEGER;
+        return aClose - bClose;
+      }
+      const aSub = parseTimeMs(a.submission?.submittedAt) || 0;
+      const bSub = parseTimeMs(b.submission?.submittedAt) || 0;
+      return bSub - aSub;
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      tests: formatted,
+      summary: {
+        total: formatted.length,
+        incompleteCount: formatted.filter(t => !t.completed).length,
+        completedCount: formatted.filter(t => t.completed).length,
+        pendingGradingTotal: rows.reduce((acc, r) => acc + (Number(r.pendingGradingCount) || 0), 0)
+      }
+    });
+  });
+
+  app.post(
+    "/api/admin/tests",
+    requireSameOrigin,
+    requireAdmin,
+    upload.fields([{ name: "document", maxCount: 1 }, { name: "answerKey", maxCount: 1 }]),
+    async (req, res) => {
+      try {
+        const documentFile = req.files?.document?.[0];
+        const answerKeyFile = req.files?.answerKey?.[0];
+        if (!documentFile) {
+          return res.status(400).json({ error: "Vui lòng chọn tệp đề bài kiểm tra." });
+        }
+
+        const b = req.body || {};
+        const title = String(b.title || documentFile.originalname || "").trim().slice(0, 140);
+        const subject = String(b.subject || "Toán").trim();
+        const grade = String(b.grade || "10").trim();
+        const openAt = String(b.openAt || "").trim();
+        const closeAt = String(b.closeAt || "").trim();
+        const rawDuration = String(b.durationMinutes ?? "").trim();
+        const durationMinutes = rawDuration === "" || rawDuration === "0" || rawDuration === "none"
+          ? null
+          : Number(rawDuration);
+        const answerMode = String(b.answerMode || "immediate").trim() === "deferred" ? "deferred" : "immediate";
+        const answerEntryMethod = String(b.answerEntryMethod || "manual").trim();
+
+        if (!title) {
+          return res.status(400).json({ error: "Vui lòng nhập tên bài kiểm tra." });
+        }
+        if (!openAt || !closeAt) {
+          return res.status(400).json({ error: "Bắt buộc phải thiết lập Ngày mở bài kiểm tra và Hạn cuối nộp bài." });
+        }
+        const openDate = new Date(openAt);
+        const closeDate = new Date(closeAt);
+        if (Number.isNaN(openDate.getTime()) || Number.isNaN(closeDate.getTime())) {
+          return res.status(400).json({ error: "Định dạng ngày mở hoặc hạn cuối nộp bài không hợp lệ." });
+        }
+        if (closeDate.getTime() <= openDate.getTime()) {
+          return res.status(400).json({ error: "Hạn cuối nộp bài phải sau Ngày mở bài kiểm tra." });
+        }
+        if (durationMinutes !== null && !ALLOWED_DURATIONS.has(durationMinutes)) {
+          return res.status(400).json({ error: "Thời gian làm bài chỉ nhận các mốc: 30, 45, 60, 90, 120 phút hoặc không giới hạn." });
+        }
+
+        const ext = path.extname(documentFile.originalname).toLowerCase();
+        const allowedDocExts = new Set([".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg"]);
+        if (!allowedDocExts.has(ext)) {
+          return res.status(400).json({ error: "Định dạng tệp đề kiểm tra không được hỗ trợ." });
+        }
+
+        ensureSubjectRegistered(subject, 10);
+        const config = assessmentConfigFor(subject, "exam");
+        const parsedAnswerKey = answerKeyFile
+          ? await normalizeAnswerKeyDocument(answerKeyFile.buffer, answerKeyFile.originalname, config?.layout, config?.grading)
+          : null;
+
+        const rawText = await extractRawTextFromBuffer(documentFile.buffer, documentFile.originalname);
+        const parsedQuestions = parseQuestionsFromRawText(rawText);
+        const targets = buildQuestionTargetsForTest({
+          parsedQuestions,
+          layout: config?.layout
+        });
+
+        const id = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const filename = storedFilename(documentFile.originalname);
+        const contentType = contentTypeFor(documentFile.originalname);
+        fs.writeFileSync(path.join(documentsDir, filename), documentFile.buffer, { flag: "wx" });
+
+        const hasImmediateKey = Boolean(parsedAnswerKey && answerMode === "immediate");
+
+        const saveTx = db.transaction(() => {
+          db.prepare(`
+            INSERT INTO documents (
+              id, subject, grade, category, title, filename, original_name, size, content_type, file_data, uploaded_by
+            ) VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            id, subject, grade, title, filename, documentFile.originalname,
+            documentFile.size, contentType, documentFile.buffer, req.user.id
+          );
+
+          db.prepare(`
+            INSERT INTO tests (
+              id, document_id, title, subject, grade, open_at, close_at,
+              duration_minutes, answer_mode, has_answer_key, raw_text_cache, questions_json, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            id, id, title, subject, grade, openAt, closeAt,
+            durationMinutes, answerMode, hasImmediateKey ? 1 : 0,
+            rawText || null, JSON.stringify(targets), req.user.id
+          );
+
+          if (answerKeyFile) {
+            saveAnswerKeyRecord(id, answerKeyFile, req.user.id, parsedAnswerKey);
+          }
+        });
+        saveTx();
+
+        let solutionJob = null;
+        if (answerMode === "immediate") {
+          if (answerEntryMethod === "ai" && String(process.env.GEMINI_API_KEY || "").trim()) {
+            createExamSolutionJob(id);
+            solutionJob = { id, status: "queued", mode: "ai", phase: "AI đang giải đề kiểm tra" };
+          } else {
+            await initManualSolutionForDocument(id);
+            solutionJob = { id, status: "review", mode: "manual", phase: "Nhập và xác nhận đáp án chuẩn" };
+          }
+        }
+
+        return res.status(201).json({
+          ok: true,
+          testId: id,
+          answerMode,
+          solutionJob,
+          message: answerMode === "deferred"
+            ? "Đã tạo bài kiểm tra ở chế độ Chưa nhập đáp án ngay (Học viên nộp bài sẽ hiện 'Đang chờ chấm')."
+            : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
+        });
+      } catch (error) {
+        console.error("Create test error:", error);
+        return res.status(400).json({ error: error.message || "Không thể tạo bài kiểm tra." });
+      }
+    }
+  );
+
+  app.delete("/api/admin/tests/:id", requireSameOrigin, requireAdmin, (req, res) => {
+    const id = String(req.params.id);
+    const doc = db.prepare("SELECT id, filename FROM documents WHERE id = ?").get(id);
+    const testRow = db.prepare("SELECT id, title FROM tests WHERE id = ?").get(id);
+    if (!doc && !testRow) {
+      return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
+    }
+
+    const delTx = db.transaction(() => {
+      db.prepare("DELETE FROM tests WHERE id = ?").run(id);
+      db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+      db.prepare("DELETE FROM user_progress WHERE item_id = ?").run(id);
+    });
+    delTx();
+    deleteLearningResultsByItemId(id);
+
+    if (doc?.filename) {
+      const storedPath = path.join(documentsDir, path.basename(doc.filename));
+      try {
+        if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath);
+      } catch {}
+    }
+
+    return res.json({ ok: true, deletedId: id, message: `Đã xóa bài kiểm tra "${testRow?.title || id}".` });
+  });
+
+  app.post("/api/tests/:id/submit", requireSameOrigin, requireAuth, async (req, res) => {
+    const testId = String(req.params.id);
+    const testRow = db.prepare(`
+      SELECT t.*, d.original_name AS originalName
+      FROM tests t
+      JOIN documents d ON d.id = t.document_id
+      WHERE t.id = ?
+    `).get(testId);
+
+    if (!testRow) {
+      return res.status(404).json({ error: "Không tìm thấy bài kiểm tra này." });
+    }
+
+    const nowMs = Date.now();
+    const openMs = new Date(testRow.open_at).getTime();
+    if (req.user.role !== "admin" && Number.isFinite(openMs) && nowMs < openMs) {
+      return res.status(403).json({ error: "Bài kiểm tra này chưa đến thời gian mở đề." });
+    }
+
+    const rawAnswers = req.body?.answers && typeof req.body.answers === "object" && !Array.isArray(req.body.answers)
+      ? req.body.answers
+      : {};
+    const answers = Object.fromEntries(
+      Object.entries(rawAnswers)
+        .slice(0, 250)
+        .map(([k, v]) => [String(k).slice(0, 40), String(v ?? "").slice(0, 5000)])
+    );
+    const autoSubmittedFullscreen = Boolean(req.body?.autoSubmittedFullscreen);
+    const timeSpentSeconds = Math.max(0, Math.round(Number(req.body?.timeSpentSeconds) || 0));
+
+    const approvedKey = getApprovedAnswerKeyForTest(testId);
+    let resultPayload;
+
+    if (approvedKey && testRow.answer_mode !== "deferred") {
+      resultPayload = evaluateTestSubmission({
+        testRow,
+        submittedAnswers: answers,
+        answerKey: approvedKey
+      });
+    } else if (approvedKey && testRow.has_answer_key) {
+      resultPayload = evaluateTestSubmission({
+        testRow,
+        submittedAnswers: answers,
+        answerKey: approvedKey
+      });
+    } else {
+      let targets = [];
+      try { targets = JSON.parse(testRow.questions_json || "[]"); } catch {}
+      resultPayload = {
+        graded: false,
+        gradingStatus: "pending_grade",
+        statusLabel: "Đang chờ chấm",
+        scale: 10,
+        questionCount: targets.length || Object.keys(answers).length || 0,
+        answeredCount: Object.values(answers).filter(v => String(v).trim() !== "").length,
+        autoSubmittedFullscreen,
+        message: "Đang chờ chấm — Bài kiểm tra của bạn đã được lưu và đang chờ giảng viên chấm điểm."
+      };
+    }
+
+    const saveSubmissionTx = db.transaction(() => {
+      const inserted = db.prepare(`
+        INSERT INTO test_submissions (
+          test_id, user_id, title, subject, grade,
+          grading_status, graded, score, scale, percent,
+          correct_count, question_count, duration_minutes, time_spent_seconds,
+          auto_submitted_fullscreen, answers_json, answer_key_json, result_json,
+          started_at, submitted_at, graded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+      `).run(
+        testRow.id,
+        req.user.id,
+        testRow.title,
+        testRow.subject,
+        testRow.grade,
+        resultPayload.graded ? "graded" : "pending_grade",
+        resultPayload.graded ? 1 : 0,
+        resultPayload.graded ? Number(resultPayload.score) : null,
+        Number(resultPayload.scale || 10),
+        resultPayload.graded && resultPayload.percent != null ? Number(resultPayload.percent) : null,
+        resultPayload.correctCount == null ? null : Number(resultPayload.correctCount),
+        resultPayload.questionCount == null ? null : Number(resultPayload.questionCount),
+        testRow.duration_minutes ? Number(testRow.duration_minutes) : null,
+        timeSpentSeconds,
+        autoSubmittedFullscreen ? 1 : 0,
+        JSON.stringify(answers),
+        approvedKey ? JSON.stringify({ answers: approvedKey.answers, points: approvedKey.points || {} }) : null,
+        JSON.stringify(resultPayload),
+        resultPayload.graded ? new Date().toISOString() : null
+      );
+
+      const submissionId = Number(inserted.lastInsertRowid);
+      const fullPayload = {
+        ...resultPayload,
+        submissionId,
+        attemptId: submissionId,
+        isTest: true,
+        testId: testRow.id,
+        title: testRow.title,
+        subject: testRow.subject,
+        grade: testRow.grade,
+        autoSubmittedFullscreen,
+        saved: true
+      };
+
+      db.prepare("UPDATE test_submissions SET result_json = ? WHERE id = ?").run(JSON.stringify(fullPayload), submissionId);
+
+      const attemptInsert = db.prepare(`
+        INSERT INTO exam_attempts (
+          user_id, document_id, title, subject, grade, category,
+          graded, score, scale, percent, correct_count, question_count,
+          answers_json, answer_key_json, result_json
+        ) VALUES (?, ?, ?, ?, ?, 'test', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        req.user.id,
+        testRow.id,
+        testRow.title,
+        testRow.subject,
+        testRow.grade,
+        resultPayload.graded ? 1 : 0,
+        resultPayload.graded ? Number(resultPayload.score) : null,
+        Number(resultPayload.scale || 10),
+        resultPayload.graded && resultPayload.percent != null ? Number(resultPayload.percent) : null,
+        resultPayload.correctCount == null ? null : Number(resultPayload.correctCount),
+        resultPayload.questionCount == null ? null : Number(resultPayload.questionCount),
+        JSON.stringify(answers),
+        approvedKey ? JSON.stringify({ answers: approvedKey.answers, points: approvedKey.points || {} }) : null,
+        JSON.stringify(fullPayload)
+      );
+      const examAttemptId = Number(attemptInsert.lastInsertRowid);
+
+      db.prepare(`
+        INSERT INTO user_progress (
+          user_id, item_type, item_id, item_title, subject, grade,
+          status, progress_percent, score, answers_json, last_position, updated_at
+        ) VALUES (?, 'test', ?, ?, ?, ?, 'completed', 100, ?, ?, ?, datetime('now'))
+        ON CONFLICT(user_id, item_type, item_id) DO UPDATE SET
+          item_title = excluded.item_title,
+          subject = excluded.subject,
+          grade = excluded.grade,
+          status = 'completed',
+          progress_percent = 100,
+          score = excluded.score,
+          answers_json = excluded.answers_json,
+          last_position = excluded.last_position,
+          updated_at = datetime('now')
+      `).run(
+        req.user.id,
+        testRow.id,
+        testRow.title,
+        testRow.subject,
+        testRow.grade,
+        resultPayload.graded ? Number(resultPayload.score) : null,
+        JSON.stringify(answers),
+        `test-submission:${submissionId}:attempt:${examAttemptId}`
+      );
+
+      upsertLearningResult({
+        recordKey: `test:${testRow.id}:user:${req.user.id}`,
+        userId: req.user.id,
+        userName: req.user.name,
+        userEmail: req.user.email,
+        subject: testRow.subject,
+        grade: testRow.grade,
+        category: "test",
+        itemId: testRow.id,
+        itemTitle: testRow.title,
+        attemptId: submissionId,
+        completionStatus: "completed",
+        gradingStatus: resultPayload.graded ? "graded" : "pending_grade",
+        progressPercent: 100,
+        score: resultPayload.graded ? Number(resultPayload.score) : null,
+        scale: Number(resultPayload.scale || 10),
+        percentScore: resultPayload.graded ? Number(resultPayload.percent) : null,
+        correctCount: resultPayload.correctCount,
+        questionCount: resultPayload.questionCount,
+        durationMinutes: testRow.duration_minutes,
+        timeSpentSeconds,
+        fullscreenExitAutoSubmit: autoSubmittedFullscreen,
+        openAt: testRow.open_at,
+        closeAt: testRow.close_at,
+        submittedAt: new Date().toISOString(),
+        gradedAt: resultPayload.graded ? new Date().toISOString() : null
+      });
+
+      if (resultPayload.graded) {
+        notifyUser(
+          req.user.id,
+          "test_graded",
+          `Hoàn thành ${testRow.title}`,
+          `Bạn đã nộp bài kiểm tra "${testRow.title}" và đạt ${Number(resultPayload.score).toFixed(2)}/${resultPayload.scale || 10} điểm.`
+        );
+      } else {
+        notifyUser(
+          req.user.id,
+          "test_pending_grade",
+          `Đã nộp ${testRow.title} (Đang chờ chấm)`,
+          `Bài làm "${testRow.title}" của bạn đã được ghi nhận và đang chờ giảng viên chấm điểm.`
+        );
+        notifyAdmins(
+          "test_submission_pending",
+          "Có bài kiểm tra mới chờ chấm",
+          `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`,
+          "admin"
+        );
+      }
+
+      return fullPayload;
+    });
+
+    return res.json(saveSubmissionTx());
+  });
+
+  app.get("/api/test-submissions/:id", requireAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const row = req.user.role === "admin"
+      ? db.prepare(`
+          SELECT ts.*, u.name AS userName, u.email AS userEmail
+          FROM test_submissions ts
+          JOIN users u ON u.id = ts.user_id
+          WHERE ts.id = ?
+        `).get(id)
+      : db.prepare(`
+          SELECT ts.*, u.name AS userName, u.email AS userEmail
+          FROM test_submissions ts
+          JOIN users u ON u.id = ts.user_id
+          WHERE ts.id = ? AND ts.user_id = ?
+        `).get(id, req.user.id);
+
+    if (!row) {
+      return res.status(404).json({ error: "Không tìm thấy bài nộp kiểm tra." });
+    }
+
+    let result = {};
+    let answers = {};
+    let answerKey = null;
+    try { result = JSON.parse(row.result_json || "{}"); } catch {}
+    try { answers = JSON.parse(row.answers_json || "{}"); } catch {}
+    try { answerKey = JSON.parse(row.answer_key_json || "null"); } catch {}
+
+    return res.json({
+      id: row.id,
+      testId: row.test_id,
+      documentId: row.test_id,
+      title: row.title,
+      subject: row.subject,
+      grade: row.grade,
+      category: "test",
+      gradingStatus: row.grading_status,
+      graded: Boolean(row.graded),
+      score: row.graded && row.score != null ? Number(row.score) : null,
+      scale: Number(row.scale || 10),
+      percent: row.percent != null ? Number(row.percent) : null,
+      answers,
+      answerKey,
+      result: {
+        ...result,
+        graded: Boolean(row.graded),
+        gradingStatus: row.grading_status,
+        score: row.graded && row.score != null ? Number(row.score) : null,
+        scale: Number(row.scale || 10),
+        percent: row.percent != null ? Number(row.percent) : null,
+        message: row.graded
+          ? result.message
+          : "Đang chờ chấm — Bài kiểm tra của bạn đang chờ giảng viên chấm điểm."
+      },
+      createdAt: row.submitted_at,
+      submittedAt: row.submitted_at,
+      gradedAt: row.graded_at,
+      userName: row.userName,
+      userEmail: row.userEmail
+    });
+  });
+
+  app.get("/api/admin/pending-test-submissions", requireAdmin, (req, res) => {
+    const statusFilter = String(req.query.status || "all");
+    const rows = db.prepare(`
+      SELECT ts.id, ts.test_id AS testId, ts.user_id AS userId,
+             ts.title, ts.subject, ts.grade, ts.grading_status AS gradingStatus,
+             ts.graded, ts.score, ts.scale, ts.percent,
+             ts.correct_count AS correctCount, ts.question_count AS questionCount,
+             ts.time_spent_seconds AS timeSpentSeconds,
+             ts.auto_submitted_fullscreen AS autoSubmittedFullscreen,
+             ts.submitted_at AS submittedAt, ts.graded_at AS gradedAt,
+             u.name AS userName, u.email AS userEmail,
+             g.name AS gradedByName
+      FROM test_submissions ts
+      JOIN users u ON u.id = ts.user_id
+      LEFT JOIN users g ON g.id = ts.graded_by
+      ORDER BY
+        CASE ts.grading_status WHEN 'pending_grade' THEN 0 ELSE 1 END,
+        ts.submitted_at DESC
+      LIMIT 300
+    `).all();
+
+    const filtered = statusFilter === "pending_grade"
+      ? rows.filter(r => r.gradingStatus === "pending_grade")
+      : statusFilter === "graded"
+        ? rows.filter(r => r.gradingStatus === "graded")
+        : rows;
+
+    return res.json({
+      submissions: filtered,
+      pendingCount: rows.filter(r => r.gradingStatus === "pending_grade").length,
+      gradedCount: rows.filter(r => r.gradingStatus === "graded").length,
+      totalCount: rows.length
+    });
+  });
+
+  app.get("/api/admin/test-submissions/:id/grading-context", requireAdmin, async (req, res) => {
+    const submissionId = Number(req.params.id);
+    const sub = db.prepare(`
+      SELECT ts.*, u.name AS userName, u.email AS userEmail,
+             t.open_at AS openAt, t.close_at AS closeAt, t.duration_minutes AS durationMinutes,
+             t.raw_text_cache AS rawTextCache, t.questions_json AS questionsJson,
+             d.original_name AS originalName, d.file_data AS fileData,
+             es.approved_json AS approvedSolution, es.generated_json AS generatedSolution
+      FROM test_submissions ts
+      JOIN users u ON u.id = ts.user_id
+      JOIN tests t ON t.id = ts.test_id
+      JOIN documents d ON d.id = t.document_id
+      LEFT JOIN exam_solutions es ON es.document_id = t.id
+      WHERE ts.id = ?
+    `).get(submissionId);
+
+    if (!sub) {
+      return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
+    }
+
+    const config = assessmentConfigFor(sub.subject, "exam");
+    const rawText = sub.rawTextCache || await extractRawTextFromBuffer(sub.fileData, sub.originalName);
+    const parsedQuestions = parseQuestionsFromRawText(rawText);
+
+    let targets = [];
+    if (sub.questionsJson) {
+      try {
+        const parsed = JSON.parse(sub.questionsJson);
+        if (Array.isArray(parsed) && parsed.length) targets = parsed;
+      } catch {}
+    }
+    if (!targets.length) {
+      targets = buildQuestionTargetsForTest({
+        parsedQuestions,
+        layout: config?.layout
+      });
+    }
+
+    let studentAnswers = {};
+    try { studentAnswers = JSON.parse(sub.answers_json || "{}"); } catch {}
+
+    let savedAnswerKey = {};
+    let savedQuestionMeta = new Map();
+    try {
+      const fromSub = JSON.parse(sub.answer_key_json || "null");
+      if (fromSub?.answers) savedAnswerKey = { ...fromSub.answers };
+    } catch {}
+    try {
+      const fromSol = JSON.parse(sub.approvedSolution || sub.generatedSolution || "null");
+      if (fromSol?.answers) savedAnswerKey = { ...fromSol.answers, ...savedAnswerKey };
+      for (const q of fromSol?.questions || []) {
+        if (q?.targetId) savedQuestionMeta.set(String(q.targetId), q);
+      }
+    } catch {}
+
+    let prevResult = {};
+    try { prevResult = JSON.parse(sub.result_json || "{}"); } catch {}
+    const prevResultByQuestion = new Map();
+    for (const r of prevResult?.results || []) {
+      if (r?.question) prevResultByQuestion.set(String(r.question), r);
+    }
+
+    const isShortCustomTest = targets.length > 0 && targets.length <= 15 && !targets.some(t => t.type === "true_false");
+    const questions = targets.map(target => {
+      const meta = savedQuestionMeta.get(target.targetId) || {};
+      const prevRow = prevResultByQuestion.get(target.targetId) || prevResultByQuestion.get(target.questionId);
+      const studentAns = String(studentAnswers[target.targetId] ?? studentAnswers[target.questionId] ?? "").trim();
+      const currentCorrectAns = String(
+        savedAnswerKey[target.targetId] ??
+        meta.answer ??
+        ""
+      ).trim();
+      const maxPts = Number(meta.maximumPoints ?? target.maximumPoints) || (isShortCustomTest ? Number((10 / targets.length).toFixed(2)) : 0.25);
+      const rubric = Array.isArray(meta.rubric) && meta.rubric.length
+        ? meta.rubric
+        : [{ criterion: `Đáp án đúng cho câu ${target.targetId}`, points: maxPts }];
+
+      return {
+        targetId: target.targetId,
+        questionId: target.questionId,
+        type: target.type,
+        maximumPoints: maxPts,
+        questionText: meta.questionText || target.questionText || `Câu ${target.targetId}`,
+        studentAnswer: studentAns,
+        answer: currentCorrectAns,
+        explanation: meta.explanation || prevRow?.explanation || "",
+        rubric,
+        earnedPoints: prevRow?.earnedPoints ?? null
+      };
+    });
+
+    return res.json({
+      submissionId: sub.id,
+      testId: sub.test_id,
+      title: sub.title,
+      subject: sub.subject,
+      grade: sub.grade,
+      originalName: sub.originalName,
+      fileUrl: `/api/documents/${encodeURIComponent(sub.test_id)}/file`,
+      userName: sub.userName,
+      userEmail: sub.userEmail,
+      submittedAt: sub.submitted_at,
+      gradedAt: sub.graded_at,
+      gradingStatus: sub.grading_status,
+      graded: Boolean(sub.graded),
+      score: sub.graded && sub.score != null ? Number(sub.score) : null,
+      scale: Number(sub.scale || 10),
+      timeSpentSeconds: sub.time_spent_seconds,
+      autoSubmittedFullscreen: Boolean(sub.auto_submitted_fullscreen),
+      teacherNote: sub.teacher_note || "",
+      questions
+    });
+  });
+
+  app.post("/api/admin/test-submissions/:id/grade", requireSameOrigin, requireAdmin, (req, res) => {
+    const submissionId = Number(req.params.id);
+    const sub = db.prepare(`
+      SELECT ts.*, u.name AS userName, u.email AS userEmail
+      FROM test_submissions ts
+      JOIN users u ON u.id = ts.user_id
+      WHERE ts.id = ?
+    `).get(submissionId);
+
+    if (!sub) {
+      return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
+    }
+
+    const testRow = db.prepare("SELECT * FROM tests WHERE id = ?").get(sub.test_id);
+    if (!testRow) {
+      return res.status(404).json({ error: "Không tìm thấy đề kiểm tra gốc." });
+    }
+
+    const submittedQuestions = Array.isArray(req.body?.questions) ? req.body.questions : [];
+    if (!submittedQuestions.length) {
+      return res.status(400).json({ error: "Vui lòng nhập đáp án đúng cho các câu hỏi trước khi lưu điểm." });
+    }
+
+    const saveAsTestAnswerKey = req.body?.saveAsTestAnswerKey !== false;
+    const teacherNote = String(req.body?.teacherNote || "").trim().slice(0, 1000);
+
+    const answersMap = {};
+    const pointsMap = {};
+    const normalizedQuestions = [];
+
+    for (const q of submittedQuestions) {
+      const targetId = String(q.targetId || "").trim();
+      const answer = String(q.answer ?? "").trim();
+      if (!targetId) continue;
+      if (!answer) {
+        return res.status(400).json({ error: `Vui lòng chọn hoặc nhập đáp án đúng cho câu ${targetId}.` });
+      }
+      answersMap[targetId] = answer;
+      const maxPts = Number(q.maximumPoints) || 0.25;
+      pointsMap[targetId] = maxPts;
+      normalizedQuestions.push({
+        targetId,
+        questionId: q.questionId || targetId,
+        type: q.type || "multiple_choice",
+        maximumPoints: maxPts,
+        questionText: String(q.questionText || `Câu ${targetId}`),
+        aiAnswer: answer,
+        answer,
+        explanation: String(q.explanation || "").trim(),
+        rubric: Array.isArray(q.rubric) ? q.rubric : [{ criterion: `Đáp án chuẩn câu ${targetId}`, points: maxPts }],
+        pointsAwarded: q.pointsAwarded !== undefined && q.pointsAwarded !== null && q.pointsAwarded !== ""
+          ? Number(q.pointsAwarded)
+          : undefined,
+        confidence: 1,
+        uncertainty: "",
+        reviewStatus: "manual"
+      });
+    }
+
+    let studentAnswers = {};
+    try { studentAnswers = JSON.parse(sub.answers_json || "{}"); } catch {}
+
+    const evaluated = evaluateTestSubmission({
+      testRow,
+      submittedAnswers: studentAnswers,
+      answerKey: { answers: answersMap, points: pointsMap },
+      questionOverrides: normalizedQuestions
+    });
+
+    const nowIso = new Date().toISOString();
+    const answerKeyPayload = {
+      schemaVersion: 1,
+      source: "manual-entry",
+      model: "Giảng viên chấm",
+      version: 1,
+      scale: 10,
+      answers: answersMap,
+      points: pointsMap,
+      questions: normalizedQuestions,
+      reviewedAt: nowIso,
+      reviewedBy: req.user.id
+    };
+
+    let autoGradedOthersCount = 0;
+
+    const gradeTx = db.transaction(() => {
+      const fullResult = {
+        ...evaluated,
+        submissionId: sub.id,
+        attemptId: sub.id,
+        isTest: true,
+        testId: sub.test_id,
+        title: sub.title,
+        subject: sub.subject,
+        grade: sub.grade,
+        gradedBy: req.user.name,
+        gradedAt: nowIso,
+        teacherNote,
+        saved: true
+      };
+
+      db.prepare(`
+        UPDATE test_submissions
+        SET grading_status = 'graded',
+            graded = 1,
+            score = ?,
+            scale = ?,
+            percent = ?,
+            correct_count = ?,
+            question_count = ?,
+            answer_key_json = ?,
+            result_json = ?,
+            teacher_note = ?,
+            graded_at = datetime('now'),
+            graded_by = ?
+        WHERE id = ?
+      `).run(
+        Number(evaluated.score),
+        Number(evaluated.scale || 10),
+        Number(evaluated.percent || 0),
+        Number(evaluated.correctCount || 0),
+        Number(evaluated.questionCount || 0),
+        JSON.stringify({ answers: answersMap, points: pointsMap }),
+        JSON.stringify(fullResult),
+        teacherNote || null,
+        req.user.id,
+        sub.id
+      );
+
+      db.prepare(`
+        UPDATE user_progress
+        SET score = ?, status = 'completed', progress_percent = 100, updated_at = datetime('now')
+        WHERE user_id = ? AND item_type = 'test' AND item_id = ?
+      `).run(Number(evaluated.score), sub.user_id, sub.test_id);
+
+      db.prepare(`
+        UPDATE exam_attempts
+        SET graded = 1, score = ?, scale = ?, percent = ?, correct_count = ?, question_count = ?,
+            answer_key_json = ?, result_json = ?
+        WHERE user_id = ? AND document_id = ?
+      `).run(
+        Number(evaluated.score),
+        Number(evaluated.scale || 10),
+        Number(evaluated.percent || 0),
+        Number(evaluated.correctCount || 0),
+        Number(evaluated.questionCount || 0),
+        JSON.stringify({ answers: answersMap, points: pointsMap }),
+        JSON.stringify(fullResult),
+        sub.user_id,
+        sub.test_id
+      );
+
+      upsertLearningResult({
+        recordKey: `test:${sub.test_id}:user:${sub.user_id}`,
+        userId: sub.user_id,
+        userName: sub.userName,
+        userEmail: sub.userEmail,
+        subject: sub.subject,
+        grade: sub.grade,
+        category: "test",
+        itemId: sub.test_id,
+        itemTitle: sub.title,
+        attemptId: sub.id,
+        completionStatus: "completed",
+        gradingStatus: "graded",
+        progressPercent: 100,
+        score: Number(evaluated.score),
+        scale: Number(evaluated.scale || 10),
+        percentScore: Number(evaluated.percent || 0),
+        correctCount: evaluated.correctCount,
+        questionCount: evaluated.questionCount,
+        durationMinutes: sub.duration_minutes,
+        timeSpentSeconds: sub.time_spent_seconds,
+        fullscreenExitAutoSubmit: Boolean(sub.auto_submitted_fullscreen),
+        openAt: testRow.open_at,
+        closeAt: testRow.close_at,
+        submittedAt: sub.submitted_at,
+        gradedAt: nowIso,
+        gradedById: req.user.id,
+        gradedByName: req.user.name,
+        extraMetadata: { teacherNote }
+      });
+
+      notifyUser(
+        sub.user_id,
+        "test_graded",
+        `Đã có điểm: ${sub.title}`,
+        `Giảng viên đã chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(evaluated.score).toFixed(2)}/${evaluated.scale || 10}.${teacherNote ? " Nhận xét: " + teacherNote : ""}`
+      );
+
+      if (saveAsTestAnswerKey) {
+        db.prepare("UPDATE tests SET has_answer_key = 1 WHERE id = ?").run(sub.test_id);
+        db.prepare(`
+          INSERT INTO exam_solutions (
+            document_id, status, progress, phase, model, generated_json, approved_json,
+            solution_version, generated_at, approved_at, approved_by, updated_at
+          ) VALUES (?, 'ready', 100, 'Đã duyệt, sẵn sàng chấm', 'Giảng viên chấm', ?, ?, 1, datetime('now'), datetime('now'), ?, datetime('now'))
+          ON CONFLICT(document_id) DO UPDATE SET
+            status = 'ready',
+            progress = 100,
+            phase = 'Đã duyệt, sẵn sàng chấm',
+            generated_json = excluded.generated_json,
+            approved_json = excluded.approved_json,
+            approved_at = datetime('now'),
+            approved_by = excluded.approved_by,
+            updated_at = datetime('now')
+        `).run(
+          sub.test_id,
+          JSON.stringify({ ...answerKeyPayload, answerCount: normalizedQuestions.length, requiredCount: normalizedQuestions.length }),
+          JSON.stringify(answerKeyPayload),
+          req.user.id
+        );
+
+        const otherPending = db.prepare(`
+          SELECT ts.*, u.name AS userName, u.email AS userEmail
+          FROM test_submissions ts
+          JOIN users u ON u.id = ts.user_id
+          WHERE ts.test_id = ? AND ts.id <> ? AND ts.grading_status = 'pending_grade'
+        `).all(sub.test_id, sub.id);
+
+        for (const other of otherPending) {
+          let otherAns = {};
+          try { otherAns = JSON.parse(other.answers_json || "{}"); } catch {}
+          const otherEval = evaluateTestSubmission({
+            testRow,
+            submittedAnswers: otherAns,
+            answerKey: { answers: answersMap, points: pointsMap },
+            questionOverrides: normalizedQuestions.map(q => ({ ...q, pointsAwarded: undefined }))
+          });
+          const otherFull = {
+            ...otherEval,
+            submissionId: other.id,
+            attemptId: other.id,
+            isTest: true,
+            testId: other.test_id,
+            title: other.title,
+            subject: other.subject,
+            grade: other.grade,
+            gradedBy: req.user.name,
+            gradedAt: nowIso,
+            saved: true
+          };
+          db.prepare(`
+            UPDATE test_submissions
+            SET grading_status = 'graded', graded = 1, score = ?, scale = ?, percent = ?,
+                correct_count = ?, question_count = ?, answer_key_json = ?, result_json = ?,
+                graded_at = datetime('now'), graded_by = ?
+            WHERE id = ?
+          `).run(
+            Number(otherEval.score),
+            Number(otherEval.scale || 10),
+            Number(otherEval.percent || 0),
+            Number(otherEval.correctCount || 0),
+            Number(otherEval.questionCount || 0),
+            JSON.stringify({ answers: answersMap, points: pointsMap }),
+            JSON.stringify(otherFull),
+            req.user.id,
+            other.id
+          );
+          db.prepare(`
+            UPDATE user_progress
+            SET score = ?, status = 'completed', progress_percent = 100, updated_at = datetime('now')
+            WHERE user_id = ? AND item_type = 'test' AND item_id = ?
+          `).run(Number(otherEval.score), other.user_id, other.test_id);
+
+          upsertLearningResult({
+            recordKey: `test:${other.test_id}:user:${other.user_id}`,
+            userId: other.user_id,
+            userName: other.userName,
+            userEmail: other.userEmail,
+            subject: other.subject,
+            grade: other.grade,
+            category: "test",
+            itemId: other.test_id,
+            itemTitle: other.title,
+            attemptId: other.id,
+            completionStatus: "completed",
+            gradingStatus: "graded",
+            progressPercent: 100,
+            score: Number(otherEval.score),
+            scale: Number(otherEval.scale || 10),
+            percentScore: Number(otherEval.percent || 0),
+            correctCount: otherEval.correctCount,
+            questionCount: otherEval.questionCount,
+            durationMinutes: other.duration_minutes,
+            timeSpentSeconds: other.time_spent_seconds,
+            fullscreenExitAutoSubmit: Boolean(other.auto_submitted_fullscreen),
+            openAt: testRow.open_at,
+            closeAt: testRow.close_at,
+            submittedAt: other.submitted_at,
+            gradedAt: nowIso,
+            gradedById: req.user.id,
+            gradedByName: req.user.name
+          });
+
+          notifyUser(
+            other.user_id,
+            "test_graded",
+            `Đã có điểm: ${other.title}`,
+            `Giảng viên đã chấm bài kiểm tra "${other.title}" của bạn. Điểm số: ${Number(otherEval.score).toFixed(2)}/${otherEval.scale || 10}.`
+          );
+          autoGradedOthersCount++;
+        }
+      }
+    });
+
+    gradeTx();
+
+    return res.json({
+      ok: true,
+      submissionId: sub.id,
+      score: Number(evaluated.score),
+      scale: Number(evaluated.scale || 10),
+      percent: Number(evaluated.percent || 0),
+      correctCount: evaluated.correctCount,
+      questionCount: evaluated.questionCount,
+      autoGradedOthersCount,
+      message: `Đã chấm xong bài làm của ${sub.userName}: ${Number(evaluated.score).toFixed(2)}/${evaluated.scale || 10} điểm.${
+        autoGradedOthersCount > 0 ? ` Đã tự động chấm thêm ${autoGradedOthersCount} bài nộp cùng đề.` : ""
+      }`
+    });
+  });
+
+  app.get("/api/admin/tests/export-sheets", requireAdmin, (req, res) => {
+    try {
+      const format = String(req.query.format || "xlsx").toLowerCase() === "csv" ? "csv" : "xlsx";
+      const filters = {
+        subject: String(req.query.subject || "all"),
+        grade: String(req.query.grade || "all"),
+        testId: String(req.query.testId || "all"),
+        gradingStatus: String(req.query.gradingStatus || "all")
+      };
+      const exported = buildTeacherScoresSheetExport(db, filters, format);
+      res.setHeader("Content-Type", exported.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(exported.filename)}`);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(exported.buffer);
+    } catch (error) {
+      console.error("Teacher export sheets error:", error);
+      return res.status(500).json({ error: error.message || "Không thể xuất bảng điểm ra Sheets." });
+    }
+  });
+
+  app.get("/api/learning-results/export-sheets", requireAuth, (req, res) => {
+    try {
+      const format = String(req.query.format || "xlsx").toLowerCase() === "csv" ? "csv" : "xlsx";
+      const exported = buildUserLearningResultsSheetExport(db, req.user, format);
+      res.setHeader("Content-Type", exported.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(exported.filename)}`);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(exported.buffer);
+    } catch (error) {
+      console.error("User export sheets error:", error);
+      return res.status(500).json({ error: error.message || "Không thể xuất kết quả học tập ra Sheets." });
+    }
+  });
+
+  app.get("/api/learning-results/subjects", (_req, res) => {
+    return res.json({ subjects: listRegisteredSubjects() });
+  });
+
+  app.post("/api/admin/learning-results/subjects", requireSameOrigin, requireAdmin, (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    const defaultScale = Number(req.body?.defaultScale) || 10;
+    if (!name || name.length > 80) {
+      return res.status(400).json({ error: "Tên môn học không hợp lệ." });
+    }
+    const created = ensureSubjectRegistered(name, defaultScale, req.body?.metadata || {});
+    return res.status(201).json({ ok: true, subject: created, subjects: listRegisteredSubjects() });
+  });
+}

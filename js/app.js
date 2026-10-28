@@ -11,8 +11,15 @@ import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js";
 import { mountStudyRooms } from "../study-rooms/client.js";
+import {
+    refreshTestsQueue,
+    findCachedTest,
+    renderTestsQueuePage,
+    wireTestsEvents,
+    loadAdminTestsAndPendingGrading
+} from "./tests/index.js";
 const view = $("#view");
-const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, warningShown: false, examStarted: false, examFinished: false };
+const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
 let activeStudyRoomsCleanup = null;
 function stopStudyRoomsIfActive() {
@@ -28,17 +35,20 @@ let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
-try {
-    const response = await fetch("/configs/exam-layouts.json", { cache: "no-store" });
-    if (response.ok) examLayoutConfig = await response.json();
-} catch (error) {
-    console.warn("Could not load assessment layout config:", error.message);
+async function initRemoteData() {
+    try {
+        const response = await fetch("/configs/exam-layouts.json", { cache: "no-store" });
+        if (response.ok) examLayoutConfig = await response.json();
+    } catch (error) {
+        console.warn("Could not load assessment layout config:", error.message);
+    }
+    await Promise.all([refreshDocuments().catch(() => {}), refreshTestsQueue().catch(() => {})]);
+    render();
 }
-await refreshDocuments();
-// Luôn đọc danh sách mới nhất từ documents.js.
+// Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
 const docs = () => getDocuments();
 const findDoc = id =>
-    docs().find(d => String(d.id) === String(id));
+    findCachedTest(id) || docs().find(d => String(d.id) === String(id));
 const by = (grade, category) =>
     docs().filter(
         d =>
@@ -115,10 +125,11 @@ function homePage() {
     return `<section class="hero">
     <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-logo.jpg" alt="Logo MAI HỌC"></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
-<div class="grid three">
+<div class="grid four">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
  <article class="card clickable resource-card" data-route="practice"><div class="card-icon">✎</div><span class="pill">LUYỆN TẬP</span><h3>Ôn tập theo đề</h3><p>Thực hành câu hỏi, tự kiểm tra và xem đáp án khi có dữ liệu.</p></article>
  <article class="card clickable resource-card" data-route="exam-select"><div class="card-icon">◷</div><span class="pill">90 PHÚT</span><h3>Phòng thi thử</h3><p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p></article>
+ <article class="card clickable resource-card" data-route="tests"><div class="card-icon">📝</div><span class="pill">KIỂM TRA ĐỊNH KỲ</span><h3>Bài kiểm tra</h3><p>Danh sách bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm.</p></article>
 </div>
 <section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
 <div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
@@ -138,8 +149,8 @@ function subjectPickerPage() {
     return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">TOÁN ĐANG HOẠT ĐỘNG</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-math" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
 function subjectPage() {
-    return `${pageHeading("Môn Toán", "Chọn một khu vực học tập để tiếp tục.")}<div class="grid three">
-${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === "Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === "Toán" && d.grade === g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
+    return `${pageHeading("Môn Toán", "Chọn một khu vực học tập để tiếp tục.")}<div class="grid four">
+${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === "Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === "Toán" && d.grade === g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
 }
 function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn Toán.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN TOÁN</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
 function resourceListPage(category, grade) {
@@ -197,14 +208,14 @@ function readerPage() {
 function questionsFor(doc) {
     if (activeExamQuestionsFor === String(doc?.id)) return activeExamQuestions;
     const layout = assessmentLayoutFor(doc);
-    const isInlineSample = Boolean(doc?.sample && doc?.content);
     const parsedSource = parseQuestionText(doc?.content || "");
+    const isShortOrSample = Boolean((doc?.sample && doc?.content) || (parsedSource.length > 0 && parsedSource.length <= 15));
     if (parsedSource.length) {
-        return applyQuestionLayout(parsedSource, layout, { fillMissing: !isInlineSample });
+        return applyQuestionLayout(parsedSource, layout, { fillMissing: !isShortOrSample });
     }
     if (Array.isArray(doc?.questionIds) && doc.questionIds.length) {
         const fromIds = doc.questionIds.map((id, index) => ({ id: String(id), number: String(id), documentOrder: index, type: "essay", text: `Câu ${id}`, options: [], statements: [] }));
-        return applyQuestionLayout(fromIds, layout, { fillMissing: !isInlineSample });
+        return applyQuestionLayout(fromIds, layout, { fillMissing: !isShortOrSample });
     }
     if (layout && !doc?.content) {
         return applyQuestionLayout([], layout, { fillMissing: true });
@@ -212,7 +223,7 @@ function questionsFor(doc) {
     return [];
 }
 function assessmentLayoutFor(doc) {
-    if (!doc || !["practice", "exam"].includes(doc.category)) return null;
+    if (!doc || !["practice", "exam", "test"].includes(doc.category)) return null;
     const normalizeKey = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
     const subjectKey = Object.keys(examLayoutConfig?.subjects || {}).find(key => normalizeKey(key) === normalizeKey(doc.subject));
     const subjectConfig = subjectKey ? examLayoutConfig.subjects[subjectKey] : null;
@@ -262,7 +273,8 @@ function applyExamQuestions(documentId, questions) {
     if (state.route !== "exam" || String(state.examDocId) !== String(documentId)) return;
     const document = findDoc(documentId);
     const layout = assessmentLayoutFor(document);
-    questions = applyQuestionLayout(questions || [], layout, { fillMissing: !document?.sample });
+    const isShortParsed = Array.isArray(questions) && questions.length > 0 && questions.length <= 15;
+    questions = applyQuestionLayout(questions || [], layout, { fillMissing: !document?.sample && !isShortParsed });
     if (!questions.length) {
         const form = $("#answer-form");
         const summary = $("#answer-question-summary");
@@ -301,7 +313,8 @@ function examPage() {
     if (!d) return examSelectPage();
     const questions = questionsFor(d);
     const isPractice = d.category === "practice";
-    const isTimedExam = d.category === "exam";
+    const isTest = d.category === "test";
+    const showTimer = d.category === "exam" || isTest;
     const filename = d.originalName || d.filename || "";
     const fileUrl = d.fileUrl || d.url || "";
     const isPdf = !d.content && /\.pdf(?:$|[?#])/i.test(filename);
@@ -313,27 +326,40 @@ function examPage() {
           ? `<div class="exam-paper-viewer exam-text-paper"><iframe src="${escapeHTML(fileUrl)}" title="${escapeHTML(d.title)}"></iframe></div>`
           : !d.content && fileUrl
             ? `<div class="exam-paper-viewer"><a class="button primary" href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">M\u1edf ho\u1eb7c t\u1ea3i \u0111\u1ec1</a></div>`
-            : questions.map(question => `<div class="question"><h3>C\u00e2u ${escapeHTML(question.id)}. ${escapeHTML(question.text)}</h3></div>`).join("");
+            : questions.map(question => `<div class="question"><h3>C\u00e2u ${escapeHTML(question.id)}. ${escapeHTML(question.body || question.text)}</h3></div>`).join("");
     const waitingForSource = (isPdf || isText || isDocx) && !questions.length;
     const summary = questions.length ? questionSummary(questions) : waitingForSource ? "\u0110ang \u0111\u1ecdc c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p\u2026" : questionSummary(questions);
-    return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${gradeLabel(d.grade)} \u00b7 ${isTimedExam ? "L\u00e0m b\u00e0i trong t\u1ed1i \u0111a 90 ph\u00fat" : "L\u00e0m b\u00e0i t\u1ef1 luy\u1ec7n"}</div></div><div id="timer" class="timer" ${isTimedExam ? "" : "hidden"}>90:00</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
-}function resultPage() {
+    const instructionText = isTest
+        ? `${gradeLabel(d.grade)} · Môn ${escapeHTML(d.subject || "Toán")} · Bài kiểm tra (${d.durationMinutes ? `Thời gian: ${d.durationMinutes} phút` : "Không giới hạn thời gian"}) · Tự động nộp nếu thoát toàn màn hình`
+        : `${gradeLabel(d.grade)} · ${d.category === "exam" ? "Làm bài trong tối đa 90 phút" : "Làm bài tự luyện"}`;
+    const initialTimerLabel = isTest
+        ? (d.durationMinutes ? `${String(d.durationMinutes).padStart(2, "0")}:00` : "⏱ 00:00")
+        : "90:00";
+    return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : isTest ? "B\u00e0i ki\u1ec3m tra" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${instructionText}</div></div><div id="timer" class="timer" ${showTimer ? "" : "hidden"}>${initialTimerLabel}</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
+}
+function resultPage() {
     const saved = state.route === "saved-result" ? state.savedExamResult : null;
     const d = saved ? { title: saved.title, subject: saved.subject, grade: saved.grade, category: saved.category } : findDoc(state.examDocId);
     const result = saved ? saved.result : state.gradeResult;
     const answers = saved ? (saved.answers || {}) : state.answers;
     const answered = Object.values(answers).filter(value => String(value).trim()).length;
     const layout = assessmentLayoutFor(d);
-    const answerableCount = (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
+    const answerableCount = result?.questionCount || (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
     const rows = Array.isArray(result?.results) ? result.results : [];
     const owner = saved?.userName ? `<p class="muted tiny">Bài làm của ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` · ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
+    const isPendingGrade = result?.gradingStatus === "pending_grade" || (d?.category === "test" && !result?.graded);
     const details = result?.graded
         ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details">${rows.map(item => `<div class="grade-detail"><span>Câu ${escapeHTML(item.question)}</span><strong class="${item.correct ? "is-correct" : "is-wrong"}">${item.correct ? "Đúng" : "Chưa đúng"} · ${item.earnedPoints ?? 0}/${item.totalPoints ?? 0}</strong></div>`).join("")}</div>`
-        : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
-    const actions = saved
-        ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
-        : `<button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button>`;
-    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">ĐÃ NỘP BÀI</span>${owner}${details}<h2>${result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm"}</h2>${result?.graded ? "" : `<p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
+        : isPendingGrade
+          ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giảng viên chấm điểm.")}</p>`
+          : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
+    const isTestItem = d?.category === "test" || result?.isTest;
+    const actions = isTestItem
+        ? `<button class="button secondary" data-route="tests">← Về danh sách Bài kiểm tra</button><button class="button primary" data-export-user-sheets="xlsx">⬇ Xuất Sheets kết quả học tập</button>`
+        : saved
+          ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
+          : `<button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button>`;
+    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ĐANG CHỜ CHẤM" : "ĐÃ NỘP BÀI"}</span>${owner}${details}<h2>${result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm"}</h2>${result?.graded ? "" : `<p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
 }
 
 async function openSavedExamResult(id) {
@@ -381,6 +407,7 @@ function accountCenterPage() {
           </div>
           <div class="account-progress-meta">
             <span class="online-live-indicator"><span class="online-dot"></span> Đang đồng bộ trực tiếp</span>
+            <button type="button" class="button secondary small" data-export-user-sheets="xlsx">⬇ Xuất Sheets kết quả học tập (.xlsx)</button>
             <button type="button" class="button secondary small" data-account-progress-refresh>↻ Làm mới</button>
           </div>
         </div>
@@ -485,12 +512,22 @@ catch (error) {
 } }
 function render() {
     stopStudyRoomsIfActive();
+    const isMainLobby = state.route === "home";
+    document.body.classList.toggle("is-home-lobby", isMainLobby);
+    const onlineDashboard = $("#online-dashboard");
+    const onlineLauncher = $("#online-dashboard-launcher");
+    if (onlineDashboard) onlineDashboard.hidden = !isMainLobby;
+    if (onlineLauncher) onlineLauncher.hidden = !isMainLobby;
+    $("#tests-open")?.classList.toggle("is-active-route", state.route === "tests");
+
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
-    const fullscreenExam = state.route === "exam" && findDoc(state.examDocId)?.category === "exam";
+    const examCategory = findDoc(state.examDocId)?.category;
+    const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
     document.body.classList.toggle("exam-open", fullscreenExam);
+    document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === "home")
         view.innerHTML = homePage();
     else if (state.route === "subject")
@@ -521,6 +558,8 @@ function render() {
         view.innerHTML = adminPage();
     else if (state.route === "account-center")
         view.innerHTML = accountCenterPage();
+    else if (state.route === "tests")
+        view.innerHTML = renderTestsQueuePage(currentUser);
     else if (state.route === "study-rooms") {
         view.innerHTML = "";
         activeStudyRoomsCleanup = mountStudyRooms(view, currentUser);
@@ -548,7 +587,7 @@ function render() {
     window.dispatchEvent(new CustomEvent("maihoc-route-changed", { detail: { route: state.route, subject: state.subject, grade: state.grade } }));
     if (state.route === "exam") {
         wireSplitter();
-        if (state.examStarted && !state.examFinished && findDoc(state.examDocId)?.category === "exam")
+        if (state.examStarted && !state.examFinished && ["exam", "test"].includes(findDoc(state.examDocId)?.category))
             startTimer();
     }
 }
@@ -556,18 +595,41 @@ function startTimer() {
     if (state.timer)
         return;
     updateTimer();
-    state.timer = setInterval(() => { state.remaining--; updateTimer(); if (state.remaining === 300 && !state.warningShown) {
-        state.warningShown = true;
-        toast("Bạn còn 5 phút! Hãy kiểm tra bài và chuẩn bị nộp.", "error");
-    } if (state.remaining <= 0) {
-        clearInterval(state.timer);
-        state.timer = null;
-        toast("Đã hết giờ. Bài thi sẽ được nộp tự động.", "error");
-        finishExam();
-    } }, 1000);
+    state.timer = setInterval(() => {
+        if (state.timerCountUp) {
+            state.elapsedSeconds = (state.elapsedSeconds || 0) + 1;
+            updateTimer();
+            return;
+        }
+        state.remaining--;
+        updateTimer();
+        if (state.remaining === 300 && !state.warningShown) {
+            state.warningShown = true;
+            toast("Bạn còn 5 phút! Hãy kiểm tra bài và chuẩn bị nộp.", "error");
+        }
+        if (state.remaining <= 0) {
+            clearInterval(state.timer);
+            state.timer = null;
+            toast("Đã hết giờ. Bài làm sẽ được nộp tự động.", "error");
+            finishExam();
+        }
+    }, 1000);
 }
-function updateTimer() { const el = $("#timer"); if (!el)
-    return; const m = Math.floor(state.remaining / 60), s = state.remaining % 60; el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`; el.classList.toggle("warning", state.remaining <= 300); }
+function updateTimer() {
+    const el = $("#timer");
+    if (!el) return;
+    if (state.timerCountUp) {
+        const m = Math.floor((state.elapsedSeconds || 0) / 60);
+        const s = (state.elapsedSeconds || 0) % 60;
+        el.textContent = `⏱ ${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        el.classList.remove("warning");
+        return;
+    }
+    const m = Math.floor(Math.max(0, state.remaining) / 60);
+    const s = Math.max(0, state.remaining) % 60;
+    el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    el.classList.toggle("warning", state.remaining <= 300);
+}
 function wireSplitter() {
     const split = $("#splitter");
     const exam = $("#split-exam");
@@ -620,61 +682,78 @@ function wireSplitter() {
         setRatio(Number(split.getAttribute("aria-valuenow")) + (increase ? 5 : -5));
     });
 }
-function finishExam() {
-    // Ngăn kết thúc bài thi nhiều lần.
+function finishExam(options = {}) {
     if (state.examFinished)
         return;
-    // Đánh dấu bài thi đã kết thúc trước khi thoát fullscreen.
     state.examFinished = true;
     state.examStarted = false;
-    // Dừng đồng hồ đếm ngược.
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
     }
+    const examDoc = findDoc(state.examDocId);
+    const isTest = examDoc?.category === "test";
     const submittedAnswers = { ...state.answers };
-    const submitPromise = fetch(`/api/exams/${encodeURIComponent(state.examDocId)}/submit`, {
+    const timeSpentSeconds = state.examStartedAtMs
+        ? Math.max(1, Math.round((Date.now() - state.examStartedAtMs) / 1000))
+        : 0;
+    const submitEndpoint = isTest
+        ? `/api/tests/${encodeURIComponent(state.examDocId)}/submit`
+        : `/api/exams/${encodeURIComponent(state.examDocId)}/submit`;
+    const submitBody = isTest
+        ? { answers: submittedAnswers, autoSubmittedFullscreen: Boolean(options.autoSubmittedFullscreen), timeSpentSeconds }
+        : { answers: submittedAnswers };
+
+    const submitPromise = fetch(submitEndpoint, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers: submittedAnswers })
+        body: JSON.stringify(submitBody)
     }).then(async response => {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || "Không thể nộp bài.");
         return result;
     }).catch(error => ({ graded: false, message: error.message || "Không thể chấm bài lúc này." }));
-    const leaveFullscreen = findDoc(state.examDocId)?.category === "exam" && document.fullscreenElement
+
+    const leaveFullscreen = ["exam", "test"].includes(examDoc?.category) && document.fullscreenElement
         ? document.exitFullscreen().catch((error) => {
             console.error("Không thể thoát toàn màn hình:", error);
         })
         : Promise.resolve();
-    Promise.all([Promise.resolve(leaveFullscreen), submitPromise]).then(([, result]) => {
+
+    Promise.all([Promise.resolve(leaveFullscreen), submitPromise]).then(async ([, result]) => {
         state.gradeResult = result;
+        if (isTest) {
+            await refreshTestsQueue();
+        }
         go("result");
     });
 }
 // PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
 // ============================================
 document.addEventListener("fullscreenchange", () => {
-    // Vẫn đang ở chế độ toàn màn hình.
     if (document.fullscreenElement)
         return;
-    // Nếu bài thi đã kết thúc bình thường hoặc hết giờ,
-    // không xử lý như hành vi thoát bài thi.
+    const examDoc = findDoc(state.examDocId);
     if (state.route !== "exam" ||
-        findDoc(state.examDocId)?.category !== "exam" ||
+        !["exam", "test"].includes(examDoc?.category) ||
         !state.examStarted ||
         state.examFinished) {
         return;
     }
-    // Người thi chủ động thoát toàn màn hình.
+    // Đối với Bài kiểm tra: Tự động nộp bài ngay khi thoát toàn màn hình
+    if (examDoc?.category === "test") {
+        toast("Bạn đã thoát chế độ toàn màn hình — Hệ thống tự động nộp bài kiểm tra của bạn.", "error");
+        finishExam({ autoSubmittedFullscreen: true });
+        return;
+    }
+    // Đối với Phòng thi thử: kết thúc lượt thi
     state.examStarted = false;
     state.examFinished = true;
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
     }
-    // Không xóa đáp án ở đây nếu bạn cần lưu kết quả vi phạm.
     go("home");
     window.alert("Bạn đã thoát bài thi!\n\n" +
         "Lượt thi đã kết thúc vì bạn thoát chế độ toàn màn hình.");
@@ -726,6 +805,63 @@ function startExam(id) {
     }
     else if (isTimedExam && !document.fullscreenElement) {
         toast("Trình duyệt không hỗ trợ chế độ toàn màn hình.", "error");
+    }
+}
+function startTest(id) {
+    if (!currentUser) {
+        toast("Vui lòng đăng nhập để làm bài kiểm tra.", "error");
+        openDialog("login-dialog");
+        return;
+    }
+    const d = findCachedTest(id) || findDoc(id);
+    if (!d) {
+        toast("Không tìm thấy bài kiểm tra.", "error");
+        return;
+    }
+    let fullscreenPromise = null;
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        try {
+            fullscreenPromise = document.documentElement.requestFullscreen();
+        } catch (error) {
+            console.error("Không thể bật toàn màn hình:", error);
+        }
+    }
+    if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+    }
+    state.examDocId = d.id;
+    state.answers = {};
+    const durationMin = Number(d.durationMinutes) || 0;
+    state.remaining = durationMin > 0 ? durationMin * 60 : 0;
+    state.elapsedSeconds = 0;
+    state.timerCountUp = durationMin <= 0;
+    state.examStartedAtMs = Date.now();
+    activeExamQuestions = [];
+    activeExamQuestionsFor = null;
+    state.warningShown = false;
+    state.examStarted = true;
+    state.examFinished = false;
+    state.gradeResult = null;
+    go("exam");
+    if (fullscreenPromise) {
+        fullscreenPromise.catch(() => {
+            toast("Hãy giữ chế độ toàn màn hình trong suốt quá trình làm bài kiểm tra.", "error");
+        });
+    }
+}
+async function openSavedTestSubmission(id) {
+    try {
+        const response = await fetch(`/api/test-submissions/${encodeURIComponent(id)}`, {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Không tải được kết quả bài kiểm tra.");
+        state.savedExamResult = data;
+        go("saved-result");
+    } catch (error) {
+        toast(error.message || "Không tải được kết quả bài kiểm tra.", "error");
     }
 }
 async function doEvaluate(id) { const d = findDoc(id); if (!d)
@@ -957,6 +1093,23 @@ $("#upload-form").addEventListener("submit", async (e) => {
     try {
         const fd = new FormData(form);
         fd.delete("answerKey");
+        if (form.elements.category?.value === "test") {
+            const response = await fetch("/api/admin/tests", {
+                method: "POST",
+                credentials: "same-origin",
+                body: fd
+            });
+            const testRes = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(testRes.error || "Không thể tạo bài kiểm tra.");
+            uploadedFileKeys.add(fileKey);
+            closeDialog("upload-dialog");
+            form.reset();
+            await refreshTestsQueue();
+            if (testRes.solutionJob) window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job", { detail: testRes.solutionJob }));
+            toast(testRes.message || "Đã tạo bài kiểm tra.", "success");
+            render();
+            return;
+        }
         const result = await uploadDocument(fd);
         // Chỉ đánh dấu đã upload khi server xử lý thành công.
         uploadedFileKeys.add(fileKey);
@@ -1042,14 +1195,37 @@ window.addEventListener("beforeunload", e => { if (state.route === "exam" && sta
 // Áp dụng cho toàn bộ website MAI HỌC
 // ============================================
 // -------------------- ACCOUNT UI + API --------------------
+function ensureTestsNavButton() {
+    $("#user-dashboard-open")?.remove();
+    const userActions = $("#user-actions");
+    if (!userActions) return;
+    let testsBtn = $("#tests-open");
+    if (!testsBtn) {
+        testsBtn = document.createElement("button");
+        testsBtn.className = "icon-button";
+        testsBtn.id = "tests-open";
+        testsBtn.dataset.route = "tests";
+        testsBtn.title = "Danh sách Bài kiểm tra";
+        testsBtn.setAttribute("aria-label", "Bài kiểm tra");
+        testsBtn.innerHTML = `📝 <span class="button-label">Bài kiểm tra</span>`;
+        const accountBtn = $("#account-center-open");
+        if (accountBtn && accountBtn.parentElement === userActions) {
+            userActions.insertBefore(testsBtn, accountBtn);
+        } else {
+            userActions.append(testsBtn);
+        }
+    }
+}
 function applyAuthUI() {
+    ensureTestsNavButton();
     const signedIn = Boolean(currentUser);
     $("#auth-actions").hidden = signedIn;
     $("#user-actions").hidden = !signedIn;
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
-    if ($("#user-dashboard-open")) $("#user-dashboard-open").hidden = !signedIn;
+    if ($("#tests-open")) $("#tests-open").hidden = !signedIn;
     if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn;
+    if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = currentUser?.role !== "admin";
     $("#admin-open").hidden = currentUser?.role !== "admin";
     $("#user-greeting").hidden = !signedIn;
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
@@ -1064,7 +1240,8 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
-    if (state.route === "study-rooms" || state.route === "account-center") render();
+    await refreshTestsQueue();
+    if (state.route === "study-rooms" || state.route === "account-center" || state.route === "tests") render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1149,7 +1326,7 @@ $("#logout-button").addEventListener("click", async () => {
         currentUser = null;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
-        if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center")
+        if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center" || state.route === "tests")
             go("home");
         toast("Bạn đã đăng xuất.", "success");
     }
@@ -1160,6 +1337,7 @@ $("#logout-button").addEventListener("click", async () => {
 // Khởi tạo giao diện như bình thường.
 initTheme();
 render();
+initRemoteData();
 refreshAuthUI();
 
 window.addEventListener("maihoc-documents-changed", () => {
@@ -1216,4 +1394,32 @@ window.addEventListener("maihoc-user-updated", event => {
 window.addEventListener("maihoc-navigate", event => {
   const { route, params } = event.detail || {};
   if (route) go(route, params || {});
+});
+
+uploadCategorySelect?.addEventListener("change", () => {
+    const extra = $("#upload-test-extra-fields");
+    if (!extra) return;
+    const isTest = uploadCategorySelect.value === "test";
+    extra.hidden = !isTest;
+    const openInput = extra.querySelector('[name="openAt"]');
+    const closeInput = extra.querySelector('[name="closeAt"]');
+    if (openInput) openInput.required = isTest;
+    if (closeInput) closeInput.required = isTest;
+});
+
+wireTestsEvents({
+    onNavigate: (route, params) => go(route, params),
+    onStartTest: (testId) => startTest(testId),
+    onOpenSavedTestSubmission: (subId) => openSavedTestSubmission(subId)
+});
+
+window.addEventListener("maihoc-tests-rerender", () => {
+    if (state.route === "tests") render();
+});
+window.addEventListener("maihoc-auth-changed", async () => {
+    await refreshTestsQueue();
+    if (state.route === "tests") render();
+});
+window.addEventListener("maihoc-admin-panel-mounted", () => {
+    loadAdminTestsAndPendingGrading();
 });

@@ -1,0 +1,748 @@
+import Database from "better-sqlite3";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { buildXlsxWorkbook, buildCsvBuffer } from "./sheets-exporter.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dataDir = path.resolve(__dirname, "..", "data");
+fs.mkdirSync(dataDir, { recursive: true });
+
+export const resultsDbPath = path.join(dataDir, "learning-results.sqlite");
+export const resultsDb = new Database(resultsDbPath);
+resultsDb.pragma("journal_mode = WAL");
+resultsDb.pragma("foreign_keys = ON");
+
+resultsDb.exec(`
+  CREATE TABLE IF NOT EXISTS subjects_catalog (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    default_scale REAL NOT NULL DEFAULT 10,
+    display_order INTEGER NOT NULL DEFAULT 100,
+    active INTEGER NOT NULL DEFAULT 1,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS learning_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_key TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    user_name TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    subject_code TEXT NOT NULL,
+    subject_name TEXT NOT NULL,
+    grade TEXT NOT NULL DEFAULT '10',
+    category TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    item_title TEXT NOT NULL,
+    attempt_id INTEGER,
+    completion_status TEXT NOT NULL DEFAULT 'completed',
+    grading_status TEXT NOT NULL DEFAULT 'not_applicable',
+    progress_percent INTEGER NOT NULL DEFAULT 100,
+    score REAL,
+    scale REAL DEFAULT 10,
+    percent_score REAL,
+    correct_count INTEGER,
+    question_count INTEGER,
+    duration_minutes INTEGER,
+    time_spent_seconds INTEGER,
+    fullscreen_exit_auto_submit INTEGER NOT NULL DEFAULT 0,
+    open_at TEXT,
+    close_at TEXT,
+    started_at TEXT,
+    submitted_at TEXT,
+    graded_at TEXT,
+    graded_by_id INTEGER,
+    graded_by_name TEXT,
+    section_breakdown_json TEXT,
+    extra_metadata_json TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS learning_results_user_idx ON learning_results(user_id, category, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS learning_results_subject_idx ON learning_results(subject_code, grade, category, submitted_at DESC);
+  CREATE INDEX IF NOT EXISTS learning_results_item_idx ON learning_results(item_id, category, grading_status);
+`);
+
+export function normalizeSubjectCode(name) {
+  const cleaned = String(name || "Toán")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return cleaned || "toan";
+}
+
+const DEFAULT_SUBJECTS = [
+  { name: "Toán", order: 1, scale: 10 },
+  { name: "Tiếng Anh", order: 2, scale: 10 },
+  { name: "Vật lý", order: 3, scale: 10 },
+  { name: "Hóa học", order: 4, scale: 10 },
+  { name: "Ngữ văn", order: 5, scale: 10 },
+  { name: "Sinh học", order: 6, scale: 10 },
+  { name: "Đề thi THPT quốc gia", order: 7, scale: 10 },
+  { name: "IELTS", order: 8, scale: 9 }
+];
+
+const upsertSubjectStmt = resultsDb.prepare(`
+  INSERT INTO subjects_catalog(code, name, default_scale, display_order, active, metadata_json, updated_at)
+  VALUES(?, ?, ?, ?, 1, ?, datetime('now'))
+  ON CONFLICT(code) DO UPDATE SET
+    name = excluded.name,
+    default_scale = COALESCE(excluded.default_scale, subjects_catalog.default_scale),
+    updated_at = datetime('now')
+`);
+
+for (const item of DEFAULT_SUBJECTS) {
+  upsertSubjectStmt.run(
+    normalizeSubjectCode(item.name),
+    item.name,
+    item.scale,
+    item.order,
+    JSON.stringify({ extensible: true, version: 1 })
+  );
+}
+
+export function ensureSubjectRegistered(subjectName, defaultScale = 10, metadata = {}) {
+  const name = String(subjectName || "Toán").trim() || "Toán";
+  const code = normalizeSubjectCode(name);
+  upsertSubjectStmt.run(code, name, Number(defaultScale) || 10, 99, JSON.stringify(metadata || {}));
+  return { code, name };
+}
+
+export function listRegisteredSubjects() {
+  return resultsDb
+    .prepare("SELECT code, name, default_scale AS defaultScale, display_order AS displayOrder, active, metadata_json AS metadataJson FROM subjects_catalog WHERE active=1 ORDER BY display_order ASC, name ASC")
+    .all()
+    .map(row => {
+      let metadata = {};
+      try { metadata = JSON.parse(row.metadataJson || "{}"); } catch {}
+      return {
+        code: row.code,
+        name: row.name,
+        defaultScale: Number(row.defaultScale) || 10,
+        displayOrder: Number(row.displayOrder) || 99,
+        metadata
+      };
+    });
+}
+
+const upsertResultStmt = resultsDb.prepare(`
+  INSERT INTO learning_results (
+    record_key, user_id, user_name, user_email,
+    subject_code, subject_name, grade, category,
+    item_id, item_title, attempt_id,
+    completion_status, grading_status, progress_percent,
+    score, scale, percent_score, correct_count, question_count,
+    duration_minutes, time_spent_seconds, fullscreen_exit_auto_submit,
+    open_at, close_at, started_at, submitted_at,
+    graded_at, graded_by_id, graded_by_name,
+    section_breakdown_json, extra_metadata_json, updated_at
+  ) VALUES (
+    @recordKey, @userId, @userName, @userEmail,
+    @subjectCode, @subjectName, @grade, @category,
+    @itemId, @itemTitle, @attemptId,
+    @completionStatus, @gradingStatus, @progressPercent,
+    @score, @scale, @percentScore, @correctCount, @questionCount,
+    @durationMinutes, @timeSpentSeconds, @fullscreenExitAutoSubmit,
+    @openAt, @closeAt, @startedAt, @submittedAt,
+    @gradedAt, @gradedById, @gradedByName,
+    @sectionBreakdownJson, @extraMetadataJson, datetime('now')
+  )
+  ON CONFLICT(record_key) DO UPDATE SET
+    user_name = excluded.user_name,
+    user_email = excluded.user_email,
+    subject_code = excluded.subject_code,
+    subject_name = excluded.subject_name,
+    grade = excluded.grade,
+    category = excluded.category,
+    item_title = excluded.item_title,
+    attempt_id = COALESCE(excluded.attempt_id, learning_results.attempt_id),
+    completion_status = excluded.completion_status,
+    grading_status = excluded.grading_status,
+    progress_percent = MAX(learning_results.progress_percent, excluded.progress_percent),
+    score = excluded.score,
+    scale = COALESCE(excluded.scale, learning_results.scale),
+    percent_score = excluded.percent_score,
+    correct_count = COALESCE(excluded.correct_count, learning_results.correct_count),
+    question_count = COALESCE(excluded.question_count, learning_results.question_count),
+    duration_minutes = COALESCE(excluded.duration_minutes, learning_results.duration_minutes),
+    time_spent_seconds = COALESCE(excluded.time_spent_seconds, learning_results.time_spent_seconds),
+    fullscreen_exit_auto_submit = COALESCE(excluded.fullscreen_exit_auto_submit, learning_results.fullscreen_exit_auto_submit),
+    open_at = COALESCE(excluded.open_at, learning_results.open_at),
+    close_at = COALESCE(excluded.close_at, learning_results.close_at),
+    started_at = COALESCE(learning_results.started_at, excluded.started_at),
+    submitted_at = COALESCE(excluded.submitted_at, learning_results.submitted_at),
+    graded_at = COALESCE(excluded.graded_at, learning_results.graded_at),
+    graded_by_id = COALESCE(excluded.graded_by_id, learning_results.graded_by_id),
+    graded_by_name = COALESCE(excluded.graded_by_name, learning_results.graded_by_name),
+    section_breakdown_json = COALESCE(excluded.section_breakdown_json, learning_results.section_breakdown_json),
+    extra_metadata_json = COALESCE(excluded.extra_metadata_json, learning_results.extra_metadata_json),
+    updated_at = datetime('now')
+`);
+
+export function upsertLearningResult(payload) {
+  const subjectInfo = ensureSubjectRegistered(payload.subject || payload.subjectName || "Toán", payload.scale || 10);
+  const scoreVal = payload.score !== null && payload.score !== undefined && payload.score !== "" && Number.isFinite(Number(payload.score))
+    ? Number(payload.score)
+    : null;
+  const scaleVal = payload.scale !== null && payload.scale !== undefined && Number.isFinite(Number(payload.scale))
+    ? Number(payload.scale)
+    : subjectInfo.defaultScale || 10;
+
+  upsertResultStmt.run({
+    recordKey: String(payload.recordKey),
+    userId: Number(payload.userId),
+    userName: String(payload.userName || "Học viên"),
+    userEmail: String(payload.userEmail || ""),
+    subjectCode: subjectInfo.code,
+    subjectName: subjectInfo.name,
+    grade: String(payload.grade || "10"),
+    category: String(payload.category || "test"),
+    itemId: String(payload.itemId || ""),
+    itemTitle: String(payload.itemTitle || payload.itemId || "Bài học"),
+    attemptId: payload.attemptId == null ? null : Number(payload.attemptId),
+    completionStatus: String(payload.completionStatus || "completed"),
+    gradingStatus: String(payload.gradingStatus || (scoreVal != null ? "graded" : "not_applicable")),
+    progressPercent: Math.max(0, Math.min(100, Math.round(Number(payload.progressPercent ?? 100)))),
+    score: scoreVal,
+    scale: scaleVal,
+    percentScore: payload.percentScore != null && Number.isFinite(Number(payload.percentScore))
+      ? Number(payload.percentScore)
+      : (scoreVal != null && scaleVal > 0 ? Math.round((scoreVal / scaleVal) * 10000) / 100 : null),
+    correctCount: payload.correctCount == null ? null : Number(payload.correctCount),
+    questionCount: payload.questionCount == null ? null : Number(payload.questionCount),
+    durationMinutes: payload.durationMinutes == null ? null : Number(payload.durationMinutes),
+    timeSpentSeconds: payload.timeSpentSeconds == null ? null : Number(payload.timeSpentSeconds),
+    fullscreenExitAutoSubmit: payload.fullscreenExitAutoSubmit ? 1 : 0,
+    openAt: payload.openAt || null,
+    closeAt: payload.closeAt || null,
+    startedAt: payload.startedAt || null,
+    submittedAt: payload.submittedAt || null,
+    gradedAt: payload.gradedAt || null,
+    gradedById: payload.gradedById == null ? null : Number(payload.gradedById),
+    gradedByName: payload.gradedByName || null,
+    sectionBreakdownJson: payload.sectionBreakdown ? JSON.stringify(payload.sectionBreakdown) : null,
+    extraMetadataJson: payload.extraMetadata ? JSON.stringify(payload.extraMetadata) : null
+  });
+}
+
+export function deleteLearningResultsByItemId(itemId) {
+  resultsDb.prepare("DELETE FROM learning_results WHERE item_id = ?").run(String(itemId));
+}
+
+export function deleteLearningResultsByUserId(userId) {
+  resultsDb.prepare("DELETE FROM learning_results WHERE user_id = ?").run(Number(userId));
+}
+
+export function syncFromMainDatabase(mainDb) {
+  try {
+    const syncTx = resultsDb.transaction(() => {
+      const hasTestSub = mainDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='test_submissions'").get();
+      if (hasTestSub) {
+        const testRows = mainDb.prepare(`
+          SELECT ts.*, t.title AS testTitle, t.subject AS testSubject, t.grade AS testGrade,
+                 t.open_at AS openAt, t.close_at AS closeAt, t.duration_minutes AS durationMinutes,
+                 u.name AS userName, u.email AS userEmail,
+                 g.name AS gradedByName
+          FROM test_submissions ts
+          JOIN users u ON u.id = ts.user_id
+          LEFT JOIN tests t ON t.id = ts.test_id
+          LEFT JOIN users g ON g.id = ts.graded_by
+        `).all();
+
+        for (const row of testRows) {
+          let resultObj = {};
+          try { resultObj = JSON.parse(row.result_json || "{}"); } catch {}
+          upsertLearningResult({
+            recordKey: `test:${row.test_id}:user:${row.user_id}`,
+            userId: row.user_id,
+            userName: row.userName,
+            userEmail: row.userEmail,
+            subject: row.testSubject || row.subject || "Toán",
+            grade: row.testGrade || row.grade || "10",
+            category: "test",
+            itemId: row.test_id,
+            itemTitle: row.testTitle || row.title || row.test_id,
+            attemptId: row.id,
+            completionStatus: "completed",
+            gradingStatus: row.grading_status || (row.graded ? "graded" : "pending_grade"),
+            progressPercent: 100,
+            score: row.graded ? row.score : null,
+            scale: row.scale || 10,
+            percentScore: row.graded ? row.percent : null,
+            correctCount: row.correct_count,
+            questionCount: row.question_count,
+            durationMinutes: row.durationMinutes ?? row.duration_minutes,
+            timeSpentSeconds: row.time_spent_seconds,
+            fullscreenExitAutoSubmit: Boolean(row.auto_submitted_fullscreen),
+            openAt: row.openAt || null,
+            closeAt: row.closeAt || null,
+            startedAt: row.started_at || row.submitted_at,
+            submittedAt: row.submitted_at,
+            gradedAt: row.graded_at,
+            gradedById: row.graded_by,
+            gradedByName: row.gradedByName || null,
+            sectionBreakdown: resultObj?.sectionBreakdown || null,
+            extraMetadata: { teacherNote: row.teacher_note || "" }
+          });
+        }
+      }
+
+      const examRows = mainDb.prepare(`
+        SELECT a.*, u.name AS userName, u.email AS userEmail
+        FROM exam_attempts a
+        JOIN users u ON u.id = a.user_id
+      `).all();
+
+      for (const row of examRows) {
+        if (row.category === "test") continue;
+        upsertLearningResult({
+          recordKey: `exam_attempt:${row.id}`,
+          userId: row.user_id,
+          userName: row.userName,
+          userEmail: row.userEmail,
+          subject: row.subject || "Toán",
+          grade: row.grade || "10",
+          category: row.category || "exam",
+          itemId: row.document_id,
+          itemTitle: row.title || row.document_id,
+          attemptId: row.id,
+          completionStatus: "completed",
+          gradingStatus: row.graded ? "graded" : "ungraded",
+          progressPercent: 100,
+          score: row.graded ? row.score : null,
+          scale: row.scale || 10,
+          percentScore: row.percent,
+          correctCount: row.correct_count,
+          questionCount: row.question_count,
+          submittedAt: row.created_at,
+          startedAt: row.created_at
+        });
+      }
+
+      const progressRows = mainDb.prepare(`
+        SELECT p.*, u.name AS userName, u.email AS userEmail
+        FROM user_progress p
+        JOIN users u ON u.id = p.user_id
+      `).all();
+
+      for (const row of progressRows) {
+        if (row.item_type === "test") continue;
+        const existingExam = resultsDb
+          .prepare("SELECT id FROM learning_results WHERE user_id = ? AND item_id = ? AND category IN ('exam','practice','test') LIMIT 1")
+          .get(row.user_id, row.item_id);
+        if (existingExam && row.item_type === "exam") continue;
+
+        upsertLearningResult({
+          recordKey: `progress:${row.user_id}:${row.item_type}:${row.item_id}`,
+          userId: row.user_id,
+          userName: row.userName,
+          userEmail: row.userEmail,
+          subject: row.subject || "Toán",
+          grade: row.grade || "10",
+          category: row.item_type || "document",
+          itemId: row.item_id,
+          itemTitle: row.item_title || row.item_id,
+          completionStatus: row.status === "completed" || Number(row.progress_percent) >= 100 ? "completed" : "in_progress",
+          gradingStatus: row.score != null ? "graded" : "not_applicable",
+          progressPercent: Number(row.progress_percent) || 0,
+          score: row.score,
+          scale: 10,
+          startedAt: row.started_at,
+          submittedAt: row.updated_at
+        });
+      }
+    });
+    syncTx();
+  } catch (error) {
+    console.warn("Could not sync learning results database:", error.message);
+  }
+}
+
+function formatDateTimeVN(value) {
+  if (!value) return "—";
+  const raw = String(value).trim();
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T") + (raw.endsWith("Z") ? "" : "Z");
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function categoryDisplayName(category) {
+  const map = {
+    test: "Bài kiểm tra",
+    exam: "Đề thi thử",
+    practice: "Đề ôn tập",
+    document: "Tài liệu lý thuyết",
+    theory: "Tài liệu lý thuyết",
+    lesson: "Bài học"
+  };
+  return map[category] || category;
+}
+
+export function queryTeacherTestScores({ subject = "", grade = "", testId = "", gradingStatus = "" } = {}) {
+  const clauses = ["category = 'test'"];
+  const params = [];
+
+  if (subject && subject !== "all") {
+    clauses.push("(subject_name = ? OR subject_code = ?)");
+    params.push(subject, normalizeSubjectCode(subject));
+  }
+  if (grade && grade !== "all") {
+    clauses.push("grade = ?");
+    params.push(String(grade));
+  }
+  if (testId && testId !== "all") {
+    clauses.push("item_id = ?");
+    params.push(String(testId));
+  }
+  if (gradingStatus && gradingStatus !== "all") {
+    clauses.push("grading_status = ?");
+    params.push(String(gradingStatus));
+  }
+
+  return resultsDb
+    .prepare(`
+      SELECT *
+      FROM learning_results
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY subject_name ASC, CAST(grade AS INTEGER) ASC, item_title ASC, submitted_at DESC
+    `)
+    .all(...params);
+}
+
+export function buildTeacherScoresSheetExport(mainDb, filters = {}, format = "xlsx") {
+  syncFromMainDatabase(mainDb);
+  const rows = queryTeacherTestScores(filters);
+
+  const allTests = mainDb.prepare(`
+    SELECT t.*, u.name AS creatorName
+    FROM tests t
+    LEFT JOIN users u ON u.id = t.created_by
+    ORDER BY t.subject ASC, CAST(t.grade AS INTEGER) ASC, t.created_at DESC
+  `).all();
+
+  const headers = [
+    "STT",
+    "Họ và tên học viên",
+    "Email",
+    "Môn học",
+    "Khối lớp",
+    "Tên bài kiểm tra",
+    "Ngày mở đề",
+    "Hạn cuối nộp bài",
+    "Thời gian làm bài",
+    "Thời điểm nộp bài",
+    "Trạng thái chấm",
+    "Điểm số",
+    "Thang điểm",
+    "Tỷ lệ (%)",
+    "Số câu đúng",
+    "Ghi chú"
+  ];
+
+  const mapRowToCells = (r, idx) => {
+    const isGraded = r.grading_status === "graded" && r.score != null;
+    const statusLabel = isGraded
+      ? "Đã chấm"
+      : r.grading_status === "pending_grade"
+        ? "Đang chờ chấm"
+        : "Chưa chấm";
+    let extra = {};
+    try { extra = JSON.parse(r.extra_metadata_json || "{}"); } catch {}
+    const notes = [];
+    if (r.fullscreen_exit_auto_submit) notes.push("Tự động nộp do thoát toàn màn hình");
+    if (extra.teacherNote) notes.push(extra.teacherNote);
+
+    return [
+      { value: idx + 1, type: "number", style: 5 },
+      r.user_name,
+      r.user_email,
+      r.subject_name,
+      `Lớp ${r.grade}`,
+      r.item_title,
+      formatDateTimeVN(r.open_at),
+      formatDateTimeVN(r.close_at),
+      r.duration_minutes ? `${r.duration_minutes} phút` : "Không giới hạn",
+      formatDateTimeVN(r.submitted_at),
+      { value: statusLabel, style: isGraded ? 7 : 8 },
+      isGraded ? { value: Number(Number(r.score).toFixed(2)), type: "number", style: 6 } : { value: "Đang chờ chấm", style: 8 },
+      { value: Number(r.scale || 10), type: "number", style: 5 },
+      isGraded && r.percent_score != null ? { value: Number(r.percent_score), type: "number", style: 5 } : "—",
+      r.correct_count != null && r.question_count != null ? `${r.correct_count}/${r.question_count}` : "—",
+      notes.join(" · ") || "—"
+    ];
+  };
+
+  const mainSheetRows = rows.length
+    ? rows.map(mapRowToCells)
+    : [["—", "Chưa có bài nộp nào khớp bộ lọc", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
+
+  if (String(format).toLowerCase() === "csv") {
+    return {
+      buffer: buildCsvBuffer(headers, mainSheetRows),
+      contentType: "text/csv; charset=utf-8",
+      filename: `MAIHOC-Bang-Diem-Bai-Kiem-Tra-${new Date().toISOString().slice(0, 10)}.csv`
+    };
+  }
+
+  const sheets = [
+    {
+      name: "Tổng hợp điểm kiểm tra",
+      title: "HỆ THỐNG HỌC TẬP MAI HỌC — BẢNG ĐIỂM BÀI KIỂM TRA (GIẢNG VIÊN)",
+      subtitle: `Xuất lúc: ${formatDateTimeVN(new Date().toISOString())} · Tổng số lượt nộp: ${rows.length}`,
+      headers,
+      rows: mainSheetRows
+    }
+  ];
+
+  const bySubject = new Map();
+  for (const r of rows) {
+    const subj = r.subject_name || "Toán";
+    if (!bySubject.has(subj)) bySubject.set(subj, []);
+    bySubject.get(subj).push(r);
+  }
+  for (const [subj, subjRows] of bySubject.entries()) {
+    sheets.push({
+      name: `Môn ${subj}`,
+      title: `BẢNG ĐIỂM MÔN ${subj.toUpperCase()} — MAI HỌC`,
+      subtitle: `Tổng số bài làm môn ${subj}: ${subjRows.length}`,
+      headers,
+      rows: subjRows.map(mapRowToCells)
+    });
+  }
+
+  const summaryHeaders = [
+    "STT",
+    "Mã bài kiểm tra",
+    "Tên bài kiểm tra",
+    "Môn học",
+    "Khối lớp",
+    "Ngày mở",
+    "Hạn cuối",
+    "Thời lượng",
+    "Tổng lượt nộp",
+    "Đã chấm",
+    "Đang chờ chấm",
+    "Điểm trung bình",
+    "Điểm cao nhất",
+    "Điểm thấp nhất"
+  ];
+
+  const summaryRows = allTests.map((t, idx) => {
+    const tRows = rows.filter(r => String(r.item_id) === String(t.id));
+    const gradedRows = tRows.filter(r => r.grading_status === "graded" && r.score != null);
+    const pendingRows = tRows.filter(r => r.grading_status === "pending_grade");
+    const scores = gradedRows.map(r => Number(r.score));
+    const avg = scores.length ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : null;
+    const max = scores.length ? Number(Math.max(...scores).toFixed(2)) : null;
+    const min = scores.length ? Number(Math.min(...scores).toFixed(2)) : null;
+
+    return [
+      { value: idx + 1, type: "number", style: 5 },
+      t.id,
+      t.title,
+      t.subject,
+      `Lớp ${t.grade}`,
+      formatDateTimeVN(t.open_at),
+      formatDateTimeVN(t.close_at),
+      t.duration_minutes ? `${t.duration_minutes} phút` : "Không giới hạn",
+      { value: tRows.length, type: "number", style: 5 },
+      { value: gradedRows.length, type: "number", style: 5 },
+      { value: pendingRows.length, type: "number", style: pendingRows.length > 0 ? 8 : 5 },
+      avg != null ? { value: avg, type: "number", style: 6 } : "—",
+      max != null ? { value: max, type: "number", style: 6 } : "—",
+      min != null ? { value: min, type: "number", style: 6 } : "—"
+    ];
+  });
+
+  if (summaryRows.length) {
+    sheets.push({
+      name: "Thống kê theo đề",
+      title: "THỐNG KÊ KẾT QUẢ THEO ĐỀ KIỂM TRA & MÔN HỌC",
+      subtitle: `Tổng số đề kiểm tra: ${allTests.length}`,
+      headers: summaryHeaders,
+      rows: summaryRows
+    });
+  }
+
+  return {
+    buffer: buildXlsxWorkbook(sheets),
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    filename: `MAIHOC-Bang-Diem-Bai-Kiem-Tra-${new Date().toISOString().slice(0, 10)}.xlsx`
+  };
+}
+
+export function buildUserLearningResultsSheetExport(mainDb, user, format = "xlsx") {
+  syncFromMainDatabase(mainDb);
+
+  const results = resultsDb
+    .prepare(`
+      SELECT *
+      FROM learning_results
+      WHERE user_id = ?
+      ORDER BY
+        CASE category
+          WHEN 'test' THEN 1
+          WHEN 'exam' THEN 2
+          WHEN 'practice' THEN 3
+          ELSE 4
+        END,
+        updated_at DESC
+    `)
+    .all(user.id);
+
+  const allTests = mainDb.prepare("SELECT * FROM tests ORDER BY open_at DESC").all();
+  const completedTestIds = new Set(results.filter(r => r.category === "test").map(r => String(r.item_id)));
+
+  const headers = [
+    "STT",
+    "Tên nội dung / Bài kiểm tra / Đề",
+    "Phân loại",
+    "Môn học",
+    "Khối lớp",
+    "Trạng thái hoàn thành",
+    "Tiến trình (%)",
+    "Điểm số",
+    "Thang điểm",
+    "Trạng thái chấm điểm",
+    "Ngày bắt đầu / Ngày mở",
+    "Ngày hoàn thành / Hạn nộp"
+  ];
+
+  const combinedRows = [];
+  let index = 1;
+
+  for (const r of results) {
+    const isCompleted = r.completion_status === "completed" || Number(r.progress_percent) >= 100;
+    const hasScore = r.score !== null && r.score !== undefined && r.grading_status === "graded";
+    const isPendingGrade = r.grading_status === "pending_grade";
+
+    const scoreCell = hasScore
+      ? { value: Number(Number(r.score).toFixed(2)), type: "number", style: 6 }
+      : isPendingGrade
+        ? { value: "Đang chờ chấm", style: 8 }
+        : "—";
+
+    const gradingLabel = hasScore
+      ? "Đã có điểm"
+      : isPendingGrade
+        ? "Đang chờ chấm"
+        : ["document", "theory", "lesson"].includes(r.category)
+          ? "Lý thuyết (Không tính điểm)"
+          : "Chưa chấm tự động";
+
+    combinedRows.push([
+      { value: index++, type: "number", style: 5 },
+      r.item_title,
+      categoryDisplayName(r.category),
+      r.subject_name,
+      `Lớp ${r.grade}`,
+      { value: isCompleted ? "Đã hoàn thành" : "Chưa hoàn thành", style: isCompleted ? 7 : 8 },
+      { value: Number(r.progress_percent || 0), type: "number", style: 5 },
+      scoreCell,
+      hasScore || isPendingGrade ? { value: Number(r.scale || 10), type: "number", style: 5 } : "—",
+      gradingLabel,
+      formatDateTimeVN(r.open_at || r.started_at),
+      formatDateTimeVN(r.submitted_at || r.close_at || r.updated_at)
+    ]);
+  }
+
+  for (const t of allTests) {
+    if (completedTestIds.has(String(t.id))) continue;
+    combinedRows.push([
+      { value: index++, type: "number", style: 5 },
+      t.title,
+      "Bài kiểm tra",
+      t.subject,
+      `Lớp ${t.grade}`,
+      { value: "Chưa hoàn thành", style: 8 },
+      { value: 0, type: "number", style: 5 },
+      "—",
+      { value: 10, type: "number", style: 5 },
+      "Chưa nộp bài",
+      formatDateTimeVN(t.open_at),
+      formatDateTimeVN(t.close_at)
+    ]);
+  }
+
+  if (!combinedRows.length) {
+    combinedRows.push(["—", "Chưa có dữ liệu học tập", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—"]);
+  }
+
+  if (String(format).toLowerCase() === "csv") {
+    return {
+      buffer: buildCsvBuffer(headers, combinedRows),
+      contentType: "text/csv; charset=utf-8",
+      filename: `MAIHOC-Ket-Qua-Hoc-Tap-${new Date().toISOString().slice(0, 10)}.csv`
+    };
+  }
+
+  const scoredResults = results.filter(r => ["test", "exam", "practice"].includes(r.category));
+  const scoreHeaders = [
+    "STT",
+    "Tên bài kiểm tra / Đề thi",
+    "Phân loại",
+    "Môn học",
+    "Khối lớp",
+    "Điểm đạt được",
+    "Thang điểm",
+    "Tỷ lệ (%)",
+    "Số câu đúng",
+    "Trạng thái chấm",
+    "Thời gian nộp"
+  ];
+  const scoreRows = scoredResults.length
+    ? scoredResults.map((r, i) => {
+        const hasScore = r.score != null && r.grading_status === "graded";
+        const isPending = r.grading_status === "pending_grade";
+        return [
+          { value: i + 1, type: "number", style: 5 },
+          r.item_title,
+          categoryDisplayName(r.category),
+          r.subject_name,
+          `Lớp ${r.grade}`,
+          hasScore ? { value: Number(Number(r.score).toFixed(2)), type: "number", style: 6 } : (isPending ? { value: "Đang chờ chấm", style: 8 } : "—"),
+          { value: Number(r.scale || 10), type: "number", style: 5 },
+          hasScore && r.percent_score != null ? { value: Number(r.percent_score), type: "number", style: 5 } : "—",
+          r.correct_count != null && r.question_count != null ? `${r.correct_count}/${r.question_count}` : "—",
+          { value: hasScore ? "Đã chấm" : isPending ? "Đang chờ chấm" : "Đã hoàn thành", style: hasScore ? 7 : 8 },
+          formatDateTimeVN(r.submitted_at || r.updated_at)
+        ];
+      })
+    : [["—", "Chưa có bài kiểm tra hoặc đề thi nào đã nộp", "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
+
+  const sheets = [
+    {
+      name: "Kết quả học tập",
+      title: `BÁO CÁO KẾT QUẢ & TIẾN TRÌNH HỌC TẬP — ${String(user.name || "").toUpperCase()}`,
+      subtitle: `Tài khoản: ${user.email} · Ngày xuất: ${formatDateTimeVN(new Date().toISOString())}`,
+      headers,
+      rows: combinedRows
+    },
+    {
+      name: "Bảng điểm Kiểm tra & Thi",
+      title: `BẢNG ĐIỂM BÀI KIỂM TRA & ĐỀ LUYỆN TẬP — ${String(user.name || "").toUpperCase()}`,
+      subtitle: `Lưu trữ từ Database Kết quả học tập MAI HỌC`,
+      headers: scoreHeaders,
+      rows: scoreRows
+    }
+  ];
+
+  return {
+    buffer: buildXlsxWorkbook(sheets),
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    filename: `MAIHOC-Ket-Qua-Hoc-Tap-${new Date().toISOString().slice(0, 10)}.xlsx`
+  };
+}

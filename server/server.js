@@ -17,6 +17,8 @@ import nodemailer from "nodemailer";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 import { installStudyRooms } from "./study-rooms/server.js";
+import { installTestsModule } from "./tests-module/index.js";
+import { upsertLearningResult, deleteLearningResultsByUserId, deleteLearningResultsByItemId } from "./tests-module/results-db.js";
 
 import {
 
@@ -44,7 +46,8 @@ function assessmentConfigFor(subject,category){
     const match=Object.keys(config.subjects||{}).find(name=>normalize(name)===normalize(subject));
     const subjectConfig=match?config.subjects[match]:null;
     if(!subjectConfig)return null;
-    return {layout:subjectConfig[category]||subjectConfig.assessment||null,grading:subjectConfig.grading||null};
+    const lookupCat = category === "test" ? "exam" : category;
+    return {layout:subjectConfig[lookupCat]||subjectConfig.assessment||null,grading:subjectConfig.grading||null};
   }catch(error){
     console.error("Could not load assessment grading config:",error.message);
     return null;
@@ -91,7 +94,7 @@ function queueExamSolution(documentId){
       const document=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,
         ak.normalized_json AS reference_answer_json,ak.original_name AS reference_answer_name
         FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
-      if(!document||!['exam','practice'].includes(document.category))return;
+      if(!document||!['exam','practice','test'].includes(document.category))return;
       const state=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
       if(!state||!['queued','reading','solving'].includes(state.status))return;
       if(!solver.apiKey){
@@ -183,9 +186,17 @@ app.use("/vendor/pdfjs/cmaps",express.static(path.join(__dirname,"node_modules",
 app.use("/vendor/pdfjs/standard_fonts",express.static(path.join(__dirname,"node_modules","pdfjs-dist","standard_fonts"),{maxAge:"1d"}));
 app.use("/vendor/pdfjs/wasm",express.static(path.join(__dirname,"node_modules","pdfjs-dist","wasm"),{maxAge:"1d"}));
 app.use("/vendor/pdfjs",express.static(path.join(__dirname,"node_modules","pdfjs-dist","build"),{maxAge:"1d"}));
-app.use(express.static(path.join(root, "public")));
+app.use((req, res, next) => {
+  if (req.path === "/" || /\.(?:html|js|css|json)$/i.test(req.path)) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
+app.use(express.static(path.join(root, "public"), { etag: false, lastModified: false }));
 
-app.use(express.static(root,{extensions:["html"],index:"index.html"}));
+app.use(express.static(root, { extensions: ["html"], index: "index.html", etag: false, lastModified: false }));
 
 
 
@@ -697,6 +708,7 @@ function deleteAccountPermanently(id){
   const pendingFiles=db.prepare("SELECT filename FROM document_submissions WHERE user_id=?").all(id);
   const result=db.prepare("DELETE FROM users WHERE id=?").run(id);
   if(!result.changes)return false;
+  try{deleteLearningResultsByUserId(id);}catch{}
   for(const file of pendingFiles){
     const storedPath=path.join(pendingDir,path.basename(file.filename));
     try{if(fs.existsSync(storedPath))fs.unlinkSync(storedPath);}
@@ -831,11 +843,11 @@ app.delete("/api/notifications",requireSameOrigin,requireAuth,(req,res)=>{
   return res.json({ok:true,deleted:result.changes,unread:0});
 });
 
-app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
+app.get("/api/admin/progress",requireAdmin,(req,res)=>{const rows=db.prepare("SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type IN ('exam','test') THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId,CASE WHEN p.item_type='test' THEN (SELECT ts.id FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS testSubmissionId,CASE WHEN p.item_type='test' THEN (SELECT ts.grading_status FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS gradingStatus FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300").all();res.json({progress:rows});});
 
 app.get("/api/progress",requireAuth,(req,res)=>{
 
-  const rows=db.prepare("SELECT p.id,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.answers_json AS answers,p.last_position AS lastPosition,p.started_at AS startedAt,p.updated_at AS updatedAt,CASE WHEN p.item_type='exam' THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId FROM user_progress p WHERE p.user_id=? ORDER BY p.updated_at DESC").all(req.user.id);
+  const rows=db.prepare("SELECT p.id,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.answers_json AS answers,p.last_position AS lastPosition,p.started_at AS startedAt,p.updated_at AS updatedAt,CASE WHEN p.item_type IN ('exam','test') THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId,CASE WHEN p.item_type='test' THEN (SELECT ts.id FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS testSubmissionId,CASE WHEN p.item_type='test' THEN (SELECT ts.grading_status FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS gradingStatus FROM user_progress p WHERE p.user_id=? ORDER BY p.updated_at DESC").all(req.user.id);
 
   res.json({progress:rows});
 
@@ -845,7 +857,7 @@ app.put("/api/progress",requireSameOrigin,requireAuth,(req,res)=>{
 
   const b=req.body||{}, type=String(b.itemType||""), id=String(b.itemId||"");
 
-  if(!["lesson","document","exam","practice"].includes(type)||!id||id.length>180)return res.status(400).json({error:"Loại hoặc ID nội dung không hợp lệ."});
+  if(!["lesson","document","exam","practice","test"].includes(type)||!id||id.length>180)return res.status(400).json({error:"Loại hoặc ID nội dung không hợp lệ."});
 
   const requestedPercent=Math.max(0,Math.min(100,Math.round(Number(b.progressPercent)||0)));
   const previous=db.prepare("SELECT progress_percent AS progressPercent,status FROM user_progress WHERE user_id=? AND item_type=? AND item_id=?").get(req.user.id,type,id);
@@ -1247,8 +1259,8 @@ app.get("/api/admin/answer-keys",requireAdmin,(req,res)=>{
     es.error_code AS solutionErrorCode,es.error_message AS solutionErrorMessage
     FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
     LEFT JOIN exam_solutions es ON es.document_id=d.id
-    WHERE d.category IN ('theory','practice','exam') ORDER BY d.grade,d.title`).all();
-  const sections={theory:[],practice:[],exam:[]};
+    WHERE d.category IN ('theory','practice','exam','test') ORDER BY d.grade,d.title`).all();
+  const sections={theory:[],practice:[],exam:[],test:[]};
   for(const row of rows){
     sections[row.category].push({
       id:row.id,title:row.title,grade:row.grade,originalName:row.originalName,
@@ -1294,7 +1306,7 @@ app.get("/api/admin/documents/:id/solution",requireAdmin,(req,res)=>{
 app.post("/api/admin/documents/:id/solution/generate",requireSameOrigin,requireAdmin,(req,res)=>{
   const document=db.prepare("SELECT id,category FROM documents WHERE id=?").get(String(req.params.id));
   if(!document)return res.status(404).json({error:"Không tìm thấy đề."});
-  if(!["exam","practice"].includes(document.category))return res.status(400).json({error:"Chỉ tạo lời giải cho đề ôn tập hoặc đề thi."});
+  if(!["exam","practice","test"].includes(document.category))return res.status(400).json({error:"Chỉ tạo lời giải cho đề ôn tập, đề thi hoặc bài kiểm tra."});
   createExamSolutionJob(document.id);
   res.status(202).json({ok:true,id:document.id,status:"queued"});
 });
@@ -1316,12 +1328,13 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     submittedById.set(id,item);
   }
   const config=assessmentConfigFor(row.subject,row.category);
-  if(!config?.grading||!(config.layout?.sections||[]).filter(section=>Number(section.count)>0).every(section=>section.grading))return res.status(409).json({error:"Thiếu criteria chấm điểm bắt buộc trong configs/exam-layouts.json."});
+  const isManualSource=generated.source==="manual-entry";
+  if(!isManualSource&&(!config?.grading||!(config.layout?.sections||[]).filter(section=>Number(section.count)>0).every(section=>section.grading)))return res.status(409).json({error:"Thiếu criteria chấm điểm bắt buộc trong configs/exam-layouts.json."});
   const answers={};
   const reviewed=[];
   for(const original of generated.questions){
     const item=submittedById.get(original.targetId);
-    if(!item||!["correct","incorrect"].includes(item.decision))return res.status(400).json({error:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
+    if(!item||!["correct","incorrect","manual"].includes(item.decision))return res.status(400).json({error:`Cần xác nhận câu ${original.targetId} là đúng hoặc sửa lại.`});
     const answer=String(item.answer??"").trim().slice(0,3000);
     const explanation=String(item.explanation??original.explanation??"").trim().slice(0,12000);
     if(!answer)return res.status(400).json({error:`Thiếu đáp án chuẩn cho câu ${original.targetId}.`});
@@ -1339,7 +1352,7 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const rubric=Array.isArray(item.rubric)?item.rubric.slice(0,20).map(criterion=>({
       criterion:String(criterion.criterion||"").trim().slice(0,1000),points:Math.max(0,Math.min(10,Number(criterion.points)||0))
     })).filter(criterion=>criterion.criterion):original.rubric||[];
-    if(original.type==="essay"){
+    if(original.type==="essay"&&!isManualSource){
       const rubricTotal=rubric.reduce((sum,criterion)=>sum+criterion.points,0);
       const expectedPoints=Number(original.maximumPoints)||0;
       if(!rubric.length||Math.abs(rubricTotal-expectedPoints)>0.01)return res.status(400).json({error:`Rubric ${original.targetId} phải phân bổ đủ ${expectedPoints} điểm theo config.`});
@@ -1347,9 +1360,9 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
     const uncertainty=String(original.uncertainty||"").trim();
     reviewed.push({...original,aiAnswer:original.aiAnswer||original.answer,answer:answers[original.targetId],explanation,rubric,
       uncertainty:/^(none|null|undefined|n\/a)$/i.test(uncertainty)?"":uncertainty,
-      reviewStatus:item.decision==="correct"?"approved":"corrected"});
+      reviewStatus:item.decision==="manual"?"manual":item.decision==="correct"?"approved":"corrected"});
   }
-  const approved={schemaVersion:1,source:"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
+  const approved={schemaVersion:1,source:isManualSource?"manual-entry":"admin-reviewed-ai-solution",model:generated.model,sourceHash:row.source_hash,
     version:Number(row.solution_version)||1,scale:Number(config?.grading?.scale)||10,answers,questions:reviewed,
     reviewedAt:new Date().toISOString(),reviewedBy:req.user.id};
   const review=db.transaction(()=>{
@@ -1362,6 +1375,9 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
         JSON.stringify(before),JSON.stringify(after),req.user.id);
     }
     updateSolutionJob(documentId,{status:"ready",progress:100,phase:"Đã duyệt, sẵn sàng chấm",approved_json:JSON.stringify(approved),approved_at:approved.reviewedAt,approved_by:req.user.id,error_code:null,error_message:null});
+    if(row.category==="test"){
+      db.prepare("UPDATE tests SET has_answer_key=1 WHERE id=?").run(documentId);
+    }
   });
   review();
   res.json({ok:true,status:"ready",version:approved.version,scale:approved.scale,questionCount:reviewed.length});
@@ -1373,7 +1389,7 @@ app.post("/api/admin/documents/:id/answer-key",requireSameOrigin,requireAdmin,up
   if(![".pdf",".txt",".json",".csv",".docx"].includes(extension))return res.status(400).json({error:"Answer keys must be PDF, DOCX, TXT, JSON, or CSV files. Legacy DOC files are not supported."});
   const document=db.prepare("SELECT id,category,subject FROM documents WHERE id=?").get(String(req.params.id));
   if(!document)return res.status(404).json({error:"Question document was not found."});
-  if(!["practice","exam"].includes(document.category))return res.status(400).json({error:"Theory documents do not need an answer key."});
+  if(!["practice","exam","test"].includes(document.category))return res.status(400).json({error:"Theory documents do not need an answer key."});
   const config=assessmentConfigFor(document.subject,document.category);
   const normalized=await normalizeAnswerKeyDocument(req.file.buffer,req.file.originalname,config?.layout,config?.grading);
   const key=saveAnswerKeyRecord(document.id,req.file,req.user.id,normalized);
@@ -1396,6 +1412,8 @@ app.delete("/api/admin/documents/:id",requireSameOrigin,requireAdmin,(req,res)=>
   const document=db.prepare("SELECT id,filename FROM documents WHERE id=?").get(req.params.id);
   if(!document)return res.status(404).json({error:"Document was not found."});
 
+  db.prepare("DELETE FROM tests WHERE id=?").run(document.id);
+  try{deleteLearningResultsByItemId(document.id);}catch{}
   const result=db.prepare("DELETE FROM documents WHERE id=?").run(document.id);
   if(result.changes){
     const storedPath=path.join(documentsDir,path.basename(document.filename));
@@ -1538,6 +1556,22 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 
 
 
+installTestsModule({
+  app,
+  db,
+  upload,
+  requireAuth,
+  requireAdmin,
+  requireSameOrigin,
+  assessmentConfigFor,
+  createExamSolutionJob,
+  saveAnswerKeyRecord,
+  storedFilename,
+  contentTypeFor,
+  documentsDir,
+  notifyUser,
+  notifyAdmins
+});
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 
 app.use((err,_req,res,_next)=>{
