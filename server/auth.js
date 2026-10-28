@@ -99,8 +99,10 @@ db.exec(`
     subject TEXT NOT NULL, grade TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
     filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL,
     file_data BLOB,
+    r2_key TEXT,
     content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
     answer_key_data BLOB,
+    answer_key_r2_key TEXT,
     answer_key_original_name TEXT,
     answer_key_content_type TEXT,
     answer_key_question_ids TEXT,
@@ -116,7 +118,8 @@ db.exec(`
     answer_key_original_name TEXT,
     answer_key_content_type TEXT,
     answer_key_question_ids TEXT,
-    file_data BLOB NOT NULL,
+    file_data BLOB,
+    r2_key TEXT,
     uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -124,7 +127,8 @@ db.exec(`
     document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
     original_name TEXT NOT NULL,
     content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-    file_data BLOB NOT NULL,
+    file_data BLOB,
+    r2_key TEXT,
     source_format TEXT NOT NULL,
     normalized_json TEXT,
     question_ids TEXT,
@@ -228,6 +232,19 @@ const progressColumns = new Set(
 );
 if (!progressColumns.has("item_title")) {
   db.exec("ALTER TABLE user_progress ADD COLUMN item_title TEXT NOT NULL DEFAULT ''");
+}
+
+// Add R2 object-key columns to existing SQLite databases without dropping legacy BLOBs.
+for (const [tableName, columnName] of [
+  ["documents", "r2_key"],
+  ["document_submissions", "r2_key"],
+  ["document_submissions", "answer_key_r2_key"],
+  ["answer_keys", "r2_key"]
+]) {
+  const columns = new Set(db.pragma(`table_info(${tableName})`).map((column) => column.name));
+  if (!columns.has(columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
+  }
 }
 
 const SESSION_COOKIE = "maihoc.sid";
