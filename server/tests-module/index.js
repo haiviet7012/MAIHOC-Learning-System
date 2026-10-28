@@ -254,9 +254,12 @@ export function installTestsModule({
   assessmentConfigFor,
   createExamSolutionJob,
   saveAnswerKeyRecord,
+  saveFileToR2,
+  deleteFromR2,
   storedFilename,
   contentTypeFor,
   documentsDir,
+  getDocumentBuffer,
   notifyUser,
   notifyAdmins
 }) {
@@ -464,7 +467,8 @@ export function installTestsModule({
     if (!doc) throw new Error("Không tìm thấy đề bài.");
 
     const config = assessmentConfigFor(doc.subject, doc.category === "test" ? "exam" : doc.category);
-    const rawText = doc.testRawText || await extractRawTextFromBuffer(doc.file_data, doc.original_name);
+    const sourceBuffer = getDocumentBuffer ? await getDocumentBuffer(doc) : Buffer.from(doc.file_data || []);
+    const rawText = doc.testRawText || await extractRawTextFromBuffer(sourceBuffer, doc.original_name);
     const parsedQuestions = parseQuestionsFromRawText(rawText);
 
     let targets = [];
@@ -1072,6 +1076,9 @@ export function installTestsModule({
     requireAdmin,
     upload.fields([{ name: "document", maxCount: 1 }, { name: "answerKey", maxCount: 1 }]),
     async (req, res) => {
+      const uploadedR2Keys = [];
+      let createdTestId = null;
+      let createdLocalPath = null;
       try {
         const documentFile = req.files?.document?.[0];
         const answerKeyFile = req.files?.answerKey?.[0];
@@ -1130,20 +1137,34 @@ export function installTestsModule({
         });
 
         const id = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        createdTestId = id;
         const filename = storedFilename(documentFile.originalname);
         const contentType = contentTypeFor(documentFile.originalname);
-        fs.writeFileSync(path.join(documentsDir, filename), documentFile.buffer, { flag: "wx" });
+
+        const documentR2Key = saveFileToR2
+          ? await saveFileToR2("tests", id, documentFile)
+          : null;
+        if (documentR2Key) uploadedR2Keys.push(documentR2Key);
+
+        let answerKeyR2Key = null;
+        if (answerKeyFile && saveFileToR2) {
+          answerKeyR2Key = await saveFileToR2("answer-keys", id, answerKeyFile);
+          uploadedR2Keys.push(answerKeyR2Key);
+        }
+
+        createdLocalPath = path.join(documentsDir, filename);
+        fs.writeFileSync(createdLocalPath, documentFile.buffer, { flag: "wx" });
 
         const hasImmediateKey = Boolean(parsedAnswerKey && answerMode === "immediate");
 
         const saveTx = db.transaction(() => {
           db.prepare(`
             INSERT INTO documents (
-              id, subject, grade, category, title, filename, original_name, size, content_type, file_data, uploaded_by
-            ) VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, ?, ?)
+              id, subject, grade, category, title, filename, original_name, size, content_type, file_data, r2_key, uploaded_by
+            ) VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             id, subject, grade, title, filename, documentFile.originalname,
-            documentFile.size, contentType, documentFile.buffer, req.user.id
+            documentFile.size, contentType, documentFile.buffer, documentR2Key, req.user.id
           );
 
           db.prepare(`
@@ -1156,12 +1177,12 @@ export function installTestsModule({
             durationMinutes, answerMode, hasImmediateKey ? 1 : 0,
             rawText || null, JSON.stringify(targets), req.user.id
           );
-
-          if (answerKeyFile) {
-            saveAnswerKeyRecord(id, answerKeyFile, req.user.id, parsedAnswerKey);
-          }
         });
         saveTx();
+
+        if (answerKeyFile) {
+          await saveAnswerKeyRecord(id, answerKeyFile, req.user.id, parsedAnswerKey, answerKeyR2Key);
+        }
 
         let solutionJob = null;
         if (answerMode === "immediate") {
@@ -1186,19 +1207,30 @@ export function installTestsModule({
               : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
         });
       } catch (error) {
+        if (createdTestId) {
+          try {
+            db.prepare("DELETE FROM tests WHERE id = ?").run(createdTestId);
+            db.prepare("DELETE FROM documents WHERE id = ?").run(createdTestId);
+          } catch (cleanupError) {
+            console.warn("[R2] Could not roll back test creation:", cleanupError.message);
+          }
+        }
+        if (createdLocalPath && fs.existsSync(createdLocalPath)) {
+          try { fs.unlinkSync(createdLocalPath); } catch {}
+        }
+        await Promise.all(uploadedR2Keys.map(key => deleteFromR2?.(key).catch(() => {})));
         console.error("Create test error:", error);
         return res.status(400).json({ error: error.message || "Không thể tạo bài kiểm tra." });
       }
     }
   );
 
-  app.delete("/api/admin/tests/:id", requireSameOrigin, requireAdmin, (req, res) => {
+  app.delete("/api/admin/tests/:id", requireSameOrigin, requireAdmin, async (req, res) => {
     const id = String(req.params.id);
-    const doc = db.prepare("SELECT id, filename FROM documents WHERE id = ?").get(id);
+    const doc = db.prepare("SELECT id, filename, r2_key FROM documents WHERE id = ?").get(id);
     const testRow = db.prepare("SELECT id, title FROM tests WHERE id = ?").get(id);
-    if (!doc && !testRow) {
-      return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
-    }
+    const answerKey = db.prepare("SELECT r2_key FROM answer_keys WHERE document_id = ?").get(id);
+    if (!doc && !testRow) return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
 
     const delTx = db.transaction(() => {
       db.prepare("DELETE FROM tests WHERE id = ?").run(id);
@@ -1210,10 +1242,10 @@ export function installTestsModule({
 
     if (doc?.filename) {
       const storedPath = path.join(documentsDir, path.basename(doc.filename));
-      try {
-        if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath);
-      } catch {}
+      try { if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath); } catch {}
     }
+    if (doc?.r2_key) await deleteFromR2?.(doc.r2_key).catch(error => console.warn("[R2] test document cleanup failed:", error.message));
+    if (answerKey?.r2_key) await deleteFromR2?.(answerKey.r2_key).catch(error => console.warn("[R2] test answer-key cleanup failed:", error.message));
 
     return res.json({ ok: true, deletedId: id, message: `Đã xóa bài kiểm tra "${testRow?.title || id}".` });
   });
@@ -1527,7 +1559,7 @@ export function installTestsModule({
       SELECT ts.*, u.name AS userName, u.email AS userEmail,
              t.open_at AS openAt, t.close_at AS closeAt, t.duration_minutes AS durationMinutes,
              t.raw_text_cache AS rawTextCache, t.questions_json AS questionsJson,
-             d.original_name AS originalName, d.file_data AS fileData,
+             d.original_name AS originalName, d.file_data AS fileData, d.r2_key AS r2Key,
              ak.normalized_json AS referenceAnswerJson,
              es.status AS solutionStatus, es.phase AS solutionPhase, es.model AS solutionModel,
              es.approved_json AS approvedSolution, es.generated_json AS generatedSolution

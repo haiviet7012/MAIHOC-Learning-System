@@ -57,6 +57,51 @@ function createR2Key(folder, fileId, originalName) {
 }
 
 
+function ensureR2Columns() {
+  for (const [tableName,columnName] of [["documents","r2_key"],["document_submissions","r2_key"],["document_submissions","answer_key_r2_key"],["answer_keys","r2_key"]]) {
+    const columns = new Set(db.pragma(`table_info(${tableName})`).map(c=>c.name));
+    if (!columns.has(columnName)) db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
+  }
+}
+async function getDocumentBuffer(row,keyColumn="r2_key",blobColumn="file_data") {
+  if(!row)return null;
+  if(row[keyColumn]) {
+    const object=await readFromR2(row[keyColumn]);
+    if(!object?.Body)throw new Error(`R2 object missing: ${row[keyColumn]}`);
+    return Buffer.from(await object.Body.transformToByteArray());
+  }
+  if(row[blobColumn])return Buffer.from(row[blobColumn]);
+  if(row.filename)for(const dir of [documentsDir,pendingDir]) {
+    const candidate=path.join(dir,path.basename(row.filename));
+    if(fs.existsSync(candidate))return fs.readFileSync(candidate);
+  }
+  return null;
+}
+async function migrateFilesToR2() {
+  ensureR2Columns();
+  const migration="r2-object-keys-v1";
+  if(db.prepare("SELECT 1 FROM app_migrations WHERE name=?").get(migration))return;
+  const tasks=[
+    {table:"documents",id:"id",key:"r2_key",blob:"file_data",name:"original_name",type:"content_type",folder:"documents"},
+    {table:"document_submissions",id:"id",key:"r2_key",blob:"file_data",name:"original_name",type:"content_type",folder:"pending"},
+    {table:"answer_keys",id:"document_id",key:"r2_key",blob:"file_data",name:"original_name",type:"content_type",folder:"answer-keys"}
+  ];
+  for(const task of tasks) {
+    const rows=db.prepare(`SELECT ${task.id} AS row_id,${task.key} AS object_key,${task.blob} AS data,${task.name} AS original_name,${task.type} AS content_type FROM ${task.table} WHERE ${task.key} IS NULL AND ${task.blob} IS NOT NULL`).all();
+    for(const row of rows) {
+      const key=createR2Key(task.folder,row.row_id,row.original_name||"file.bin");
+      await uploadToR2({key,body:Buffer.from(row.data),contentType:row.content_type||contentTypeFor(row.original_name||"")});
+      db.prepare(`UPDATE ${task.table} SET ${task.key}=? WHERE ${task.id}=?`).run(key,row.row_id);
+    }
+  }
+  const answers=db.prepare("SELECT id,answer_key_data,answer_key_r2_key,answer_key_original_name,answer_key_content_type FROM document_submissions WHERE answer_key_r2_key IS NULL AND answer_key_data IS NOT NULL").all();
+  for(const row of answers) {
+    const key=createR2Key("pending-answer-keys",row.id,row.answer_key_original_name||"answer-key.bin");
+    await uploadToR2({key,body:Buffer.from(row.answer_key_data),contentType:row.answer_key_content_type||contentTypeFor(row.answer_key_original_name||"")});
+    db.prepare("UPDATE document_submissions SET answer_key_r2_key=? WHERE id=?").run(key,row.id);
+  }
+  db.prepare("INSERT OR IGNORE INTO app_migrations(name) VALUES(?)").run(migration);
+}
 function assessmentConfigFor(subject,category){
   try{
     const config=JSON.parse(fs.readFileSync(path.join(root,"configs","exam-layouts.json"),"utf8"));
@@ -106,92 +151,35 @@ function updateSolutionJob(documentId,values){
   db.prepare(`UPDATE exam_solutions SET ${fields.map(field=>`${field}=?`).join(",")},updated_at=datetime('now') WHERE document_id=?`)
     .run(...fields.map(field=>values[field]),documentId);
 }
-function queueExamSolution(documentId){
+function queueExamSolution(documentId) {
   const id=String(documentId);
   if(activeSolutionJobs.has(id))return;
-
-
-
-  const activeSolutionJobs = new Set();
-  const MAX_CONCURRENT_SOLUTION_JOBS = 2;
-  let runningSolutionJobs = 0;
-  const solutionJobQueue = [];
-
-  function enqueueSolutionJob(jobKey, jobTaskFn) {
-    if (activeSolutionJobs.has(jobKey)) return false;
-    activeSolutionJobs.add(jobKey);
-    solutionJobQueue.push({ jobKey, jobTaskFn });
-    drainSolutionJobQueue();
-    return true;
-  }
-
-  function drainSolutionJobQueue() {
-    while (runningSolutionJobs < MAX_CONCURRENT_SOLUTION_JOBS && solutionJobQueue.length > 0) {
-      const { jobKey, jobTaskFn } = solutionJobQueue.shift();
-      runningSolutionJobs++;
-      setImmediate(async () => {
-        try {
-          await jobTaskFn();
-        } catch (err) {
-          console.error(`[SolutionJob:${jobKey}] Failed:`, err);
-        } finally {
-          activeSolutionJobs.delete(jobKey);
-          runningSolutionJobs--;
-          drainSolutionJobQueue();
-        }
-      });
-    }
-  }
-
-  // Thay jobKey bằng biến định danh job hiện tại trong code của bạn (ví dụ: docId hoặc jobId)
-  enqueueSolutionJob(jobKey, async () => {
-
+  activeSolutionJobs.add(id);
+  setImmediate(async()=>{
     let solver=examSolverConfig();
     try{
-      const document=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,
-        t.questions_json AS test_questions_json,
-        ak.normalized_json AS reference_answer_json,ak.original_name AS reference_answer_name
-        FROM documents d LEFT JOIN tests t ON t.id=d.id LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
-      if(!document||!['exam','practice','test'].includes(document.category))return;
+      const doc=db.prepare(`SELECT d.id,d.title,d.subject,d.category,d.original_name,d.file_data,d.r2_key,t.questions_json AS test_questions_json,ak.normalized_json AS reference_answer_json,ak.original_name AS reference_answer_name FROM documents d LEFT JOIN tests t ON t.id=d.id LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
+      if(!doc||!["exam","practice","test"].includes(doc.category))return;
       const state=db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
-      if(!state||!['queued','reading','solving'].includes(state.status))return;
-      if(!solver.apiKey){
-        const message="Thiếu GEMINI_API_KEY. Hãy thêm khóa vào server/.env, khởi động lại máy chủ rồi bấm Tạo lại lời giải.";
-        updateSolutionJob(id,{status:"failed",progress:0,phase:"Thiếu API key",model:solver.modelName,error_code:"missing_api_key",error_message:message});
-        notifyAdmins("exam_solution_failed",`Không thể giải đề bằng ${solver.provider}`,`${document.title}: ${message}`,"admin");
-        return;
-      }
-      const config=assessmentConfigFor(document.subject,document.category);
-      let referenceAnswerKey=null;try{referenceAnswerKey=JSON.parse(document.reference_answer_json||"null");}catch{}
-      let customTargets=null;if(document.category==="test"&&document.test_questions_json){try{const parsedT=JSON.parse(document.test_questions_json);if(Array.isArray(parsedT)&&parsedT.length)customTargets=parsedT;}catch{}}
+      if(!state||!["queued","reading","solving"].includes(state.status))return;
+      if(!solver.apiKey){const message="Thiếu GEMINI_API_KEY. Hãy cấu hình server/.env rồi thử lại.";updateSolutionJob(id,{status:"failed",progress:0,phase:"Thiếu API key",model:solver.modelName,error_code:"missing_api_key",error_message:message});notifyAdmins("exam_solution_failed","Không thể giải đề bằng Gemini",`${doc.title}: ${message}`,"admin");return;}
+      const bytes=await getDocumentBuffer(doc);if(!bytes)throw new Error("Không tìm thấy file đề trên R2 hoặc kho lưu trữ cũ.");
+      const cfg=assessmentConfigFor(doc.subject,doc.category);
+      let referenceAnswerKey=null;try{referenceAnswerKey=JSON.parse(doc.reference_answer_json||"null");}catch{}
+      let customTargets=null;if(doc.category==="test"&&doc.test_questions_json){try{const parsed=JSON.parse(doc.test_questions_json);if(Array.isArray(parsed)&&parsed.length)customTargets=parsed;}catch{}}
       updateSolutionJob(id,{status:"reading",progress:10,phase:"Đang đọc đề",error_code:null,error_message:null,model:solver.modelName});
-      const sourceHash=crypto.createHash("sha256").update(Buffer.from(document.file_data)).digest("hex");
-      updateSolutionJob(id,{status:"solving",progress:25,phase:`${solver.provider} đang giải từng câu`,source_hash:sourceHash});
-      const solution=await solveExamDocument({
-        buffer:Buffer.from(document.file_data),filename:document.original_name,title:document.title,
-        layout:config?.layout,grading:config?.grading,customTargets,
-        referenceAnswerKey,
-        provider:solver.provider,modelName:solver.modelName,baseUrl:solver.baseUrl,
-        apiKey:solver.apiKey
-      });
-      updateSolutionJob(id,{status:"review",progress:100,phase:"Chờ admin đối chiếu và duyệt",model:solution.model,
-        generated_json:JSON.stringify(solution),generated_at:new Date().toISOString(),error_code:null,error_message:null});
-      notifyAdmins("exam_solution_review","Đề đã có lời giải AI chờ duyệt",`${document.title}: AI đã tạo ${solution.answerCount}/${solution.requiredCount} đáp án. Hãy đối chiếu và duyệt trước khi mở chấm.`,"admin");
+      const hash=crypto.createHash("sha256").update(bytes).digest("hex");
+      updateSolutionJob(id,{status:"solving",progress:25,phase:`${solver.provider} đang giải từng câu`,source_hash:hash});
+      const solution=await solveExamDocument({buffer:bytes,filename:doc.original_name,title:doc.title,layout:cfg?.layout,grading:cfg?.grading,customTargets,referenceAnswerKey,provider:solver.provider,modelName:solver.modelName,baseUrl:solver.baseUrl,apiKey:solver.apiKey});
+      updateSolutionJob(id,{status:"review",progress:100,phase:"Chờ admin đối chiếu và duyệt",model:solution.model,generated_json:JSON.stringify(solution),generated_at:new Date().toISOString(),error_code:null,error_message:null});
+      notifyAdmins("exam_solution_review","Đề đã có lời giải AI chờ duyệt",`${doc.title}: AI đã tạo ${solution.answerCount}/${solution.requiredCount} đáp án. Hãy đối chiếu và duyệt trước khi mở chấm.`,"admin");
     }catch(error){
-      const insufficientBalance=error?.code==="insufficient_balance"||/insufficient balance/i.test(String(error?.message||""));
-      const quota=isAIQuotaError(error)&&!insufficientBalance;
-      const quotaOrBalance=quota||insufficientBalance;
-      const errorCode=error?.code|| (quota?"quota_exhausted":"solution_generation_failed");
-      const networkFailure=/fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(String(error?.message||""));
-      const message=quota
-        ?`${solver.provider} đã hết quota hoặc đang giới hạn lượt gọi. Đề đã được lưu; admin có thể thử lại sau.`
-        :insufficientBalance?`Số dư tài khoản ${solver.provider} API không đủ. Hãy nạp số dư cho tài khoản API rồi bấm Thử giải lại.`
-        :networkFailure?`Máy chủ không kết nối được ${solver.provider} API. Kiểm tra Internet/DNS và kết nối HTTPS cổng 443 trên máy chạy backend, sau đó thử lại. Chi tiết: ${String(error?.message||"").slice(0,500)}`
-        :String(error?.message||`${solver.provider} không thể giải đề lúc này.`).slice(0,1000);
-      updateSolutionJob(id,{status:"failed",progress:0,phase:quota?`${solver.provider} hết quota`:insufficientBalance?`${solver.provider} thiếu số dư`:networkFailure?`Mất kết nối ${solver.provider}`:"Không tạo được lời giải",error_code:errorCode,error_message:message});
-      notifyAdmins(quotaOrBalance?"ai_quota_exhausted":"exam_solution_failed",insufficientBalance?`${solver.provider} không đủ số dư`:quota?`${solver.provider} đã hết quota`:"Không tạo được lời giải AI",`${id}: ${message}`,"admin");
-      if(quotaOrBalance)emailAdmins(`MAI HOC: ${solver.provider} cần kiểm tra số dư API`,`${id}: ${message}`).catch(mailError=>console.warn("Could not email admins about AI quota:",mailError.message));
-      console.error("Exam solution generation failed:",error?.message||error);
+      const insufficient=error?.code==="insufficient_balance"||/insufficient balance/i.test(String(error?.message||"")),quota=isAIQuotaError(error)&&!insufficient,network=/fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(String(error?.message||""));
+      const message=quota?`${solver.provider} đã hết quota hoặc bị giới hạn lượt gọi.`:insufficient?`Số dư API ${solver.provider} không đủ; hãy nạp số dư và thử lại.`:network?`Không kết nối được ${solver.provider} API. Kiểm tra Internet/DNS/HTTPS cổng 443. Chi tiết: ${String(error?.message||"").slice(0,500)}`:String(error?.message||"Không thể tạo lời giải AI.").slice(0,1000);
+      updateSolutionJob(id,{status:"failed",progress:0,phase:quota?`${solver.provider} hết quota`:insufficient?`${solver.provider} thiếu số dư`:network?`Mất kết nối ${solver.provider}`:"Không tạo được lời giải",error_code:error?.code||(quota?"quota_exhausted":"solution_generation_failed"),error_message:message});
+      notifyAdmins(quota||insufficient?"ai_quota_exhausted":"exam_solution_failed",message,`${id}: ${message}`,"admin");
+      if(quota||insufficient)emailAdmins(`MAI HOC: ${solver.provider} cần kiểm tra API`,`${id}: ${message}`).catch(()=>{});
+      console.error("[ExamSolution] Failed:",error?.message||error);
     }finally{activeSolutionJobs.delete(id);}
   });
 }
@@ -1166,59 +1154,33 @@ function contentTypeFor(filename){
   return types[extension]||"application/octet-stream";
 }
 
-function saveAnswerKeyRecord(documentId,file,uploadedBy=null,normalizedOverride=undefined){
-  const originalName=String(file.originalname||"answer-key.txt");
-  const buffer=Buffer.from(file.buffer||[]);
-  const normalized=normalizedOverride===undefined?normalizeAnswerKey(buffer,originalName):normalizedOverride;
-  const sourceFormat=path.extname(originalName).slice(1).toLowerCase()||"unknown";
-  db.prepare(`INSERT INTO answer_keys
-    (document_id,original_name,content_type,file_data,source_format,normalized_json,question_ids,grading_available,normalization_error,uploaded_by)
-    VALUES(?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(document_id) DO UPDATE SET original_name=excluded.original_name,content_type=excluded.content_type,
-      file_data=excluded.file_data,source_format=excluded.source_format,normalized_json=excluded.normalized_json,
-      question_ids=excluded.question_ids,grading_available=excluded.grading_available,
-      normalization_error=excluded.normalization_error,uploaded_by=excluded.uploaded_by,uploaded_at=datetime('now')`)
-    .run(documentId,originalName,contentTypeFor(originalName),buffer,sourceFormat,
-      normalized?JSON.stringify(normalized):null,
-      normalized?JSON.stringify(Object.keys(normalized.answers)):null,
-      normalized?1:0,
-      normalized?null:(path.extname(originalName).toLowerCase()===".pdf"
-        ?"Không đọc được bảng đáp án dạng văn bản trong PDF. PDF scan cần Tesseract trên máy chủ; bố cục không hỗ trợ sẽ không được chấm tự động."
-        :"Tệp đáp án chưa được chuẩn hóa. Hỗ trợ PDF có text, DOCX, JSON, CSV và TXT."),
-      uploadedBy||null);
-  return normalized;
+async function saveAnswerKeyRecord(documentId,file,uploadedBy=null,normalizedOverride=undefined,existingR2Key=null) {
+  const name=String(file.originalname||"answer-key.txt"),buffer=Buffer.from(file.buffer||[]);
+  const normalized=normalizedOverride===undefined?await normalizeAnswerKeyDocument(buffer,name):normalizedOverride;
+  const fmt=path.extname(name).slice(1).toLowerCase()||"unknown",key=existingR2Key||createR2Key("answer-keys",documentId,name);
+  let uploadedHere=false;
+  if(!existingR2Key){await uploadToR2({key,body:buffer,contentType:file.mimetype||contentTypeFor(name)});uploadedHere=true;}
+  try{
+    db.prepare(`INSERT INTO answer_keys (document_id,original_name,content_type,file_data,r2_key,source_format,normalized_json,question_ids,grading_available,normalization_error,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(document_id) DO UPDATE SET original_name=excluded.original_name,content_type=excluded.content_type,file_data=excluded.file_data,r2_key=excluded.r2_key,source_format=excluded.source_format,normalized_json=excluded.normalized_json,question_ids=excluded.question_ids,grading_available=excluded.grading_available,normalization_error=excluded.normalization_error,uploaded_by=excluded.uploaded_by,uploaded_at=datetime('now')`).run(documentId,name,file.mimetype||contentTypeFor(name),buffer,key,fmt,normalized?JSON.stringify(normalized):null,normalized?JSON.stringify(Object.keys(normalized.answers)):null,normalized?1:0,normalized?null:"Tệp đáp án chưa được chuẩn hóa.",uploadedBy||null);
+    return normalized;
+  }catch(error){if(uploadedHere)await deleteFromR2(key).catch(()=>{});throw error;}
 }
 
 async function migrateLegacyAnswerKeys(){
-  const migrationName="separate-answer-key-table-v1";
-  if(db.prepare("SELECT 1 FROM app_migrations WHERE name=?").get(migrationName))return;
-  const rows=db.prepare(`SELECT id,subject,category,answer_key_data,answer_key_original_name,answer_key_content_type,uploaded_by
-    FROM documents WHERE answer_key_data IS NOT NULL`).all();
-  const records=[];
+  const migration="separate-answer-key-table-v1";
+  if(db.prepare("SELECT 1 FROM app_migrations WHERE name=?").get(migration))return;
+  const rows=db.prepare(`SELECT id,subject,category,answer_key_data,answer_key_original_name,answer_key_content_type,uploaded_by FROM documents WHERE answer_key_data IS NOT NULL`).all();
   for(const row of rows){
     if(db.prepare("SELECT 1 FROM answer_keys WHERE document_id=?").get(row.id))continue;
-    const originalname=row.answer_key_original_name||"answer-key.txt";
-    const config=assessmentConfigFor(row.subject,row.category);
-    const normalized=await normalizeAnswerKeyDocument(Buffer.from(row.answer_key_data),originalname,config?.layout,config?.grading);
-    records.push({row,originalname,normalized});
+    const name=row.answer_key_original_name||"answer-key.txt",cfg=assessmentConfigFor(row.subject,row.category);
+    const normalized=await normalizeAnswerKeyDocument(Buffer.from(row.answer_key_data),name,cfg?.layout,cfg?.grading);
+    await saveAnswerKeyRecord(row.id,{buffer:Buffer.from(row.answer_key_data),originalname:name,mimetype:row.answer_key_content_type||contentTypeFor(name)},row.uploaded_by,normalized);
   }
-  const migrate=db.transaction(()=>{
-    for(const {row,originalname,normalized} of records){
-      saveAnswerKeyRecord(row.id,{
-        buffer:Buffer.from(row.answer_key_data),
-        originalname
-      },row.uploaded_by,normalized);
-    }
-    db.prepare(`UPDATE documents SET answer_key_data=NULL,answer_key_original_name=NULL,
-      answer_key_content_type=NULL,answer_key_question_ids=NULL
-      WHERE id IN (SELECT document_id FROM answer_keys)`).run();
-    db.prepare("INSERT OR IGNORE INTO app_migrations(name) VALUES(?)").run(migrationName);
-  });
-  migrate();
+  // Preserve the legacy BLOB so rollback remains possible until R2 is verified.
+  db.prepare("INSERT OR IGNORE INTO app_migrations(name) VALUES(?)").run(migration);
 }
-
 async function normalizeStoredPdfAnswerKeys(){
-  const rows=db.prepare(`SELECT d.id,d.subject,d.category,ak.file_data,ak.original_name,ak.normalized_json
+  const rows=db.prepare(`SELECT d.id,d.subject,d.category,ak.file_data,ak.r2_key,ak.original_name,ak.normalized_json
     FROM answer_keys ak JOIN documents d ON d.id=ak.document_id
     WHERE lower(ak.source_format) IN ('pdf','docx')`).all();
   for(const row of rows){
@@ -1226,7 +1188,9 @@ async function normalizeStoredPdfAnswerKeys(){
     try{storedVersion=Number(JSON.parse(row.normalized_json||"{}").normalizerVersion)||0;}catch{}
     if(storedVersion>=2)continue;
     const config=assessmentConfigFor(row.subject,row.category);
-    const normalized=await normalizeAnswerKeyDocument(Buffer.from(row.file_data),row.original_name,config?.layout,config?.grading);
+    const bytes=row.r2_key?await getDocumentBuffer(row,'r2_key','file_data'):(row.file_data?Buffer.from(row.file_data):null);
+    if(!bytes)continue;
+    const normalized=await normalizeAnswerKeyDocument(bytes,row.original_name,config?.layout,config?.grading)
     if(normalized){
       db.prepare(`UPDATE answer_keys SET normalized_json=?,question_ids=?,grading_available=1,normalization_error=NULL
         WHERE document_id=?`).run(JSON.stringify(normalized),JSON.stringify(Object.keys(normalized.answers)),row.id);
@@ -1286,62 +1250,33 @@ function normalizeLegacyDocumentCategories(){
   migrate();
 }
 
-app.post("/api/documents",requireSameOrigin,requireAuth,upload.fields([{name:"document",maxCount:1},{name:"answerKey",maxCount:1}]),async(req,res)=>{
-  const documentFile=req.files?.document?.[0];
-  const answerKeyFile=req.files?.answerKey?.[0];
-  if(!documentFile)return res.status(400).json({error:"No document was received."});
-
-  const b=req.body||{};
-  const allowedCategories=new Set(["theory","practice","exam","exercise","answer"]);
-  if(!allowedCategories.has(String(b.category||""))){
-    return res.status(400).json({error:"Choose a valid document category."});
+app.post("/api/documents",requireSameOrigin,requireAuth,upload.fields([{name:"document",maxCount:1},{name:"answerKey",maxCount:1}]),async(req,res,next)=>{
+ const file=req.files?.document?.[0],answer=req.files?.answerKey?.[0],keys=[];
+ try{
+  if(!file)return res.status(400).json({error:"No document was received."});
+  const b=req.body||{},cat=String(b.category||"");
+  if(!new Set(["theory","practice","exam","exercise","answer"]).has(cat))return res.status(400).json({error:"Choose a valid document category."});
+  if(answer&&!new Set([".pdf",".docx",".txt",".json",".csv"]).has(path.extname(answer.originalname).toLowerCase()))return res.status(400).json({error:"Invalid answer key format."});
+  if(!new Set([".pdf",".doc",".docx",".ppt",".pptx",".txt",".png",".jpg",".jpeg"]).has(path.extname(file.originalname).toLowerCase()))return res.status(400).json({error:"Unsupported question document format."});
+  if(answer&&!["practice","exam"].includes(cat))return res.status(400).json({error:"Answer keys can only be attached to practice and mock exam documents."});
+  const subject=String(b.subject||"Toan"),grade=String(b.grade||"10"),title=String(b.title||file.originalname).slice(0,120),admin=req.user.role==="admin";
+  const id=admin?`upload-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`:null,storageId=id||`submission-user-${req.user.id}-${crypto.randomUUID()}`;
+  const fileKey=createR2Key(admin?"documents":"pending",storageId,file.originalname);
+  await uploadToR2({key:fileKey,body:file.buffer,contentType:file.mimetype||contentTypeFor(file.originalname)});keys.push(fileKey);
+  let answerKey=null,norm=null;
+  if(answer){const cfg=assessmentConfigFor(subject,cat);norm=await normalizeAnswerKeyDocument(answer.buffer,answer.originalname,cfg?.layout,cfg?.grading);answerKey=createR2Key(admin?"answer-keys":"pending-answer-keys",storageId,answer.originalname);await uploadToR2({key:answerKey,body:answer.buffer,contentType:answer.mimetype||contentTypeFor(answer.originalname)});keys.push(answerKey);}
+  const filename=storedFilename(file.originalname),ct=file.mimetype||contentTypeFor(file.originalname);
+  if(admin){
+    db.transaction(()=>{db.prepare(`INSERT INTO documents (id,subject,grade,category,title,filename,original_name,size,content_type,file_data,r2_key,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,subject,grade,cat,title,filename,file.originalname,file.size,ct,file.buffer,fileKey,req.user.id);
+      if(answer){const name=answer.originalname,fmt=path.extname(name).slice(1).toLowerCase()||"unknown";db.prepare(`INSERT INTO answer_keys (document_id,original_name,content_type,file_data,r2_key,source_format,normalized_json,question_ids,grading_available,normalization_error,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(id,name,answer.mimetype||contentTypeFor(name),answer.buffer,answerKey,fmt,norm?JSON.stringify(norm):null,norm?JSON.stringify(Object.keys(norm.answers)):null,norm?1:0,norm?null:"Tệp đáp án chưa được chuẩn hóa.",req.user.id);}});
+    const hasJob=["exam","practice"].includes(cat);if(hasJob)createExamSolutionJob(id);
+    const row=db.prepare(`SELECT d.*,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
+    return res.status(201).json({document:documentResponse(row),status:"approved",localOnly:false,solutionJob:hasJob?{id,status:"queued",progress:2,phase:"Đang chờ xử lý"}:null});
   }
-  if(answerKeyFile&&!new Set([".pdf",".docx",".txt",".json",".csv"]).has(path.extname(answerKeyFile.originalname).toLowerCase())){
-    return res.status(400).json({error:"Answer keys must be PDF, DOCX, TXT, JSON, or CSV files. Legacy DOC files are not supported."});
-  }
-  const documentExtensions=new Set([".pdf",".doc",".docx",".ppt",".pptx",".txt",".png",".jpg",".jpeg"]);
-  if(!documentExtensions.has(path.extname(documentFile.originalname).toLowerCase()))return res.status(400).json({error:"Unsupported question document format."});
-  if(answerKeyFile&&!['practice','exam'].includes(String(b.category||'')))return res.status(400).json({error:"Answer keys can only be attached to practice and mock exam documents."});
-  const config=assessmentConfigFor(String(b.subject||"Toan"),String(b.category||""));
-  const parsedAnswerKey=answerKeyFile?await normalizeAnswerKeyDocument(answerKeyFile.buffer,answerKeyFile.originalname,config?.layout,config?.grading):null;
-  const title=String(b.title||documentFile.originalname).slice(0,120);
-  const filename=storedFilename(documentFile.originalname);
-  const contentType=contentTypeFor(documentFile.originalname);
-  const isAdmin=req.user.role==="admin";
-  const destination=isAdmin?documentsDir:pendingDir;
-  fs.writeFileSync(path.join(destination,filename),documentFile.buffer,{flag:"wx"});
-
-  if(isAdmin){
-    const id=`upload-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const saveDocument=db.transaction(()=>{
-      db.prepare(`INSERT INTO documents
-        (id,subject,grade,category,title,filename,original_name,size,content_type,file_data,uploaded_by)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
-          id,String(b.subject||"Toan"),String(b.grade||"10"),String(b.category||"theory"),
-          title,filename,documentFile.originalname,documentFile.size,contentType,documentFile.buffer,req.user.id
-        );
-      if(answerKeyFile)saveAnswerKeyRecord(id,answerKeyFile,req.user.id,parsedAnswerKey);
-    });
-    saveDocument();
-    const hasSolutionJob=["exam","practice"].includes(String(b.category||""));
-    if(hasSolutionJob)createExamSolutionJob(id);
-    const row=db.prepare(`SELECT d.*,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
-      FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
-    return res.status(201).json({document:documentResponse(row),status:"approved",localOnly:false,
-      solutionJob:hasSolutionJob?{id,status:"queued",progress:2,phase:"Đang chờ xử lý"}:null});
-  }
-
-  const result=db.prepare(`INSERT INTO document_submissions
-    (user_id,subject,grade,category,title,filename,original_name,size,file_data,content_type,answer_key_data,answer_key_original_name,answer_key_content_type,answer_key_question_ids)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-      req.user.id,String(b.subject||"Toan"),String(b.grade||"10"),String(b.category||"theory"),
-      title,filename,documentFile.originalname,documentFile.size,documentFile.buffer,contentType,
-      answerKeyFile?.buffer||null,answerKeyFile?.originalname||null,answerKeyFile?contentTypeFor(answerKeyFile.originalname):null,
-      parsedAnswerKey?JSON.stringify(Object.keys(parsedAnswerKey.answers)):null
-    );
-  notifyAdmins("document_pending","Có tài liệu mới chờ duyệt",`${req.user.name} đã gửi tài liệu ${title}.`,"admin");
-  notifyUser(req.user.id,"document_submitted","Đã gửi tài liệu",`Tài liệu ${title} đã được gửi cho Admin duyệt.`);
-  return res.status(201).json({submissionId:result.lastInsertRowid,title,status:"pending",localOnly:false});
+  const out=db.prepare(`INSERT INTO document_submissions (user_id,subject,grade,category,title,filename,original_name,size,file_data,r2_key,content_type,answer_key_data,answer_key_r2_key,answer_key_original_name,answer_key_content_type,answer_key_question_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.user.id,subject,grade,cat,title,filename,file.originalname,file.size,file.buffer,fileKey,ct,answer?.buffer||null,answerKey,answer?.originalname||null,answer?(answer.mimetype||contentTypeFor(answer.originalname)):null,norm?JSON.stringify(Object.keys(norm.answers)):null);
+  notifyAdmins("document_pending","Có tài liệu mới chờ duyệt",`${req.user.name} đã gửi tài liệu ${title}.`,"admin");notifyUser(req.user.id,"document_submitted","Đã gửi tài liệu",`Tài liệu ${title} đã được gửi cho Admin duyệt.`);
+  return res.status(201).json({submissionId:out.lastInsertRowid,title,status:"pending",localOnly:false});
+ }catch(error){await Promise.all(keys.map(key=>deleteFromR2(key).catch(()=>{})));return next(error);}
 });
 
 // -------------------- DOCUMENT LIBRARY API --------------------
@@ -1507,60 +1442,18 @@ app.post("/api/admin/documents/:id/solution/review",requireSameOrigin,requireAdm
   res.json({ok:true,status:"ready",version:approved.version,scale:approved.scale,questionCount:reviewed.length,regradedSubmissionsCount:regradeStats.gradedCount,newlyGradedCount:regradeStats.newlyGradedCount});
 });
 
-app.post("/api/admin/documents/:id/answer-key",requireSameOrigin,requireAdmin,upload.single("answerKey"),async(req,res)=>{
-  if(!req.file)return res.status(400).json({error:"Select an answer-key file."});
-  const extension=path.extname(req.file.originalname).toLowerCase();
-  if(![".pdf",".txt",".json",".csv",".docx"].includes(extension))return res.status(400).json({error:"Answer keys must be PDF, DOCX, TXT, JSON, or CSV files. Legacy DOC files are not supported."});
-  const document=db.prepare("SELECT id,category,subject FROM documents WHERE id=?").get(String(req.params.id));
-  if(!document)return res.status(404).json({error:"Question document was not found."});
-  if(!["practice","exam","test"].includes(document.category))return res.status(400).json({error:"Theory documents do not need an answer key."});
-  const config=assessmentConfigFor(document.subject,document.category);
-  const normalized=await normalizeAnswerKeyDocument(req.file.buffer,req.file.originalname,config?.layout,config?.grading);
-  const key=saveAnswerKeyRecord(document.id,req.file,req.user.id,normalized);
-  return res.json({ok:true,hasAnswerKey:true,gradingAvailable:Boolean(key),answerKeyOriginalName:req.file.originalname,normalizedFormat:key?"json":null});
+app.post("/api/admin/documents/:id/answer-key",requireSameOrigin,requireAdmin,upload.single("answerKey"),async(req,res,next)=>{
+ try{if(!req.file)return res.status(400).json({error:"Select an answer-key file."});if(![".pdf",".txt",".json",".csv",".docx"].includes(path.extname(req.file.originalname).toLowerCase()))return res.status(400).json({error:"Invalid answer key format."});const doc=db.prepare("SELECT id,category,subject FROM documents WHERE id=?").get(String(req.params.id));if(!doc)return res.status(404).json({error:"Question document was not found."});if(!["practice","exam","test"].includes(doc.category))return res.status(400).json({error:"Theory documents do not need an answer key."});const cfg=assessmentConfigFor(doc.subject,doc.category),norm=await normalizeAnswerKeyDocument(req.file.buffer,req.file.originalname,cfg?.layout,cfg?.grading);await saveAnswerKeyRecord(doc.id,req.file,req.user.id,norm);return res.json({ok:true,hasAnswerKey:true,gradingAvailable:Boolean(norm),answerKeyOriginalName:req.file.originalname,normalizedFormat:norm?"json":null});}catch(e){return next(e);}
 });
-
-app.get("/api/admin/documents/:id/answer-key",requireAdmin,(req,res)=>{
-  const row=db.prepare("SELECT file_data,original_name,content_type FROM answer_keys WHERE document_id=?").get(String(req.params.id));
-  if(!row?.file_data)return res.status(404).json({error:"No answer key is attached to this document."});
-  res.setHeader("Content-Type",row.content_type||"application/octet-stream");
-  res.setHeader("Content-Disposition",`inline; filename*=UTF-8''${encodeURIComponent(row.original_name||"answer-key")}`);
-  res.setHeader("X-Content-Type-Options","nosniff");
-  res.setHeader("Cache-Control","private, no-store");
-  res.end(row.file_data);
+app.get("/api/admin/documents/:id/answer-key",requireAdmin,async(req,res,next)=>{
+ try{const row=db.prepare("SELECT file_data,r2_key,original_name,content_type FROM answer_keys WHERE document_id=?").get(String(req.params.id));const bytes=row?.r2_key?await getDocumentBuffer(row,"r2_key","file_data"):(row?.file_data?Buffer.from(row.file_data):null);if(!bytes)return res.status(404).json({error:"No answer key is attached to this document."});res.setHeader("Content-Type",row.content_type||"application/octet-stream");res.setHeader("Content-Disposition",`inline; filename*=UTF-8''${encodeURIComponent(row.original_name||"answer-key")}`);res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("Cache-Control","private, no-store");return res.end(bytes);}catch(e){return next(e);}
 });
-
-
-
-app.delete("/api/admin/documents/:id",requireSameOrigin,requireAdmin,(req,res)=>{
-  const document=db.prepare("SELECT id,filename FROM documents WHERE id=?").get(req.params.id);
-  if(!document)return res.status(404).json({error:"Document was not found."});
-
-  db.prepare("DELETE FROM tests WHERE id=?").run(document.id);
-  try{deleteLearningResultsByItemId(document.id);}catch{}
-  const result=db.prepare("DELETE FROM documents WHERE id=?").run(document.id);
-  if(result.changes){
-    const storedPath=path.join(documentsDir,path.basename(document.filename));
-    if(fs.existsSync(storedPath))fs.unlinkSync(storedPath);
-  }
-  return res.json({ok:true,deletedId:document.id});
+app.delete("/api/admin/documents/:id",requireSameOrigin,requireAdmin,async(req,res,next)=>{
+ try{const doc=db.prepare("SELECT id,filename,r2_key FROM documents WHERE id=?").get(req.params.id);if(!doc)return res.status(404).json({error:"Document was not found."});const ak=db.prepare("SELECT r2_key FROM answer_keys WHERE document_id=?").get(doc.id);db.prepare("DELETE FROM tests WHERE id=?").run(doc.id);try{deleteLearningResultsByItemId(doc.id);}catch{}const result=db.prepare("DELETE FROM documents WHERE id=?").run(doc.id);if(result.changes){if(doc.r2_key)await deleteFromR2(doc.r2_key).catch(e=>console.warn("[R2] cleanup failed:",e.message));if(ak?.r2_key)await deleteFromR2(ak.r2_key).catch(e=>console.warn("[R2] answer key cleanup failed:",e.message));const local=path.join(documentsDir,path.basename(doc.filename));if(fs.existsSync(local))fs.unlinkSync(local);}return res.json({ok:true,deletedId:doc.id});}catch(e){return next(e);}
 });
-
-app.get("/api/documents/:id/file",(req,res)=>{
-  const document=db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);
-  if(!document)return res.sendStatus(404);
-
-  const extension=path.extname(document.original_name).toLowerCase();
-  const inlineTypes=new Set([".pdf",".txt",".png",".jpg",".jpeg"]);
-  const disposition=inlineTypes.has(extension)?"inline":"attachment";
-  res.setHeader("Content-Type",document.content_type||"application/octet-stream");
-  res.setHeader("Content-Length",document.file_data.length);
-  res.setHeader("Content-Disposition",`${disposition}; filename*=UTF-8''${encodeURIComponent(document.original_name)}`);
-  res.setHeader("X-Content-Type-Options","nosniff");
-  res.setHeader("Cache-Control","private, no-store");
-  res.end(document.file_data);
+app.get("/api/documents/:id/file",async(req,res,next)=>{
+ try{const doc=db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);if(!doc)return res.sendStatus(404);const bytes=doc.r2_key?await getDocumentBuffer(doc):(doc.file_data?Buffer.from(doc.file_data):null);if(!bytes)return res.status(410).json({error:"File tài liệu không còn trong R2 hoặc kho cũ."});const ext=path.extname(doc.original_name).toLowerCase(),inline=new Set([".pdf",".txt",".png",".jpg",".jpeg"]);res.setHeader("Content-Type",doc.content_type||"application/octet-stream");res.setHeader("Content-Length",bytes.length);res.setHeader("Content-Disposition",`${inline.has(ext)?"inline":"attachment"}; filename*=UTF-8''${encodeURIComponent(doc.original_name)}`);res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("Cache-Control","private, no-store");return res.end(bytes);}catch(e){return next(e);}
 });
-
 app.get("/api/admin/submissions",requireAdmin,(req,res)=>{
 
   const rows=db.prepare("SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,u.name AS userName,u.email AS userEmail FROM document_submissions s JOIN users u ON u.id=s.user_id WHERE s.status='pending' ORDER BY s.id ASC").all();
@@ -1569,89 +1462,19 @@ app.get("/api/admin/submissions",requireAdmin,(req,res)=>{
 
 });
 
-app.post("/api/admin/submissions/:id/review",requireSameOrigin,requireAdmin,async(req,res)=>{
-  const id=Number(req.params.id);
-  const decision=String(req.body?.decision||"");
-  const note=String(req.body?.note||"").slice(0,500);
-  if(!Number.isInteger(id)||!["approved","rejected"].includes(decision)){
-    return res.status(400).json({error:"Invalid review decision."});
-  }
-
-  const submission=db.prepare("SELECT * FROM document_submissions WHERE id=? AND status='pending'").get(id);
-  if(!submission)return res.status(404).json({error:"Pending document was not found."});
-
-  const fileData=submission.file_data
-    ? Buffer.from(submission.file_data)
-    : (fs.existsSync(path.join(pendingDir,submission.filename))
-        ? fs.readFileSync(path.join(pendingDir,submission.filename))
-        : null);
-  if(decision==="approved"&&!fileData){
-    return res.status(410).json({error:"The stored document file is missing."});
-  }
-
-  let normalizedSubmissionAnswerKey=null;
-  if(decision==="approved"&&submission.answer_key_data){
-    const config=assessmentConfigFor(submission.subject,submission.category);
-    normalizedSubmissionAnswerKey=await normalizeAnswerKeyDocument(
-      Buffer.from(submission.answer_key_data),
-      submission.answer_key_original_name||"answer-key.txt",
-      config?.layout,
-      config?.grading
-    );
-  }
-
-  let approvedFilename=null;
-  let approvedDocumentId=null;
-  if(decision==="approved"){
-    approvedDocumentId=`submission-${id}`;
-    approvedFilename=storedFilename(submission.original_name);
-    const source=path.join(pendingDir,submission.filename);
-    if(fs.existsSync(source)){
-      fs.copyFileSync(source,path.join(documentsDir,approvedFilename),fs.constants.COPYFILE_EXCL);
-    }else{
-      fs.writeFileSync(path.join(documentsDir,approvedFilename),fileData,{flag:"wx"});
-    }
-  }
-
-  try{
-    const review=db.transaction(()=>{
-      db.prepare("UPDATE document_submissions SET status=?,admin_note=?,reviewed_by=?,reviewed_at=datetime('now') WHERE id=?")
-        .run(decision,note,req.user.id,id);
-      if(decision==="approved"){
-        db.prepare(`INSERT INTO documents
-          (id,subject,grade,category,title,filename,original_name,size,content_type,file_data,uploaded_by)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
-          approvedDocumentId,submission.subject,submission.grade,submission.category,
-            submission.title,approvedFilename,submission.original_name,submission.size,
-            submission.content_type||contentTypeFor(submission.original_name),fileData,submission.user_id
-          );
-        if(submission.answer_key_data){
-          saveAnswerKeyRecord(approvedDocumentId,{
-            buffer:Buffer.from(submission.answer_key_data),
-            originalname:submission.answer_key_original_name||"answer-key.txt"
-          },submission.user_id,normalizedSubmissionAnswerKey);
-        }
-      }
-      notifyUser(submission.user_id,
-        decision==="approved"?"document_approved":"document_rejected",
-        decision==="approved"?"Tài liệu được duyệt":"Tài liệu chưa được duyệt",
-        decision==="approved"?`Tài liệu ${submission.title} của bạn đã được duyệt.`:`Tài liệu ${submission.title} chưa được duyệt.${note?" Lý do: "+note:""}`);
-    });
-    review();
-  }catch(error){
-    if(approvedFilename){
-      const destination=path.join(documentsDir,approvedFilename);
-      if(fs.existsSync(destination))fs.unlinkSync(destination);
-    }
-    throw error;
-  }
-
-  const pendingFile=path.join(pendingDir,submission.filename);
-  if(fs.existsSync(pendingFile))fs.unlinkSync(pendingFile);
-  if(decision==="approved"&&["exam","practice"].includes(submission.category))createExamSolutionJob(approvedDocumentId);
+app.post("/api/admin/submissions/:id/review",requireSameOrigin,requireAdmin,async(req,res,next)=>{
+ const id=Number(req.params.id),decision=String(req.body?.decision||""),note=String(req.body?.note||"").slice(0,500);
+ try{
+  if(!Number.isInteger(id)||!["approved","rejected"].includes(decision))return res.status(400).json({error:"Invalid review decision."});
+  const sub=db.prepare("SELECT * FROM document_submissions WHERE id=? AND status='pending'").get(id);if(!sub)return res.status(404).json({error:"Pending document was not found."});
+  const bytes=sub.r2_key?await getDocumentBuffer(sub,"r2_key","file_data"):(sub.file_data?Buffer.from(sub.file_data):null);if(decision==="approved"&&!bytes)return res.status(410).json({error:"The stored document file is missing."});
+  let answerBytes=null,norm=null;if(decision==="approved"&&(sub.answer_key_r2_key||sub.answer_key_data)){answerBytes=sub.answer_key_r2_key?await getDocumentBuffer(sub,"answer_key_r2_key","answer_key_data"):Buffer.from(sub.answer_key_data);if(!answerBytes)return res.status(410).json({error:"The stored answer key file is missing."});const cfg=assessmentConfigFor(sub.subject,sub.category);norm=await normalizeAnswerKeyDocument(answerBytes,sub.answer_key_original_name||"answer-key.txt",cfg?.layout,cfg?.grading);}
+  const approvedId=`submission-${id}`,approvedFilename=decision==="approved"?storedFilename(sub.original_name):null;if(decision==="approved"){const target=path.join(documentsDir,approvedFilename);if(!fs.existsSync(target))fs.writeFileSync(target,bytes,{flag:"wx"});}
+  try{const tx=db.transaction(()=>{db.prepare("UPDATE document_submissions SET status=?,admin_note=?,reviewed_by=?,reviewed_at=datetime('now') WHERE id=?").run(decision,note,req.user.id,id);if(decision==="approved"){db.prepare(`INSERT INTO documents (id,subject,grade,category,title,filename,original_name,size,content_type,file_data,r2_key,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(approvedId,sub.subject,sub.grade,sub.category,sub.title,approvedFilename,sub.original_name,sub.size,sub.content_type||contentTypeFor(sub.original_name),bytes,sub.r2_key,sub.user_id);if(answerBytes){const name=sub.answer_key_original_name||"answer-key.txt",fmt=path.extname(name).slice(1).toLowerCase()||"unknown";db.prepare(`INSERT INTO answer_keys (document_id,original_name,content_type,file_data,r2_key,source_format,normalized_json,question_ids,grading_available,normalization_error,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(approvedId,name,sub.answer_key_content_type||contentTypeFor(name),answerBytes,sub.answer_key_r2_key,fmt,norm?JSON.stringify(norm):null,norm?JSON.stringify(Object.keys(norm.answers)):null,norm?1:0,norm?null:"Tệp đáp án chưa được chuẩn hóa.",sub.user_id);}}notifyUser(sub.user_id,decision==="approved"?"document_approved":"document_rejected",decision==="approved"?"Tài liệu được duyệt":"Tài liệu chưa được duyệt",decision==="approved"?`Tài liệu ${sub.title} của bạn đã được duyệt.`:`Tài liệu ${sub.title} chưa được duyệt.${note?" Lý do: "+note:""}`);});tx();}catch(error){if(approvedFilename){const target=path.join(documentsDir,approvedFilename);if(fs.existsSync(target))fs.unlinkSync(target);}throw error;}
+  if(decision==="rejected"){if(sub.r2_key)await deleteFromR2(sub.r2_key).catch(e=>console.warn("[R2] rejected file cleanup failed:",e.message));if(sub.answer_key_r2_key)await deleteFromR2(sub.answer_key_r2_key).catch(e=>console.warn("[R2] rejected key cleanup failed:",e.message));}else if(["exam","practice"].includes(sub.category))createExamSolutionJob(approvedId);
   return res.json({ok:true,status:decision});
+ }catch(e){return next(e);}
 });
-
 app.post("/api/ai/difficulty",async(req,res)=>{
 
   const key=process.env.GEMINI_API_KEY;
@@ -1690,9 +1513,12 @@ testsModule = installTestsModule({
   assessmentConfigFor,
   createExamSolutionJob,
   saveAnswerKeyRecord,
+  saveFileToR2,
+  deleteFromR2,
   storedFilename,
   contentTypeFor,
   documentsDir,
+  getDocumentBuffer,
   notifyUser,
   notifyAdmins
 });
@@ -1715,6 +1541,7 @@ importLegacyDocuments();
 normalizeLegacyDocumentCategories();
 await migrateLegacyAnswerKeys();
 await normalizeStoredPdfAnswerKeys();
+await migrateFilesToR2();
 for(const job of db.prepare("SELECT document_id FROM exam_solutions WHERE status IN ('queued','reading','solving')").all()){
   updateSolutionJob(job.document_id,{status:"queued",progress:2,phase:"Tiếp tục tác vụ sau khi máy chủ khởi động lại"});
   queueExamSolution(job.document_id);

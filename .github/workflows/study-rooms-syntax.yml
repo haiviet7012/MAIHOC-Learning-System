@@ -19,6 +19,8 @@ jobs:
       - name: Check server modules
         run: |
           node --check server/server.js
+          node --check server/auth.js
+          node --check server/tests-module/index.js
           node --check server/study-rooms/server.js
           node --check server/grading/engine.js
           node --test tests/grading-config.test.js
