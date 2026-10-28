@@ -44,19 +44,6 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 
 </div>
 
----|---|
-| **Nguyễn Việt Hải** | Developer |
-| **Nguyễn Đức Hải** | Developer |
-| **Nguyễn Xuân Hoàng** | Developer |
-
-### 📈 Sales Managers
-| Thành viên | Vai trò |
-|---|---|
-| **Phạm Quang Minh** | Sales Manager |
-| **Đỗ Gia Bách** | Sales Manager |
-
----
-
 <div align="center">
 
 **MAI HỌC** · Cùng học tập, cùng tiến bộ.
