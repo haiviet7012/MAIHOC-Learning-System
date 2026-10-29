@@ -407,6 +407,13 @@ export async function deletePostgresSessionsForUser(userId) {
   await authPgPool.query("DELETE FROM sessions WHERE user_id=$1", [Number(userId)]);
 }
 
+export async function queryPostgresAuth(sql, params = []) {
+  if (!isPostgresAuthEnabled) {
+    throw new Error("queryPostgresAuth is only available when AUTH_STORAGE=postgres.");
+  }
+  return authPgPool.query(sql, params);
+}
+
 async function findPostgresUserById(userId) {
   const result = await authPgPool.query(
     "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users WHERE id=$1",
