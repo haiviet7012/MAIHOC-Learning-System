@@ -128,12 +128,14 @@
         "defaultAnswerVariant": "1001"
       },
       "assessment": {
+        "totalQuestions": 28,
+        "totalScore": 10,
         "sections": [
           {
             "order": 1,
             "sectionId": "I",
             "type": "multiple_choice",
-            "title": "Phần I. Trắc nghiệm",
+            "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
             "count": 18,
             "options": [
               "A",
@@ -149,7 +151,7 @@
             "order": 2,
             "sectionId": "II",
             "type": "true_false",
-            "title": "Phần II. Đúng / Sai",
+            "title": "Phần II. Trắc nghiệm đúng / sai",
             "count": 4,
             "statements": [
               "a",
@@ -171,7 +173,7 @@
             "order": 3,
             "sectionId": "III",
             "type": "essay",
-            "title": "Phần III. Tự luận / Trả lời ngắn",
+            "title": "Phần III. Trắc nghiệm trả lời ngắn",
             "count": 6,
             "grading": {
               "pointsPerCorrect": 0.25
@@ -186,12 +188,14 @@
         "defaultAnswerVariant": "1001"
       },
       "assessment": {
+        "totalQuestions": 28,
+        "totalScore": 10,
         "sections": [
           {
             "order": 1,
             "sectionId": "I",
             "type": "multiple_choice",
-            "title": "Phần I. Trắc nghiệm",
+            "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
             "count": 18,
             "options": [
               "A",
@@ -207,7 +211,7 @@
             "order": 2,
             "sectionId": "II",
             "type": "true_false",
-            "title": "Phần II. Đúng / Sai",
+            "title": "Phần II. Trắc nghiệm đúng / sai",
             "count": 4,
             "statements": [
               "a",
@@ -229,7 +233,7 @@
             "order": 3,
             "sectionId": "III",
             "type": "essay",
-            "title": "Phần III. Tự luận / Trả lời ngắn",
+            "title": "Phần III. Trắc nghiệm trả lời ngắn",
             "count": 6,
             "grading": {
               "pointsPerCorrect": 0.25
@@ -244,12 +248,14 @@
         "defaultAnswerVariant": "1001"
       },
       "assessment": {
+        "totalQuestions": 40,
+        "totalScore": 10,
         "sections": [
           {
             "order": 1,
             "sectionId": "I",
             "type": "multiple_choice",
-            "title": "Phần I. Trắc nghiệm",
+            "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
             "count": 40,
             "options": [
               "A",

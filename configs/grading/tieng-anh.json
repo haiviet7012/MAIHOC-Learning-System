@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "subject": "Tiếng Anh",
+  "subjectId": "tieng-anh",
+  "grading": {
+    "scale": 10,
+    "defaultAnswerVariant": "1001"
+  },
+  "assessment": {
+    "totalQuestions": 40,
+    "totalScore": 10.0,
+    "sections": [
+      {
+        "order": 1,
+        "sectionId": "I",
+        "type": "multiple_choice",
+        "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
+        "count": 40,
+        "options": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "grading": {
+          "pointsPerCorrect": 0.25
+        }
+      }
+    ]
+  }
+}
