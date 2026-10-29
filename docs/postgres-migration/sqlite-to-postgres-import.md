@@ -80,4 +80,6 @@ Verify only admin ID 1 remains and compare counts with the dry-run report. Then 
 
 ## Important limitation
 
+Recent safety fixes permit SQLite mode without `DATABASE_URL`, fail closed if SQLite has account IDs missing from PostgreSQL, and add a regression test plus server dependency installation to CI. Keep `MAIHOC_AUTH_BACKEND=sqlite` until CI and the PostgreSQL auth preflight pass.
+
 This import plus the staged cutover branch makes PostgreSQL authoritative only for account/session/email-verification operations. Other business tables remain SQLite-backed at runtime, and several legacy modules read SQLite compatibility mirrors. Do not consider the whole site migrated to PostgreSQL. Verify registration/login/logout, password reset, admin account management, online presence and Socket.IO auth after deployment; test existing upload, test, grading, notification, chat-history and progress behavior separately.
