@@ -200,9 +200,16 @@ fs.mkdirSync(pendingDir,{recursive:true});
 
 fs.mkdirSync(documentsDir,{recursive:true});
 
-function notifyUser(userId,type,title,message,link=null){db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(userId,type,title,message,link);}
+async function notifyUser(userId,type,title,message,link=null){
+  await db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(userId,type,title,message,link);
+}
 
-function notifyAdmins(type,title,message,link=null){const admins=db.prepare("SELECT id FROM users WHERE role='admin'").all();for(const a of admins)notifyUser(a.id,type,title,message,link);}
+async function notifyAdmins(type,title,message,link=null){
+  const admins = authUsesPostgres
+    ? (await authPool.query("SELECT id FROM users WHERE role='admin'")).rows
+    : db.prepare("SELECT id FROM users WHERE role='admin'").all();
+  for(const a of admins) await notifyUser(a.id,type,title,message,link);
+}
 
 let testsModule=null;
 const activeSolutionJobs=new Set();
@@ -972,7 +979,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
     if(existing.role==="admin"&&Number(existing.admin_level)>=1)return res.status(409).json({error:"Tài khoản này đã là Admin cấp dưới."});
     const updated=await updateUserAccount(existing.id,{role:"admin",adminLevel:1});
     if(!updated)return res.status(404).json({error:"Tài khoản không còn tồn tại."});
-    notifyAdmins("admin_promoted","Đã nâng quyền tài khoản thành Admin cấp dưới","Tài khoản "+updated.name+" ("+updated.email+") đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.","admin");
+    await notifyAdmins("admin_promoted","Đã nâng quyền tài khoản thành Admin cấp dưới","Tài khoản "+updated.name+" ("+updated.email+") đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.","admin");
     return res.json({ok:true,action:"promoted",user:publicUser(updated),message:"Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."});
   }
 
@@ -988,7 +995,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
     }
     throw error;
   }
-  notifyAdmins("admin_created","Đã tạo Admin cấp dưới","Tài khoản "+name+" ("+email+") đã được tạo mới.","admin");
+  await notifyAdmins("admin_created","Đã tạo Admin cấp dưới","Tài khoản "+name+" ("+email+") đã được tạo mới.","admin");
   res.status(201).json({ok:true,action:"created",user:publicUser(created),message:"Đã tạo tài khoản Admin cấp dưới mới."});
 });
 
@@ -1004,7 +1011,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)
     await deleteAiSolutionHistoryForUser(id);
     if(!await deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'").run(req.user.id,id);
-    return res.json({ok:true,deletedId:id,deleted:true,total:db.prepare("SELECT COUNT(*) AS count FROM users").get().count});
+    return res.json({ok:true,deletedId:id,deleted:true,total:await countUserAccounts()});
   }
   const pending=db.prepare("SELECT id FROM account_deletion_requests WHERE target_user_id=? AND status='pending'").get(id);
   if(pending)return res.status(409).json({error:"Đã có yêu cầu xóa tài khoản này đang chờ Admin cao nhất duyệt."});
