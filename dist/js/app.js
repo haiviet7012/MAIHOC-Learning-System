@@ -484,7 +484,7 @@ function accountCenterPage() {
         <section class="account-section card">
           <span class="pill">MẬT KHẨU</span>
           <h3>Đổi mật khẩu tài khoản</h3>
-          <p class="muted">Nhập mật khẩu mới (tối thiểu 10 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+          <p class="muted">Nhập mật khẩu mới (tối thiểu 8 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
           <form id="account-change-password-form" class="account-form">
             <label>
               Mật khẩu mới
