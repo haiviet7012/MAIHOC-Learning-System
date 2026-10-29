@@ -606,9 +606,9 @@ function render() {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
-    stopStudyRoomsIfActive();
-    stopChemistryIfActive();
-    stopUniversalAiIfActive();
+    if (state.route !== "study-rooms") stopStudyRoomsIfActive();
+    if (state.route !== "chemistry") stopChemistryIfActive();
+    if (state.route !== "ai-solver") stopUniversalAiIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
     const onlineDashboard = $("#online-dashboard");
