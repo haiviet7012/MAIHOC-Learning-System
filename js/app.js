@@ -1,4 +1,4 @@
-import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, getSubjectConfig, CATEGORIES } from "./data.js";
+import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, setSubjectCatalog, getSubjectConfig, CATEGORIES } from "./data.js";
 import { initTheme } from "./theme.js";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
 import {
@@ -36,6 +36,15 @@ let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
 async function initRemoteData() {
+    try {
+        const subjectResponse = await fetch("/configs/subjects.json", { cache: "no-store" });
+        if (subjectResponse.ok) {
+            const subjectConfig = await subjectResponse.json();
+            setSubjectCatalog(subjectConfig.subjects);
+        }
+    } catch (error) {
+        console.warn("Could not load subject catalog config:", error.message);
+    }
     try {
         const response = await fetch("/configs/exam-layouts.json", { cache: "no-store" });
         if (response.ok) examLayoutConfig = await response.json();
