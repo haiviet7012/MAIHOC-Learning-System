@@ -1072,6 +1072,12 @@ document.addEventListener("click", async (e) => {
             toast(`${action.dataset.name}: môn học chưa được kích hoạt. Hãy bổ sung cấu hình đánh giá và nội dung trước khi bật.`);
             return;
         }
+        if (a === "coming-natural-tool") {
+            toast(action.dataset.tool === "physics-formulas"
+                ? "Công thức Vật lý đang được phát triển và sẽ sớm ra mắt."
+                : "Công cụ này đang được phát triển.");
+            return;
+        }
         if (a === "choose-grade") {
             state.grade = action.dataset.grade;
             go("theory-list", { grade: action.dataset.grade });
