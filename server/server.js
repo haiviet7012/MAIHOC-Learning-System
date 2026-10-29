@@ -37,7 +37,8 @@ import {
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
 
   loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword,
-  isPostgresAuthEnabled, syncPostgresUserFromSqlite, deletePostgresUser, deletePostgresSessionsForUser
+  isPostgresAuthEnabled, syncPostgresUserFromSqlite, deletePostgresUser, deletePostgresSessionsForUser,
+  initializePostgresAuthCompatibilityMirror
 
 } from "./auth.js";
 
@@ -777,8 +778,9 @@ app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyA
     });
     const userId = req.user.id;
     await deleteAiSolutionHistoryForUser(userId);
-    destroySession(req, res);
-    deleteAccountPermanently(userId);
+    await destroySession(req, res);
+    const deleted = await deleteAccountPermanently(userId);
+    if (!deleted) return res.status(404).json({ error: "Tài khoản không còn tồn tại." });
     return res.json({ ok: true, deleted: true, message: "Tài khoản của bạn đã được xóa vĩnh viễn." });
   } catch (error) {
     const status = Number(error.status) || 400;
@@ -1719,6 +1721,7 @@ app.use((err,_req,res,_next)=>{
 
 
 
+await initializePostgresAuthCompatibilityMirror();
 await createInitialAdmin();
 importLegacyDocuments();
 normalizeLegacyDocumentCategories();
