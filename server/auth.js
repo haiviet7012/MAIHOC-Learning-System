@@ -653,7 +653,6 @@ export async function loadCurrentUser(req, res, next) {
       }
 
       if (session && Number(session.expires_at) > Date.now()) {
-        if (authUsesPostgres) mirrorUserRow(session);
         req.user = publicUser(session);
         req.sessionTokenHash = tokenHash;
 
