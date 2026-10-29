@@ -1381,11 +1381,22 @@ export function mountStudyRooms(container, user) {
     }
   };
 
+  function onPageShow(event) {
+    if (!event.persisted || disposed) return;
+    // A page restored from the browser's back/forward cache must not look joined
+    // after pagehide has already stopped media and sent a best-effort leave request.
+    pageHideHandled = false;
+    void leaveRoom(false).then(() => {
+      if (!disposed) showError("Bạn đã quay lại trang; camera và microphone vẫn đang tắt.", true);
+    });
+  }
+
   function onVisibilityChange() {
     if (!document.hidden && !currentRoom && !disposed) void loadRooms();
   }
 
   window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
   window.addEventListener("beforeunload", onPageHide);
   document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -1395,6 +1406,7 @@ export function mountStudyRooms(container, user) {
     clearInterval(roomRefreshTimer);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     window.removeEventListener("pagehide", onPageHide);
+    window.removeEventListener("pageshow", onPageShow);
     window.removeEventListener("beforeunload", onPageHide);
     setExpandedRoomMode(false);
     await leaveRoom(true);
