@@ -2219,19 +2219,24 @@ app.post(
 
 // -------------------- DOCUMENT LIBRARY API --------------------
 
-app.get("/api/documents", async (_req, res) => {
-  const documents = await db
-    .prepare(`
-      SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
-        d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
-      FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id ORDER BY d.uploaded_at DESC
-    `)
-    .all();
-  res.setHeader("Cache-Control", "no-store");
+app.get("/api/documents", async (req, res) => {
+  const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+  const sql = `
+    SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
+      d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
+    FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
+    ${isSubordinateAdmin ? "WHERE d.uploaded_by=?" : ""}
+    ORDER BY d.uploaded_at DESC
+  `;
+  const documents = isSubordinateAdmin
+    ? await db.prepare(sql).all(req.user.id)
+    : await db.prepare(sql).all();
+  res.setHeader("Cache-Control", "private, no-store");
   res.json(documents.map(documentResponse));
 });
 
 app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
     .prepare(`
       SELECT d.id,d.category,d.title,d.grade,d.original_name AS originalName,
@@ -2242,9 +2247,11 @@ app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
         es.error_code AS solutionErrorCode,es.error_message AS solutionErrorMessage
       FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
       LEFT JOIN exam_solutions es ON es.document_id=d.id
-      WHERE d.category IN ('theory','practice','exam','test') ORDER BY d.grade,d.title
+      WHERE d.category IN ('theory','practice','exam','test')
+        ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
+      ORDER BY d.grade,d.title
     `)
-    .all();
+    .all(...(isSubordinateAdmin ? [req.user.id] : []));
   const sections = { theory: [], practice: [], exam: [], test: [] };
   for (const row of rows) {
     sections[row.category].push({
@@ -2273,16 +2280,18 @@ app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
-      SELECT d.id,d.title,d.subject,d.category,d.original_name,ak.original_name AS referenceAnswerName,
+      SELECT d.id,d.title,d.subject,d.category,d.original_name,d.uploaded_by,ak.original_name AS referenceAnswerName,
         s.status,s.progress,s.phase,s.model,s.source_hash,s.generated_json,s.approved_json,
         s.error_code,s.error_message,s.solution_version,s.generated_at,s.approved_at
       FROM documents d LEFT JOIN exam_solutions s ON s.document_id=d.id
-      LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?
+      LEFT JOIN answer_keys ak ON ak.document_id=d.id
+      WHERE d.id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
     `)
-    .get(String(req.params.id));
-  if (!row) return res.status(404).json({ error: "Không tìm thấy đề." });
+    .get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+  if (!row) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền xem tài liệu này." });
   let generated = null,
     approved = null;
   try {
