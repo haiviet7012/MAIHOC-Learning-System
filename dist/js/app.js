@@ -557,7 +557,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
     const rows = (payload.users || []).map(u => {
       const created = formatAdminCreatedAt(u.createdAt);
-      const roleLabel = u.role !== "admin" ? "User" : Number(u.adminLevel) >= 2 ? "Admin cao nhất" : "Admin cấp dưới";
+      const roleLabel = u.role !== "admin" ? "Học sinh" : Number(u.adminLevel) >= 2 ? "Admin cao nhất" : "Giảng viên";
       const canRequestDelete = Number(u.id)!==Number(payload.currentUserId) && Number(u.adminLevel)<2;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
