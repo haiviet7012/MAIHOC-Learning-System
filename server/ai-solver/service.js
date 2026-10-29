@@ -44,11 +44,7 @@ async function extractPdfText(file) {
       pages.push(`[Trang ${pageNo}]\n${text}`);
     }
     const extracted = pages.join("\n\n").trim();
-    if (!extracted) {
-      const error = new Error("PDF không có lớp văn bản để trích xuất (có thể là PDF scan). Hãy tải ảnh trang đề hoặc dùng PDF có văn bản.");
-      error.status = 422;
-      throw error;
-    }
+    // Scan-only PDFs are still passed to Gemini as PDF data so its vision capability can read them.
     return extracted;
   } finally {
     await pdf.destroy();
@@ -67,7 +63,11 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
   let problemText = prompt || "";
   if (file) {
     const pdfText = await extractPdfText(file);
-    problemText = [problemText, `NỘI DUNG TRÍCH XUẤT TỪ PDF (${file.name}):\n${pdfText}`].filter(Boolean).join("\n\n");
+    if (pdfText) {
+      problemText = [problemText, `NỘI DUNG TRÍCH XUẤT TỪ PDF (${file.name}):\n${pdfText}`].filter(Boolean).join("\n\n");
+    } else {
+      problemText = [problemText, `Tệp ${file.name} không có lớp văn bản. Hãy đọc trực tiếp từng trang của tệp PDF đính kèm như tài liệu scan.`].filter(Boolean).join("\n\n");
+    }
   }
   if (problemText.length > 28000) problemText = problemText.slice(0, 28000);
 
@@ -95,6 +95,10 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
       const parts = [];
       if (image?.data) {
         parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+      }
+      if (file?.data) {
+        // Attach the PDF itself as multimodal input as well as extracted text, enabling scan-only PDFs.
+        parts.push({ inlineData: { mimeType: "application/pdf", data: file.data } });
       }
       parts.push({ text: instruction });
       const result = await model.generateContent({ contents: [{ role: "user", parts }] });
