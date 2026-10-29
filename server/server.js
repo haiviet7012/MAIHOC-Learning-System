@@ -38,7 +38,8 @@ import {
 
   loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword,
   authReady, authUsesPostgres, authPool, findUserByEmail, findUserById,
-  createUserAccount, updateUserAccount, deleteUserAccount, revokeUserSessions
+  createUserAccount, updateUserAccount, deleteUserAccount, revokeUserSessions,
+  listUserAccounts, countUserAccounts
 
 } from "./auth.js";
 
@@ -850,53 +851,84 @@ app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyA
 
 // -------------------- ONLINE USERS PRESENCE DASHBOARD API --------------------
 
-function cleanPresenceAndListOnline(now = Date.now()) {
+async function cleanPresenceAndListOnline(now = Date.now()) {
   const cutoff = now - ONLINE_WINDOW_MS;
+  if (authUsesPostgres) {
+    await authPool.query("DELETE FROM sessions WHERE expires_at < $1", [now]);
+    await authPool.query("DELETE FROM user_presence WHERE last_seen_at < $1", [cutoff]);
+    const result = await authPool.query(
+      "SELECT u.id,u.name,u.role,u.admin_level AS \"adminLevel\", " +
+      "p.last_seen_at AS \"lastSeenAt\",p.activity " +
+      "FROM user_presence p JOIN users u ON u.id=p.user_id " +
+      "WHERE p.last_seen_at >= $1 AND EXISTS " +
+      "(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>$2) " +
+      "ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,p.last_seen_at DESC,u.name ASC LIMIT 200",
+      [cutoff, now]
+    );
+    return result.rows;
+  }
   db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
   db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
-  return db.prepare(`
-    SELECT u.id, u.name, u.role, u.admin_level AS adminLevel,
-           p.last_seen_at AS lastSeenAt, p.activity
-    FROM user_presence p
-    JOIN users u ON u.id = p.user_id
-    WHERE p.last_seen_at >= ?
-      AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?)
-    ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, p.last_seen_at DESC, u.name ASC
-    LIMIT 200
-  `).all(cutoff, now);
+  return db.prepare(
+    "SELECT u.id,u.name,u.role,u.admin_level AS adminLevel," +
+    "p.last_seen_at AS lastSeenAt,p.activity " +
+    "FROM user_presence p JOIN users u ON u.id=p.user_id " +
+    "WHERE p.last_seen_at >= ? AND EXISTS " +
+    "(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at > ?) " +
+    "ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,p.last_seen_at DESC,u.name ASC LIMIT 200"
+  ).all(cutoff, now);
 }
 
-app.post("/api/presence/ping", requireSameOrigin, requireAuth, (req, res) => {
-  const now = Date.now();
-  const activity = String(req.body?.activity || "Đang trực tuyến").trim().slice(0, 80) || "Đang trực tuyến";
-  db.prepare(
-    "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
-  ).run(req.user.id, now, activity);
-  const users = cleanPresenceAndListOnline(now);
-  res.setHeader("Cache-Control", "no-store");
-  return res.json({ ok: true, onlineCount: users.length, users });
-});
-
-app.get("/api/presence/online", (req, res) => {
-  const now = Date.now();
-  if (req.user?.id) {
-    const activity = String(req.query?.activity || "").trim().slice(0, 80);
-    if (activity) {
-      db.prepare(
-        "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
-      ).run(req.user.id, now, activity);
-    } else {
-      db.prepare(
-        "INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at"
-      ).run(req.user.id, now);
+app.post("/api/presence/ping", requireSameOrigin, requireAuth, async(req, res, next) => {
+  try {
+    const now = Date.now();
+    const activity = String(req.body?.activity || "Đang trực tuyến").trim().slice(0, 80) || "Đang trực tuyến";
+    db.prepare(
+      "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
+    ).run(req.user.id, now, activity);
+    if (authUsesPostgres) {
+      await authPool.query(
+        "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES($1,$2,$3) " +
+        "ON CONFLICT(user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,activity=EXCLUDED.activity",
+        [req.user.id, now, activity]
+      );
     }
-  }
-  const users = cleanPresenceAndListOnline(now);
-  res.setHeader("Cache-Control", "no-store");
-  return res.json({ onlineCount: users.length, users });
+    const users = await cleanPresenceAndListOnline(now);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ ok: true, onlineCount: users.length, users });
+  } catch (error) { next(error); }
 });
 
-
+app.get("/api/presence/online", async(req, res, next) => {
+  try {
+    const now = Date.now();
+    if (req.user?.id) {
+      const activity = String(req.query?.activity || "").trim().slice(0, 80);
+      if (activity) {
+        db.prepare(
+          "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) " +
+          "ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
+        ).run(req.user.id, now, activity);
+      } else {
+        db.prepare(
+          "INSERT INTO user_presence(user_id,last_seen_at) VALUES(?,?) " +
+          "ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at"
+        ).run(req.user.id, now);
+      }
+      if (authUsesPostgres) {
+        await authPool.query(
+          "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES($1,$2,$3) " +
+          "ON CONFLICT(user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,activity=COALESCE($3,user_presence.activity)",
+          [req.user.id, now, activity || null]
+        );
+      }
+    }
+    const users = await cleanPresenceAndListOnline(now);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ onlineCount: users.length, users });
+  } catch (error) { next(error); }
+});
 
 
 // Admin information is never trusted from client-supplied role fields.
@@ -914,10 +946,11 @@ async function deleteAccountPermanently(id){
   return true;
 }
 
-app.get("/api/admin/users",requireAdmin,(req,res)=>{
-  const users=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT 500").all();
-  const total=db.prepare("SELECT COUNT(*) AS count FROM users").get().count;
-  res.json({users:users.map(publicUser),total,currentUserId:req.user.id,isSuperAdmin:Number(req.user.adminLevel)>=2});
+app.get("/api/admin/users",requireAdmin,async(req,res,next)=>{
+  try {
+    const [users,total] = await Promise.all([listUserAccounts(500),countUserAccounts()]);
+    res.json({users:users.map(publicUser),total,currentUserId:req.user.id,isSuperAdmin:Number(req.user.adminLevel)>=2});
+  } catch (error) { next(error); }
 });
 
 // Only the configured super admin can appoint subordinate admins.
@@ -959,7 +992,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID tài khoản không hợp lệ."});
   if(id===req.user.id)return res.status(400).json({error:"Bạn không thể gửi yêu cầu xóa chính tài khoản của mình."});
-  const target=db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(id);
+  const target=await findUserById(id);
   if(!target)return res.status(404).json({error:"Không tìm thấy tài khoản."});
   if(Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa tài khoản Admin cao nhất."});
   if(Number(req.user.adminLevel)>=2){
@@ -990,7 +1023,7 @@ app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,req
   const review=db.prepare("SELECT * FROM account_deletion_requests WHERE id=?").get(requestId);
   if(!review)return res.status(404).json({error:"Không tìm thấy yêu cầu."});
   if(review.status!=="pending")return res.status(409).json({error:"Yêu cầu này đã được xử lý."});
-  const target=db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(review.target_user_id);
+  const target=await findUserById(review.target_user_id);
   if(decision==="approve"){
     if(target&&Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa Admin cao nhất."});
     if(target) {
