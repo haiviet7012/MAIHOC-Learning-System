@@ -1108,7 +1108,7 @@ document.addEventListener("click", async (e) => {
             return;
         }
         if (a === "coming-subject") {
-            toast(`${action.dataset.name}: môn học chưa được kích hoạt. Hãy bổ sung cấu hình đánh giá và nội dung trước khi bật.`);
+            toast(`${action.dataset.name}: môn học sẽ sớm được kích hoạt. Coming soon!`);
             return;
         }
         if (a === "coming-natural-tool") {
