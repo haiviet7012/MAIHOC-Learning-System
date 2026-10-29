@@ -662,6 +662,7 @@ async function openSavedAiSolution(historyId) {
   const title = $("#ai-history-dialog-title");
   const meta = $("#ai-history-dialog-meta");
   const prompt = $("#ai-history-dialog-prompt");
+  const promptSection = $("#ai-history-problem-section");
   const answer = $("#ai-history-dialog-answer");
   const status = $("#ai-history-dialog-status");
   if (!dialog || !answer) return;
@@ -669,6 +670,7 @@ async function openSavedAiSolution(historyId) {
   if (title) title.textContent = "Đang tải lời giải…";
   if (meta) meta.textContent = "";
   if (prompt) prompt.textContent = "";
+  if (promptSection) promptSection.hidden = true;
   if (answer) answer.textContent = "";
   if (status) {
     status.hidden = false;
@@ -685,10 +687,8 @@ async function openSavedAiSolution(historyId) {
       formatVietnameseDate(data.createdAt),
       data.modelUsed || ""
     ].filter(Boolean).join(" · ");
-    if (prompt) {
-      prompt.textContent = data.promptPreview || "Đề bài được gửi qua tệp đính kèm.";
-      prompt.hidden = !data.promptPreview;
-    }
+    if (prompt) prompt.textContent = data.promptPreview || "";
+    if (promptSection) promptSection.hidden = !data.promptPreview;
     const answerText = typeof data.solution?.answer === "string"
       ? data.solution.answer
       : (data.solution ? JSON.stringify(data.solution, null, 2) : "Không có nội dung lời giải.");
