@@ -20,7 +20,7 @@ export function postgresType(sqliteType) {
   if (/\bBLOB\b/.test(type)) return "BYTEA";
   if (/\b(REAL|FLOA|DOUB)\b/.test(type)) return "DOUBLE PRECISION";
   if (/\b(NUMERIC|DECIMAL)\b/.test(type)) return "NUMERIC";
-  if (/\b(INT|INTEGER|TINYINT|SMALLINT|BIGINT)\b/.test(type)) return "INTEGER";
+  if (/\b(INT|INTEGER|TINYINT|SMALLINT|BIGINT)\b/.test(type)) return "BIGINT";
   return "TEXT";
 }
 
