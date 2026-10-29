@@ -23,6 +23,7 @@ jobs:
           node --check server/server.js
           node --check server/auth.js
           node --check server/postgres.js
+          npm --prefix server run test:postgres-optional
           node --check server/chat.js
           node --check server/check-postgres-auth.js
           node --check server/tests-module/index.js
