@@ -786,6 +786,7 @@ async function loadUser() {
     const reader = $("#reader-layout");
     if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
     if (activeUser.role !== "admin" && $("#account-progress-list")) loadAccountCenterProgress();
+    if (activeUser.role !== "admin" && $("#account-ai-history-list")) loadAccountAiHistory();
   }
 
 }
