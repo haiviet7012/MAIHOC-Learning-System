@@ -1150,6 +1150,8 @@ $("#upload-form").addEventListener("submit", async (e) => {
             uploadedFileKeys.add(fileKey);
             closeDialog("upload-dialog");
             form.reset();
+            updateFileDropZone(fileInput);
+            syncUploadDialogCategoryFields();
             await refreshTestsQueue();
             if (testRes.solutionJob) window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job", { detail: testRes.solutionJob }));
             toast(testRes.message || "Đã tạo bài kiểm tra.", "success");
@@ -1161,11 +1163,17 @@ $("#upload-form").addEventListener("submit", async (e) => {
         uploadedFileKeys.add(fileKey);
         closeDialog("upload-dialog");
         form.reset();
+        updateFileDropZone(fileInput);
+        syncUploadDialogCategoryFields();
         if(result.solutionJob)window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job",{detail:result.solutionJob}));
         toast(result.localOnly
             ? "Đã thêm tài liệu vào phiên trình duyệt hiện tại."
+            : result.message
+                ? result.message
             : result.solutionJob
-                ? "Đề đã tải lên. Gemini đang giải; cửa sổ tiến trình đã mở."
+                ? (result.solutionJob.mode === "manual" || result.solutionJob.preferredMode === "manual"
+                    ? "Đề đã tải lên. Hãy nhập và xác nhận bộ đáp án chuẩn."
+                    : "Đề đã tải lên. Gemini đang giải; cửa sổ tiến trình đã mở.")
             : result.status === "pending"
                 ? "Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo."
                 : "Tài liệu đã được tải lên máy chủ.", "success");
@@ -1442,16 +1450,29 @@ window.addEventListener("maihoc-navigate", event => {
   if (route) go(route, params || {});
 });
 
-uploadCategorySelect?.addEventListener("change", () => {
+function syncUploadDialogCategoryFields() {
     const extra = $("#upload-test-extra-fields");
-    if (!extra) return;
-    const isTest = uploadCategorySelect.value === "test";
-    extra.hidden = !isTest;
+    if (!extra || !uploadCategorySelect) return;
+    const category = uploadCategorySelect.value;
+    const isTest = category === "test";
+    const hasAnswerMode = ["exam", "practice", "test"].includes(category);
+    extra.hidden = !hasAnswerMode;
+    extra.classList.toggle("is-test-category", isTest);
+    extra.querySelectorAll("[data-test-only-fields]").forEach(node => {
+        node.hidden = !isTest;
+    });
     const openInput = extra.querySelector('[name="openAt"]');
     const closeInput = extra.querySelector('[name="closeAt"]');
     if (openInput) openInput.required = isTest;
     if (closeInput) closeInput.required = isTest;
-});
+    const answerModeSelect = extra.querySelector('select[name="answerMode"]');
+    const immediateBox = extra.querySelector("[data-immediate-answer-options]");
+    if (immediateBox && answerModeSelect) {
+        immediateBox.hidden = answerModeSelect.value === "deferred";
+    }
+}
+uploadCategorySelect?.addEventListener("change", syncUploadDialogCategoryFields);
+syncUploadDialogCategoryFields();
 
 wireTestsEvents({
     onNavigate: (route, params) => go(route, params),

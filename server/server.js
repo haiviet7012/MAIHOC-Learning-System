@@ -1048,7 +1048,7 @@ app.post("/api/exams/:id/submit",requireSameOrigin,async(req,res)=>{
   if(!answerKey&&document.generatedSolution){
     try{
       const generated=JSON.parse(document.generatedSolution);
-      if(Array.isArray(generated?.questions)&&generated.questions.length){
+      if(generated?.source!=="manual-entry"&&Array.isArray(generated?.questions)&&generated.questions.length){
         const generatedAnswers={};
         for(const q of generated.questions){
           if(q?.targetId&&String(q.answer??"").trim()){
@@ -1064,7 +1064,10 @@ app.post("/api/exams/:id/submit",requireSameOrigin,async(req,res)=>{
 
   let waitingMessage=null;
   if(!answerKey&&document.solutionStatus&&document.solutionStatus!=="ready"){
-    waitingMessage=document.solutionStatus==="review"?"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn.":
+    let isManualDraft=false;
+    try{isManualDraft=JSON.parse(document.generatedSolution||"null")?.source==="manual-entry";}catch{}
+    waitingMessage=document.solutionStatus==="review"
+      ?(isManualDraft?"Đề đang chờ Giảng viên / Admin nhập và xác nhận đáp án chuẩn.":"Đề đã có lời giải AI và đang chờ Admin đối chiếu, duyệt đáp án chuẩn."):
       document.solutionStatus==="failed"?"Chưa thể tạo lời giải chuẩn cho đề. Admin đã được thông báo và có thể thử lại.":
       "Đề đang được AI giải. Bài làm đã nhận nhưng sẽ được chấm sau khi Admin duyệt đáp án chuẩn.";
   }
@@ -1368,10 +1371,30 @@ app.post("/api/documents",requireSameOrigin,requireAuth,upload.fields([{name:"do
       }
     });
     saveAdminDocTx();
+    const answerMode=String(b.answerMode||"immediate").trim()==="deferred"?"deferred":"immediate";
+    const answerEntryMethod=String(b.answerEntryMethod||"manual").trim()==="ai"?"ai":"manual";
     const hasJob=["exam","practice"].includes(cat);
-    if(hasJob)createExamSolutionJob(id);
+    let solutionJob=null;
+    if(hasJob&&answerMode==="immediate"){
+      if(answerEntryMethod==="ai"){
+        createExamSolutionJob(id);
+        solutionJob={id,status:"queued",mode:"ai",preferredMode:"ai",progress:2,phase:"Đang chờ xử lý"};
+      }else{
+        if(testsModule?.initManualSolutionForDocument){
+          await testsModule.initManualSolutionForDocument(id);
+        }
+        solutionJob={id,status:"review",mode:"manual",preferredMode:"manual",progress:100,phase:"Nhập đáp án thủ công"};
+      }
+    }
     const row=db.prepare(`SELECT d.*,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?`).get(id);
-    return res.status(201).json({document:documentResponse(row),r2Key:fileKey,status:"approved",localOnly:false,solutionJob:hasJob?{id,status:"queued",progress:2,phase:"Đang chờ xử lý"}:null});
+    const message=!hasJob
+      ?"Tài liệu đã được tải lên máy chủ."
+      :answerMode==="deferred"
+        ?"Đã tải đề lên ở chế độ Chưa nhập đáp án ngay (Có thể nhập đáp án thủ công hoặc dùng AI giải sau trong mục Quản lý đáp án)."
+        :answerEntryMethod==="ai"
+          ?"Đề đã tải lên. Gemini đang giải; cửa sổ tiến trình đã mở."
+          :"Đề đã tải lên. Hãy nhập và xác nhận bộ đáp án chuẩn.";
+    return res.status(201).json({document:documentResponse(row),r2Key:fileKey,status:"approved",localOnly:false,answerMode,answerEntryMethod,solutionJob,message});
   }
   const out=db.prepare(`INSERT INTO document_submissions (user_id,subject,grade,category,title,filename,original_name,size,file_data,r2_key,content_type,answer_key_data,answer_key_r2_key,answer_key_original_name,answer_key_content_type,answer_key_question_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.user.id,subject,grade,cat,title,filename,file.originalname,file.size,file.buffer,fileKey,ct,answer?.buffer||null,answerKey,answer?.originalname||null,answer?(answer.mimetype||contentTypeFor(answer.originalname)):null,norm?JSON.stringify(Object.keys(norm.answers)):null);
   notifyAdmins("document_pending","Có tài liệu mới chờ duyệt",`${req.user.name} đã gửi tài liệu ${title}.`,"admin");notifyUser(req.user.id,"document_submitted","Đã gửi tài liệu",`Tài liệu ${title} đã được gửi cho Admin duyệt.`);

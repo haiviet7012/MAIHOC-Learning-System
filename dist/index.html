@@ -94,13 +94,13 @@
       <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
       <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="test" id="upload-category-test-opt" hidden>Bài kiểm tra (Giảng viên / Admin)</option></select></label>
-      <div id="upload-test-extra-fields" class="test-answer-mode-box" hidden>
-        <div class="test-form-grid-two">
+      <div id="upload-test-extra-fields" class="test-answer-mode-box">
+        <div class="test-form-grid-two" data-test-only-fields hidden>
           <label>Ngày mở bài kiểm tra (Bắt buộc)<input name="openAt" type="datetime-local"></label>
           <label>Hạn cuối nộp bài (Bắt buộc)<input name="closeAt" type="datetime-local"></label>
         </div>
         <div class="test-form-grid-two">
-          <label>Thời gian làm bài
+          <label data-test-only-fields hidden>Thời gian làm bài
             <select name="durationMinutes">
               <option value="30">30 phút</option>
               <option value="45" selected>45 phút</option>
@@ -116,6 +116,14 @@
               <option value="deferred">Chưa nhập đáp án ngay (Hiện "Đang chờ chấm")</option>
             </select>
           </label>
+          <div data-immediate-answer-options>
+            <label>Phương thức chuẩn bị đáp án khi tải lên
+              <select name="answerEntryMethod">
+                <option value="manual" selected>Upload / Nhập đáp án thủ công theo từng câu (Không dùng AI)</option>
+                <option value="ai">Giải tự động bằng AI rồi Admin duyệt lại</option>
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       <label>Tên tài liệu<input name="title" placeholder="Ví dụ: Đề ôn tập hàm số — Chương 1" required maxlength="120"></label>
@@ -129,9 +137,18 @@
   </dialog>
 
   <dialog id="exam-solution-dialog" class="modal exam-solution-dialog">
-    <div class="modal-heading"><div><p class="eyebrow">LỜI GIẢI AI · DUYỆT BỘ CHẤM</p><h2 data-solution-title>Đang chuẩn bị lời giải</h2></div><button type="button" class="close-button" data-close="exam-solution-dialog" aria-label="Đóng">×</button></div>
+    <div class="modal-heading"><div><p class="eyebrow">LỜI GIẢI AI &amp; ĐÁP ÁN THỦ CÔNG · DUYỆT BỘ CHẤM</p><h2 data-solution-title>Đang chuẩn bị lời giải</h2></div><button type="button" class="close-button" data-close="exam-solution-dialog" aria-label="Đóng">×</button></div>
     <p class="muted" data-solution-status>Đang chờ tác vụ…</p>
     <div class="solution-progress"><progress data-solution-progress max="100" value="0"></progress><span data-solution-progress-label>0%</span></div>
+    <div class="solution-mode-toolbar">
+      <div class="solution-mode-switch-group">
+        <button type="button" class="button secondary small" data-solution-switch-ai>🤖 AI giải đề &amp; Duyệt lại</button>
+        <button type="button" class="button secondary small" data-solution-switch-manual>✍️ Nhập đáp án thủ công</button>
+      </div>
+      <div class="solution-mode-extra-actions">
+        <button type="button" class="button secondary small" data-solution-approve-all hidden>✓ Xác nhận nhanh tất cả đáp án AI</button>
+      </div>
+    </div>
     <div class="solution-admin-error" data-solution-error hidden></div>
     <div class="solution-review-content" data-solution-review-content></div>
     <div class="modal-actions solution-dialog-actions"><button type="button" class="button secondary" data-solution-retry hidden>Thử giải lại</button><a class="button secondary" data-solution-download hidden>Tải file dữ liệu lời giải</a><button type="button" class="button primary" data-solution-save hidden>Lưu đáp án chuẩn đã duyệt</button></div>

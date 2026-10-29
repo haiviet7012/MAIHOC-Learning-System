@@ -1034,13 +1034,16 @@ async function openSolutionDialog(id, preferredMode=null){
   dialog.querySelector("[data-solution-review-content]").replaceChildren();dialog.querySelector("[data-solution-error]").hidden=true;
   if(!dialog.open)dialog.showModal();
   try{
-    if(preferredMode==="manual"){
-      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
-    }else if(preferredMode==="ai"){
-      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/generate`,{method:"POST"});
-    }
     let data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
-    if(data.status==="not_started"&&preferredMode!=="manual"){
+    const isAlreadyManualReview=data.status==="review"&&(data.model==="Nhập thủ công"||data.phase==="Nhập đáp án thủ công"||data.generated?.source==="manual-entry");
+    const isAlreadyAiRunningOrReview=["queued","reading","solving"].includes(data.status)||(data.status==="review"&&!isAlreadyManualReview);
+    if(preferredMode==="manual"&&!isAlreadyManualReview){
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/manual`,{method:"POST"});
+      data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
+    }else if(preferredMode==="ai"&&!isAlreadyAiRunningOrReview){
+      await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/generate`,{method:"POST"});
+      data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
+    }else if(data.status==="not_started"&&preferredMode!=="manual"){
       await request(`/api/admin/documents/${encodeURIComponent(id)}/solution/generate`,{method:"POST"});
       data=await request(`/api/admin/documents/${encodeURIComponent(id)}/solution`);
     }
@@ -1049,7 +1052,7 @@ async function openSolutionDialog(id, preferredMode=null){
 }
 window.addEventListener("maihoc-exam-solution-job",event=>{
   if(activeUser?.role==="admin"&&event.detail?.id){
-    openSolutionDialog(event.detail.id, event.detail.preferredMode||null);
+    openSolutionDialog(event.detail.id, event.detail.preferredMode||event.detail.mode||null);
   }
 });
 document.addEventListener("click",event=>{
