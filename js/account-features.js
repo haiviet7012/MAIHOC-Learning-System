@@ -1178,7 +1178,8 @@ async function loadAdminProgress(){
    const body=document.createElement("tbody");
    rows.forEach(p=>{
      const tr=document.createElement("tr");
-     [p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,p.status,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{
+     const statusLabel = p.status === "completed" ? "Đã hoàn thành" : "Chưa hoàn thành";
+     [p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,statusLabel,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{
        const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);
      });
      const actionCell=document.createElement("td");
