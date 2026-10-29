@@ -627,6 +627,14 @@ export function installTestsModule({
   app.post("/api/admin/documents/:id/solution/manual", requireSameOrigin, requireAdmin, async (req, res) => {
     try {
       const id = String(req.params.id);
+      if (isSubordinateAdmin(req)) {
+        const ownedDocument = await db
+          .prepare("SELECT id FROM documents WHERE id = ? AND uploaded_by = ?")
+          .get(id, req.user.id);
+        if (!ownedDocument) {
+          return res.status(404).json({ error: "Không tìm thấy tài liệu hoặc bạn không có quyền quản lý tài liệu này." });
+        }
+      }
       const payload = await initManualSolutionForDocument(id);
       return res.json({
         ok: true,
@@ -1044,6 +1052,7 @@ export function installTestsModule({
 
   app.get("/api/tests", async (req, res) => {
     try {
+      const subordinateAdmin = isSubordinateAdmin(req);
       const rows = await db
         .prepare(`
           SELECT t.*,
@@ -1056,9 +1065,10 @@ export function installTestsModule({
           JOIN documents d ON d.id = t.document_id
           LEFT JOIN exam_solutions es ON es.document_id = t.id
           LEFT JOIN answer_keys ak ON ak.document_id = t.id
+          ${subordinateAdmin ? "WHERE t.created_by = ?" : ""}
           ORDER BY t.open_at DESC, t.created_at DESC
         `)
-        .all();
+        .all(...(subordinateAdmin ? [req.user.id] : []));
 
       const userSubmissionsByTest = new Map();
       if (req.user?.id) {
@@ -1438,10 +1448,13 @@ export function installTestsModule({
 
   app.delete("/api/admin/tests/:id", requireSameOrigin, requireAdmin, async (req, res) => {
     const id = String(req.params.id);
+    const testRow = await db.prepare("SELECT id, title, created_by FROM tests WHERE id = ?").get(id);
+    if (!testRow) return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
+    if (isSubordinateAdmin(req) && Number(testRow.created_by) !== Number(req.user.id)) {
+      return res.status(404).json({ error: "Không tìm thấy bài kiểm tra hoặc bạn không có quyền xóa bài này." });
+    }
     const doc = await db.prepare("SELECT id, filename, r2_key FROM documents WHERE id = ?").get(id);
-    const testRow = await db.prepare("SELECT id, title FROM tests WHERE id = ?").get(id);
     const answerKey = await db.prepare("SELECT r2_key FROM answer_keys WHERE document_id = ?").get(id);
-    if (!doc && !testRow) return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
 
     const delTx = db.transaction(async () => {
       await db.prepare("DELETE FROM tests WHERE id = ?").run(id);
