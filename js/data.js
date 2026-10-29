@@ -1,98 +1,12 @@
-export const SUBJECT_CATALOG = [
-  {
-    "id": "toan",
-    "name": "Toán",
-    "icon": "∑",
-    "enabled": true,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Toán"
-  },
-  {
-    "id": "vat-ly",
-    "name": "Vật lý",
-    "icon": "⚛",
-    "enabled": true,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Vật lý"
-  },
-  {
-    "id": "hoa-hoc",
-    "name": "Hóa học",
-    "icon": "⚗",
-    "enabled": true,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Hóa học"
-  },
-  {
-    "id": "sinh-hoc",
-    "name": "Sinh học",
-    "icon": "❧",
-    "enabled": true,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Sinh học"
-  },
-  {
-    "id": "tieng-anh",
-    "name": "Tiếng Anh",
-    "icon": "A",
-    "enabled": true,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Tiếng Anh"
-  },
-  {
-    "id": "ngu-van",
-    "name": "Ngữ văn",
-    "icon": "文",
-    "enabled": false,
-    "grades": [
-      "10",
-      "11",
-      "12"
-    ],
-    "assessmentProfile": "Ngữ văn"
-  },
-  {
-    "id": "ielts",
-    "name": "IELTS",
-    "icon": "✦",
-    "enabled": false,
-    "grades": [],
-    "assessmentProfile": "IELTS"
-  },
-  {
-    "id": "de-thi-thpt-quoc-gia",
-    "name": "Đề thi THPT quốc gia",
-    "icon": "▤",
-    "enabled": false,
-    "grades": [
-      "12"
-    ],
-    "assessmentProfile": null,
-    "kind": "exam-collection"
-  }
-];
-export const SUBJECTS = SUBJECT_CATALOG.map(subject => subject.name);
-export const ENABLED_SUBJECTS = SUBJECT_CATALOG.filter(subject => subject.enabled).map(subject => subject.name);
+export let SUBJECT_CATALOG = [];
+export let SUBJECTS = [];
+export let ENABLED_SUBJECTS = [];
+export function setSubjectCatalog(subjects) {
+  if (!Array.isArray(subjects)) return;
+  SUBJECT_CATALOG = subjects.filter(subject => subject && typeof subject.name === "string");
+  SUBJECTS = SUBJECT_CATALOG.map(subject => subject.name);
+  ENABLED_SUBJECTS = SUBJECT_CATALOG.filter(subject => subject.enabled).map(subject => subject.name);
+}
 export const getSubjectConfig = name => SUBJECT_CATALOG.find(subject => subject.name === name || subject.id === name) || null;
 export const CATEGORIES = {
   theory: {label:"Ôn tập lý thuyết", icon:"▤"},
