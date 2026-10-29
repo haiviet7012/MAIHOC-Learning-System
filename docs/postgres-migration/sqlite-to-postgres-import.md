@@ -22,6 +22,8 @@ Check the reported PostgreSQL database name. Ensure the target is the intended R
 
 ## Apply import
 
+**Recommended sequence:** until a separate application-runtime PR has been merged and is ready to deploy, run only the dry run. If you import now while the site still writes to SQLite, the PostgreSQL copy will immediately become stale. Apply the import during the cutover window, after pausing writes and confirming the runtime migration is ready.
+
 Only after the dry-run report is correct and both SQLite files are backed up, run using the exact database name shown in the report. For a database called maihoc:
 
     node .\migrate-sqlite-to-postgres.js --apply --confirm-target maihoc
