@@ -29,6 +29,7 @@ import { installTestsModule } from "./tests-module/index.js";
 import { upsertLearningResult, deleteLearningResultsByUserId, deleteLearningResultsByItemId } from "./tests-module/results-db.js";
 import { chemistryRouter } from "./chemistry/routes.js";
 import { universalAiRouter } from "./ai-solver/routes.js";
+import { deleteAiSolutionHistoryForUser } from "./ai-solver/history.js";
 
 
 import {
@@ -754,7 +755,7 @@ app.post("/api/account/change-password", requireSameOrigin, requireAuth, require
   }
 });
 
-app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, (req, res) => {
+app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, async (req, res) => {
   try {
     const code = String(req.body?.code || "").trim();
     if (Number(req.user.adminLevel) >= 2) {
@@ -767,6 +768,7 @@ app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyA
       targetEmail: req.user.email
     });
     const userId = req.user.id;
+    await deleteAiSolutionHistoryForUser(userId);
     destroySession(req, res);
     deleteAccountPermanently(userId);
     return res.json({ ok: true, deleted: true, message: "Tài khoản của bạn đã được xóa vĩnh viễn." });
@@ -888,7 +890,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
 });
 
 // A subordinate admin may only request deletion. No account is deleted until super-admin approval.
-app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,(req,res)=>{
+app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)=>{
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID tài khoản không hợp lệ."});
   if(id===req.user.id)return res.status(400).json({error:"Bạn không thể gửi yêu cầu xóa chính tài khoản của mình."});
@@ -896,6 +898,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,(req,res)=>{
   if(!target)return res.status(404).json({error:"Không tìm thấy tài khoản."});
   if(Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa tài khoản Admin cao nhất."});
   if(Number(req.user.adminLevel)>=2){
+    await deleteAiSolutionHistoryForUser(id);
     if(!deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'").run(req.user.id,id);
     return res.json({ok:true,deletedId:id,deleted:true,total:db.prepare("SELECT COUNT(*) AS count FROM users").get().count});
@@ -916,7 +919,7 @@ app.get("/api/admin/account-deletion-requests",requireSuperAdmin,(req,res)=>{
   res.json({requests});
 });
 
-app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,requireSuperAdmin,(req,res)=>{
+app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,requireSuperAdmin,async (req,res)=>{
   const requestId=Number(req.params.id), decision=String(req.body?.decision||"");
   if(!Number.isSafeInteger(requestId)||requestId<1||!["approve","reject"].includes(decision))return res.status(400).json({error:"Yêu cầu hoặc quyết định không hợp lệ."});
   const review=db.prepare("SELECT * FROM account_deletion_requests WHERE id=?").get(requestId);
@@ -925,7 +928,10 @@ app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,req
   const target=db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(review.target_user_id);
   if(decision==="approve"){
     if(target&&Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa Admin cao nhất."});
-    if(target)deleteAccountPermanently(target.id);
+    if(target) {
+      await deleteAiSolutionHistoryForUser(target.id);
+      deleteAccountPermanently(target.id);
+    }
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
     if(review.requested_by)notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
     return res.json({ok:true,status:"approved",deleted:Boolean(target)});
