@@ -2393,6 +2393,11 @@ export function installTestsModule({
         testId: String(req.query.testId || "all"),
         gradingStatus: String(req.query.gradingStatus || "all")
       };
+      if (isSubordinateAdmin(req)) {
+        const ownedTests = await db.prepare("SELECT id FROM tests WHERE created_by = ?").all(req.user.id);
+        filters.allowedTestIds = ownedTests.map((test) => String(test.id));
+        filters.createdById = req.user.id;
+      }
       const exported = await buildTeacherScoresSheetExport(db, filters, format);
       res.setHeader("Content-Type", exported.contentType);
       res.setHeader(
