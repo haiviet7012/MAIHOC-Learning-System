@@ -3,6 +3,8 @@ name: PostgreSQL import helper tests
 on:
   pull_request:
     paths:
+      - "server/auth.js"
+      - "server/server.js"
       - "server/migrate-sqlite-to-postgres.js"
       - "server/inspect-postgres-cutover.js"
       - "server/scripts/cleanup-personal-history.js"
@@ -34,6 +36,9 @@ jobs:
       - name: Install server dependencies
         working-directory: server
         run: npm ci
+      - name: Check runtime JavaScript syntax
+        working-directory: server
+        run: npm run test:syntax
       - name: Test SQLite to PostgreSQL conversion helpers
         working-directory: server
         run: npm run test:postgres-import
