@@ -71,7 +71,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
           </section>
           <section class="solution-panel universal-ai-result-panel" aria-live="polite">
             <div class="universal-ai-empty">
-              <div class="universal-ai-empty-icon">🧪</div>
+              <div class="universal-ai-empty-icon">✏️</div>
               <h2>Chưa có lời giải</h2>
               <p>Chọn môn học, nhập đề bài hoặc tải ảnh/PDF lên rồi nhấn “Bắt đầu giải”.</p>
             </div>
