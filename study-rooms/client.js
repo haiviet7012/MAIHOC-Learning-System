@@ -264,7 +264,7 @@ export function mountStudyRooms(container, user) {
 
   function roomCard(room, isAdmin = false) {
     const isOwner = user?.id === room.creatorId;
-    const canClose = isOwner || isAdmin;
+    const canClose = isOwner;
     
     const joinLabel = room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia";
     return `
@@ -379,7 +379,7 @@ export function mountStudyRooms(container, user) {
 
   function renderRoom(messages = []) {
     const isStealthAdmin = Boolean(participant?.isAdminObserver);
-    const canCloseRoom = currentRoom?.creatorId === user?.id || user?.role === "admin";
+    const canCloseRoom = Number(currentRoom?.creatorId) === Number(user?.id);
     const initialLetter = escapeHtml((user?.name || "B").trim().slice(0, 1).toLocaleUpperCase("vi"));
 
     container.innerHTML = `
@@ -433,7 +433,7 @@ export function mountStudyRooms(container, user) {
                 </div>
                 <button type="button" class="study-room-control" data-room-toggle-side title="Ẩn/Hiện danh sách & chat">💬 <span>Chat &amp; Thành viên</span></button>
                 <button type="button" class="study-room-control danger" data-room-leave title="Rời chế độ giám sát">⏻ <span>Rời giám sát</span></button>
-                <button type="button" class="study-room-control danger-outline" data-room-close title="Đóng phòng học này">✕ <span>Đóng phòng</span></button>
+                ${canCloseRoom ? '<button type="button" class="study-room-control danger-outline" data-room-close title="Đóng phòng học này">✕ <span>Đóng phòng</span></button>' : ""}
               ` : `
                 <button type="button" class="study-room-control" data-room-mic aria-pressed="true" title="Bật/tắt microphone">🎙️ <span>Tắt mic</span></button>
                 <button type="button" class="study-room-control" data-room-camera aria-pressed="true" title="Bật/tắt camera">📹 <span>Tắt camera</span></button>
