@@ -676,7 +676,7 @@ function render() {
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
-    view.classList.toggle("chemistry-workspace", state.route === "chemistry" || (state.route === "subject" && state.subject === "Hóa học"));
+    view.classList.toggle("chemistry-workspace", state.route === "chemistry");
     view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
