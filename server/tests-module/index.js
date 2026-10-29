@@ -1696,11 +1696,28 @@ export function installTestsModule({
           `Đã nộp ${testRow.title} (Đang chờ chấm)`,
           `Bài làm "${testRow.title}" của bạn đã được ghi nhận và đang chờ giảng viên chấm điểm.`
         );
-        await notifyAdmins(
-          "test_submission_pending",
-          "Có bài kiểm tra mới chờ chấm",
-          `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`,
-          "admin"
+        const submissionNotice =
+          `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`;
+        // Notify the instructor who owns this test and the top-level admin only.
+        // Other subordinate admins must not receive metadata about another instructor's test.
+        const rootAdmins = await db
+          .prepare("SELECT id FROM users WHERE role = 'admin' AND admin_level >= 2")
+          .all();
+        const notificationRecipients = new Set([
+          ...(testRow.created_by ? [Number(testRow.created_by)] : []),
+          ...rootAdmins.map((admin) => Number(admin.id))
+        ]);
+        await Promise.all(
+          [...notificationRecipients]
+            .filter((userId) => Number.isSafeInteger(userId) && userId > 0)
+            .map((userId) =>
+              notifyUser(
+                userId,
+                "test_submission_pending",
+                "Có bài kiểm tra mới chờ chấm",
+                submissionNotice
+              )
+            )
         );
       }
 
