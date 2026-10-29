@@ -18,7 +18,7 @@ Module phòng học trực tiếp, được tách riêng để dễ bảo trì:
 
 - Không cần thêm thư viện npm mới; module dùng Express/SQLite/auth hiện tại và HTTP polling để chuyển tín hiệu cùng chat.
 - Audio/video dùng WebRTC. Backend gọi Cloudflare Realtime TURN để cấp ICE credentials có thời hạn 24 giờ và giữ API token ở biến môi trường máy chủ. Khi TURN chưa được cấu hình hoặc tạm lỗi, module quay về STUN; một số mạng NAT/firewall nghiêm ngặt vẫn có thể không kết nối được.
-- Khai báo `CLOUDFLARE_TURN_KEY_ID` và `CLOUDFLARE_API_TOKEN` trong `server/.env`. Không commit hoặc chia sẻ giá trị thật; không đưa TURN API token vào `study-rooms/client.js`.
+- Khai báo `CLOUDFLARE_TURN_KEY_ID` và `CLOUDFLARE_TURN_API_TOKEN` trong `server/.env`. Không commit hoặc chia sẻ giá trị thật; không đưa TURN API token vào `study-rooms/client.js`.
 - Client giữ ICE candidates đến khi remote description được áp dụng, tránh mất candidate do signaling qua HTTP polling không đồng bộ.
 - Camera/microphone cần được người dùng cấp quyền trên trình duyệt và thường cần HTTPS ở môi trường production (localhost được trình duyệt cho phép).
 - Phòng và lịch sử chat đang nằm trong bộ nhớ của tiến trình Node.js; khi server khởi động lại, các phòng đang hoạt động và lịch sử chat sẽ mất.
