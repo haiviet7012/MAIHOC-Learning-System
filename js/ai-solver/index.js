@@ -1,11 +1,6 @@
 import { escapeHTML } from "../ui.js";
 
-const SUBJECTS = [
-  ["Toán", "∑"], ["Tiếng Anh", "文"], ["Vật lý", "⚡"], ["Hóa học", "⚗️"],
-  ["Ngữ văn", "✍️"], ["Sinh học", "🧬"], ["Đề thi THPT quốc gia", "🎓"], ["IELTS", "🌐"]
-];
-
-export function mountUniversalAiSolver(container, { onNavigate, initialSubject = "Toán" } = {}) {
+export function mountUniversalAiSolver(container, { onNavigate } = {}) {
   let selectedImage = null;
   let selectedImagePreviewUrl = null;
   let selectedFile = null;
@@ -28,12 +23,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
         <div class="universal-ai-layout">
           <section class="solver-panel universal-ai-input-panel">
             <h2>🤖 Nhập đề bài</h2>
-            <p class="solver-help">Chọn môn học, nhập nội dung đề hoặc đính kèm một tệp để bắt đầu.</p>
-            <label class="universal-ai-field">Môn học
-              <select class="universal-ai-subject">
-                ${SUBJECTS.map(([name]) => `<option value="${escapeHTML(name)}" ${name === initialSubject ? "selected" : ""}>${escapeHTML(name)}</option>`).join("")}
-              </select>
-            </label>
+            <p class="solver-help">Nhập đề bài hoặc đính kèm ảnh/PDF. AI sẽ tự nhận diện môn học từ nội dung bạn gửi.</p>
             <label class="universal-ai-field">Nội dung đề bài
               <textarea class="solver-textarea universal-ai-prompt" maxlength="18000" placeholder="Nhập hoặc dán câu hỏi, nhiều câu hỏi hay đề bài tại đây…"></textarea>
             </label>
@@ -73,7 +63,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
             <div class="universal-ai-empty">
               <div class="universal-ai-empty-icon">🧪</div>
               <h2>Chưa có lời giải</h2>
-              <p>Chọn môn học, nhập đề bài hoặc tải ảnh/PDF lên rồi nhấn “Bắt đầu giải”.</p>
+              <p>Nhập đề bài hoặc tải ảnh/PDF lên rồi nhấn “Bắt đầu giải”.</p>
             </div>
             <div class="universal-ai-loading" hidden>
               <span class="spinner universal-ai-spinner"></span>
@@ -243,7 +233,6 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
       try {
         const payload = new FormData();
         payload.set("prompt", text);
-        payload.set("subject", container.querySelector(".universal-ai-subject").value);
         payload.set("mode", mode);
         if (selectedImage) payload.set("image", selectedImage, selectedImage.name);
         if (selectedFile) payload.set("file", selectedFile, selectedFile.name);
