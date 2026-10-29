@@ -146,7 +146,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
       }
       if (file.size > 8 * 1024 * 1024) {
         errorBox.hidden = false;
-        errorBox.textContent = "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 8 MB.";
+        errorBox.textContent = "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 2 MB.";
         pdfInput.value = "";
         return;
       }
