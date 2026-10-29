@@ -39,6 +39,15 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 **Đỗ Gia Bách - UL-VNU**  
 *Sales Manager*
 
+### 🐶 Mascot - KOL
+
+
+**Nguyễn Mạnh Cường - HUST**  
+*Mascot + KOL*
+
+**Đỗ Ngọc Minh - HUST**  
+*KOL*
+
 
 <div align="center">
 
