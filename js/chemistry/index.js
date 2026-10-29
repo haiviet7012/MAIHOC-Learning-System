@@ -46,7 +46,7 @@ export function mountChemistryModule(container, { subView = "periodic-table", in
       });
     } else if (currentSubView === "ai-solver") {
       activeSolverCleanup?.();
-      activeSolverCleanup = mountUniversalAiSolver(subviewMount, { onNavigate: (r, p) => onNavigate?.(r, p), initialSubject: "Hóa học" });
+      activeSolverCleanup = mountUniversalAiSolver(subviewMount, { onNavigate: (r, p) => onNavigate?.(r, p) });
       carryOverPrompt = "";
     }
 

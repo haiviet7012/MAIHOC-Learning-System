@@ -7,6 +7,7 @@ const ALLOWED_SUBJECTS = new Set([
   "Đề thi THPT quốc gia", "IELTS"
 ]);
 const ALLOWED_MODES = new Set(["quick", "detailed"]);
+const AUTO_SUBJECT = "Tự nhận diện";
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/jpg"]);
 const ALLOWED_PDF_TYPES = new Set(["application/pdf"]);
 
@@ -16,12 +17,12 @@ export function validateUniversalSolveRequest(body) {
   }
 
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const subject = String(body.subject || "").trim();
+  const subject = String(body.subject || AUTO_SUBJECT).trim();
   const mode = String(body.mode || "detailed");
   const file = body.file && typeof body.file === "object" ? body.file : null;
   const image = body.image && typeof body.image === "object" ? body.image : null;
 
-  if (!ALLOWED_SUBJECTS.has(subject)) {
+  if (subject !== AUTO_SUBJECT && !ALLOWED_SUBJECTS.has(subject)) {
     return { valid: false, error: "Môn học không được hỗ trợ." };
   }
   if (!ALLOWED_MODES.has(mode)) {
