@@ -17,7 +17,13 @@ if (!process.env.DATABASE_URL) {
     const connection = await pool.query(
       "SELECT current_database() AS database_name, current_user AS database_user, current_timestamp AS server_time"
     );
-    const required = ["users", "sessions", "user_presence", "email_verification_codes"];
+    const requiredColumns = {
+      users: ["id", "name", "email", "password_hash", "role", "admin_level", "created_at"],
+      sessions: ["token_hash", "user_id", "expires_at", "created_at"],
+      user_presence: ["user_id", "last_seen_at", "activity"],
+      email_verification_codes: ["id", "user_id", "email", "purpose", "target_email", "code_hash", "expires_at", "attempts", "created_at"]
+    };
+    const required = Object.keys(requiredColumns);
     const tables = await pool.query(
       "SELECT table_name FROM information_schema.tables " +
       "WHERE table_schema='public' AND table_name = ANY($1::text[]) ORDER BY table_name",
@@ -25,11 +31,26 @@ if (!process.env.DATABASE_URL) {
     );
     const present = new Set(tables.rows.map((row) => row.table_name));
     const missing = required.filter((table) => !present.has(table));
+    const columns = await pool.query(
+      "SELECT table_name,column_name FROM information_schema.columns " +
+      "WHERE table_schema='public' AND table_name = ANY($1::text[])",
+      [required]
+    );
+    const availableColumns = new Map();
+    for (const row of columns.rows) {
+      if (!availableColumns.has(row.table_name)) availableColumns.set(row.table_name, new Set());
+      availableColumns.get(row.table_name).add(row.column_name);
+    }
+    const missingColumns = Object.entries(requiredColumns).flatMap(([table, names]) =>
+      names.filter((name) => present.has(table) && !availableColumns.get(table)?.has(name))
+        .map((name) => table + "." + name)
+    );
     const report = {
       mode: "READ-ONLY POSTGRES AUTH PREFLIGHT",
       target: connection.rows[0],
       requiredTables: required.map((table) => ({ table, exists: present.has(table) })),
       missingTables: missing,
+      missingColumns,
       counts: null,
       duplicateEmails: [],
       note: "Chỉ đọc PostgreSQL; không tạo, sửa hoặc xóa dữ liệu."
@@ -74,7 +95,7 @@ if (!process.env.DATABASE_URL) {
     }
 
     console.log(JSON.stringify(report, null, 2));
-    if (missing.length || report.duplicateEmails.length) {
+    if (missing.length || missingColumns.length || report.duplicateEmails.length) {
       console.error("PREFLIGHT CHƯA ĐẠT: sửa các bảng thiếu hoặc email trùng trước khi bật backend PostgreSQL.");
       process.exitCode = 1;
     } else {
