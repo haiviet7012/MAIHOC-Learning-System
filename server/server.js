@@ -1370,11 +1370,35 @@ app.delete("/api/notifications", requireSameOrigin, requireAuth, async (req, res
 });
 
 app.get("/api/admin/progress", requireAdmin, async (req, res) => {
+  const subordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
-    .prepare(
-      "SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type IN ('exam','test') THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId,CASE WHEN p.item_type='test' THEN (SELECT ts.id FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS testSubmissionId,CASE WHEN p.item_type='test' THEN (SELECT ts.grading_status FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS gradingStatus FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300"
-    )
-    .all();
+    .prepare(`
+      SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,
+        p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,
+        p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,
+        CASE WHEN p.item_type IN ('exam','test') THEN (
+          SELECT a.id FROM exam_attempts a
+          WHERE a.user_id=p.user_id AND a.document_id=p.item_id
+          ORDER BY a.id DESC LIMIT 1
+        ) ELSE NULL END AS latestAttemptId,
+        CASE WHEN p.item_type='test' THEN (
+          SELECT ts.id FROM test_submissions ts
+          WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id
+          ORDER BY ts.id DESC LIMIT 1
+        ) ELSE NULL END AS testSubmissionId,
+        CASE WHEN p.item_type='test' THEN (
+          SELECT ts.grading_status FROM test_submissions ts
+          WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id
+          ORDER BY ts.id DESC LIMIT 1
+        ) ELSE NULL END AS gradingStatus
+      FROM user_progress p
+      JOIN users u ON u.id=p.user_id
+      LEFT JOIN tests owned_test ON owned_test.id=p.item_id AND p.item_type='test'
+      ${subordinateAdmin ? "WHERE (p.item_type <> 'test' OR owned_test.created_by = ?)" : ""}
+      ORDER BY p.updated_at DESC
+      LIMIT 300
+    `)
+    .all(...(subordinateAdmin ? [req.user.id] : []));
   res.json({ progress: rows });
 });
 
