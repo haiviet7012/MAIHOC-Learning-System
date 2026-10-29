@@ -905,7 +905,11 @@ export async function initPostgresSchema(targetDb = db) {
     // Ensure backward-compatible columns on migrated tables
     const backwardCompatibleColumns = [
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_level BIGINT NOT NULL DEFAULT 0",
-      "ALTER TABLE user_presence ADD COLUMN IF NOT EXISTS activity TEXT NOT NULL DEFAULT 'Đang trực tuyến'",
+      "ALTER TABLE users ALTER COLUMN created_at SET DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))",
+      // Older/imported schemas can contain blank or malformed account timestamps.
+      // Recover the real time from account-created/admin-account notifications when available;
+      // use the current time only when no historical event exists to recover.
+      "UPDATE users SET created_at = COALESCE((SELECT MIN(n.created_at) FROM notifications n WHERE (n.user_id = users.id AND n.type = 'account_created') OR (n.type IN ('admin_created', 'admin_promoted') AND LOWER(COALESCE(n.message, '')) LIKE '%' || LOWER(users.email) || '%')), to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')) WHERE created_at IS NULL OR BTRIM(created_at) = '' OR (created_at !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' AND created_at !~ '^[0-9]{10,13}$')",
       "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
       "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
