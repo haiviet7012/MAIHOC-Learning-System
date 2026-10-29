@@ -36,7 +36,9 @@ import {
 
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
 
-  loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword
+  loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword,
+  authReady, authUsesPostgres, authPool, findUserByEmail, findUserById,
+  createUserAccount, updateUserAccount, deleteUserAccount, revokeUserSessions
 
 } from "./auth.js";
 
@@ -357,7 +359,7 @@ app.post("/api/auth/register",requireSameOrigin,async(req,res)=>{
 
     const user=await registerUser(req.body||{});
 
-    createSession(user.id,res);
+    await createSession(user.id,res);
 
     notifyUser(user.id,"account_created","Tạo tài khoản thành công","Chào mừng bạn đến với MAI HỌC.");
 
@@ -387,7 +389,7 @@ app.post("/api/auth/login",requireSameOrigin,loginRateLimit,async(req,res)=>{
 
     loginAttempts.delete(`${req.ip}:${String(req.body?.email||"").trim().toLowerCase()}`);
 
-    createSession(user.id,res);
+    await createSession(user.id,res);
 
     res.json({user});
 
@@ -403,12 +405,14 @@ app.post("/api/auth/login",requireSameOrigin,loginRateLimit,async(req,res)=>{
 
 
 
-app.post("/api/auth/logout",requireSameOrigin,(req,res)=>{
-
-  destroySession(req,res);
-
-  res.status(204).end();
-
+app.post("/api/auth/logout",requireSameOrigin,async(req,res)=>{
+  try {
+    await destroySession(req,res);
+    res.status(204).end();
+  } catch (error) {
+    console.error("Không thể kết thúc session:", error.message);
+    res.status(500).json({ error: "Không thể đăng xuất lúc này." });
+  }
 });
 
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -500,14 +504,25 @@ async function sendVerificationCodeEmail({ toEmail, userName, code, purposeLabel
 }
 
 async function issueVerificationCode({ user, purpose, purposeLabel, targetEmail = null }) {
+  await authReady;
   const now = Date.now();
-  db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
-  const latest = db
-    .prepare("SELECT created_at FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1")
-    .get(user.id, purpose);
+  let latest = null;
+  if (authUsesPostgres) {
+    await authPool.query("DELETE FROM email_verification_codes WHERE expires_at < $1", [now]);
+    const result = await authPool.query(
+      "SELECT created_at FROM email_verification_codes WHERE user_id=$1 AND purpose=$2 ORDER BY id DESC LIMIT 1",
+      [Number(user.id), purpose]
+    );
+    latest = result.rows[0] || null;
+  } else {
+    db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
+    latest = db.prepare(
+      "SELECT created_at FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1"
+    ).get(user.id, purpose);
+  }
   if (latest && now - Number(latest.created_at) < OTP_COOLDOWN_MS) {
     const retryAfter = Math.max(1, Math.ceil((OTP_COOLDOWN_MS - (now - Number(latest.created_at))) / 1000));
-    const err = new Error(`Vui lòng chờ ${retryAfter} giây trước khi yêu cầu gửi mã mới.`);
+    const err = new Error("Vui lòng chờ " + retryAfter + " giây trước khi yêu cầu gửi mã mới.");
     err.status = 429;
     err.retryAfter = retryAfter;
     throw err;
@@ -515,10 +530,21 @@ async function issueVerificationCode({ user, purpose, purposeLabel, targetEmail 
   const code = String(crypto.randomInt(100000, 1000000));
   const normalizedTarget = String(targetEmail || user.email || "").trim().toLowerCase();
   const codeHash = hashOtpCode(user.id, purpose, code, normalizedTarget);
-  db.prepare("DELETE FROM email_verification_codes WHERE user_id=? AND purpose=?").run(user.id, purpose);
-  db.prepare(
-    "INSERT INTO email_verification_codes(user_id,email,purpose,target_email,code_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,?,0,?)"
-  ).run(user.id, user.email, purpose, normalizedTarget, codeHash, now + OTP_TTL_MS, now);
+  if (authUsesPostgres) {
+    await authPool.query(
+      "DELETE FROM email_verification_codes WHERE user_id=$1 AND purpose=$2",
+      [Number(user.id), purpose]
+    );
+    await authPool.query(
+      "INSERT INTO email_verification_codes(user_id,email,purpose,target_email,code_hash,expires_at,attempts,created_at) VALUES($1,$2,$3,$4,$5,$6,0,$7)",
+      [Number(user.id), user.email, purpose, normalizedTarget, codeHash, now + OTP_TTL_MS, now]
+    );
+  } else {
+    db.prepare("DELETE FROM email_verification_codes WHERE user_id=? AND purpose=?").run(user.id, purpose);
+    db.prepare(
+      "INSERT INTO email_verification_codes(user_id,email,purpose,target_email,code_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,?,0,?)"
+    ).run(user.id, user.email, purpose, normalizedTarget, codeHash, now + OTP_TTL_MS, now);
+  }
   return sendVerificationCodeEmail({
     toEmail: user.email,
     userName: user.name,
@@ -529,51 +555,95 @@ async function issueVerificationCode({ user, purpose, purposeLabel, targetEmail 
   });
 }
 
-function consumeVerificationCode({ userId, purpose, code, targetEmail = null }) {
+async function consumeVerificationCode({ userId, purpose, code, targetEmail = null }) {
+  await authReady;
   const now = Date.now();
-  db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
   const cleanCode = String(code || "").trim();
   if (!/^\d{6}$/.test(cleanCode)) {
     const err = new Error("Mã xác minh phải gồm đúng 6 chữ số.");
     err.status = 400;
     throw err;
   }
-  const row = db
-    .prepare("SELECT * FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1")
-    .get(userId, purpose);
-  if (!row || Number(row.expires_at) < now) {
-    const err = new Error("Mã xác minh không tồn tại hoặc đã hết hạn (10 phút). Hãy bấm Gửi mã mới.");
-    err.status = 400;
-    throw err;
-  }
-  if (Number(row.attempts) >= OTP_MAX_ATTEMPTS) {
-    db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
-    const err = new Error("Bạn đã nhập sai mã quá 5 lần. Hãy yêu cầu gửi mã xác minh mới.");
-    err.status = 429;
-    throw err;
-  }
-  const expectedTarget = String(row.target_email || "").trim().toLowerCase();
-  if (targetEmail && expectedTarget !== String(targetEmail).trim().toLowerCase()) {
-    const err = new Error("Thông tin email xác minh không khớp với yêu cầu ban đầu. Hãy gửi mã mới.");
-    err.status = 400;
-    throw err;
-  }
-  const expectedBuffer = Buffer.from(row.code_hash, "hex");
-  const actualBuffer = Buffer.from(hashOtpCode(userId, purpose, cleanCode, expectedTarget), "hex");
-  const valid = expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
-  if (!valid) {
-    const nextAttempts = Number(row.attempts) + 1;
-    if (nextAttempts >= OTP_MAX_ATTEMPTS) {
-      db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+
+  let pgClient = null;
+  let pgTransaction = false;
+  try {
+    let row = null;
+    if (authUsesPostgres) {
+      pgClient = await authPool.connect();
+      await pgClient.query("BEGIN");
+      pgTransaction = true;
+      await pgClient.query("DELETE FROM email_verification_codes WHERE expires_at < $1", [now]);
+      const result = await pgClient.query(
+        "SELECT * FROM email_verification_codes WHERE user_id=$1 AND purpose=$2 ORDER BY id DESC LIMIT 1 FOR UPDATE",
+        [Number(userId), purpose]
+      );
+      row = result.rows[0] || null;
     } else {
-      db.prepare("UPDATE email_verification_codes SET attempts=? WHERE id=?").run(nextAttempts, row.id);
+      db.prepare("DELETE FROM email_verification_codes WHERE expires_at < ?").run(now);
+      row = db.prepare(
+        "SELECT * FROM email_verification_codes WHERE user_id=? AND purpose=? ORDER BY id DESC LIMIT 1"
+      ).get(userId, purpose) || null;
     }
-    const err = new Error(`Mã xác minh không chính xác (còn ${Math.max(0, OTP_MAX_ATTEMPTS - nextAttempts)} lần thử).`);
-    err.status = 400;
-    throw err;
+
+    if (!row || Number(row.expires_at) < now) {
+      const err = new Error("Mã xác minh không tồn tại hoặc đã hết hạn (10 phút). Hãy bấm Gửi mã mới.");
+      err.status = 400;
+      throw err;
+    }
+    if (Number(row.attempts) >= OTP_MAX_ATTEMPTS) {
+      if (authUsesPostgres) await pgClient.query("DELETE FROM email_verification_codes WHERE id=$1", [row.id]);
+      else db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+      if (authUsesPostgres) { await pgClient.query("COMMIT"); pgTransaction = false; }
+      const err = new Error("Bạn đã nhập sai mã quá 5 lần. Hãy yêu cầu gửi mã xác minh mới.");
+      err.status = 429;
+      throw err;
+    }
+
+    const expectedTarget = String(row.target_email || "").trim().toLowerCase();
+    if (targetEmail && expectedTarget !== String(targetEmail).trim().toLowerCase()) {
+      const err = new Error("Thông tin email xác minh không khớp với yêu cầu ban đầu. Hãy gửi mã mới.");
+      err.status = 400;
+      throw err;
+    }
+
+    const expectedBuffer = Buffer.from(row.code_hash, "hex");
+    const actualBuffer = Buffer.from(hashOtpCode(userId, purpose, cleanCode, expectedTarget), "hex");
+    const valid = expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+    if (!valid) {
+      const nextAttempts = Number(row.attempts) + 1;
+      if (authUsesPostgres) {
+        if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+          await pgClient.query("DELETE FROM email_verification_codes WHERE id=$1", [row.id]);
+        } else {
+          await pgClient.query("UPDATE email_verification_codes SET attempts=$1 WHERE id=$2", [nextAttempts, row.id]);
+        }
+        await pgClient.query("COMMIT");
+        pgTransaction = false;
+      } else if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+        db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+      } else {
+        db.prepare("UPDATE email_verification_codes SET attempts=? WHERE id=?").run(nextAttempts, row.id);
+      }
+      const err = new Error("Mã xác minh không chính xác (còn " + Math.max(0, OTP_MAX_ATTEMPTS - nextAttempts) + " lần thử).");
+      err.status = 400;
+      throw err;
+    }
+
+    if (authUsesPostgres) {
+      await pgClient.query("DELETE FROM email_verification_codes WHERE id=$1", [row.id]);
+      await pgClient.query("COMMIT");
+      pgTransaction = false;
+    } else {
+      db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
+    }
+    return true;
+  } catch (error) {
+    if (pgTransaction && pgClient) await pgClient.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    pgClient?.release();
   }
-  db.prepare("DELETE FROM email_verification_codes WHERE id=?").run(row.id);
-  return true;
 }
 
 app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
@@ -582,7 +652,7 @@ app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       return res.status(400).json({ error: "Vui lòng nhập địa chỉ Gmail hợp lệ." });
     }
-    const user = db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE email=? COLLATE NOCASE").get(email);
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ error: "Không tìm thấy tài khoản nào đăng ký với địa chỉ Gmail này." });
     }
@@ -618,19 +688,19 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
     if (password.length < 10 || password.length > 128) {
       return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
     }
-    const user = db.prepare("SELECT id,name,email FROM users WHERE email=? COLLATE NOCASE").get(email);
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ error: "Tài khoản không tồn tại." });
     }
-    consumeVerificationCode({
+    await consumeVerificationCode({
       userId: user.id,
       purpose: "forgot_password",
       code,
       targetEmail: user.email
     });
     const passwordHash = await hashPassword(password);
-    db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, user.id);
-    db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
+    await updateUserAccount(user.id, { passwordHash });
+    await revokeUserSessions(user.id);
     notifyUser(user.id, "password_reset", "Mật khẩu đã được đặt lại", "Mật khẩu tài khoản MAI HỌC của bạn vừa được cập nhật thông qua mã xác minh Gmail.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu thành công. Hãy đăng nhập lại bằng mật khẩu mới." });
   } catch (error) {
@@ -668,8 +738,8 @@ app.post("/api/account/send-code", requireSameOrigin, requireAuth, requireUserOn
       if (newEmail === String(req.user.email).toLowerCase()) {
         return res.status(400).json({ error: "Email mới trùng với Email hiện tại của bạn." });
       }
-      const existing = db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>?").get(newEmail, req.user.id);
-      if (existing) {
+      const existing = await findUserByEmail(newEmail);
+      if (existing && Number(existing.id) !== Number(req.user.id)) {
         return res.status(409).json({ error: "Địa chỉ Email này đã được sử dụng bởi một tài khoản khác." });
       }
       targetEmail = newEmail;
@@ -701,25 +771,25 @@ app.post("/api/account/send-code", requireSameOrigin, requireAuth, requireUserOn
   }
 });
 
-app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, (req, res) => {
+app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, async (req, res) => {
   try {
     const newEmail = String(req.body?.newEmail || "").trim().toLowerCase();
     const code = String(req.body?.code || "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 254) {
       return res.status(400).json({ error: "Địa chỉ Email mới không hợp lệ." });
     }
-    const existing = db.prepare("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>?").get(newEmail, req.user.id);
-    if (existing) {
+    const existing = await findUserByEmail(newEmail);
+    if (existing && Number(existing.id) !== Number(req.user.id)) {
       return res.status(409).json({ error: "Địa chỉ Email này đã được sử dụng bởi một tài khoản khác." });
     }
-    consumeVerificationCode({
+    await consumeVerificationCode({
       userId: req.user.id,
       purpose: "change_email",
       code,
       targetEmail: newEmail
     });
-    db.prepare("UPDATE users SET email=? WHERE id=?").run(newEmail, req.user.id);
-    const updated = db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(req.user.id);
+    const updated = await updateUserAccount(req.user.id, { email: newEmail });
+    if (!updated) return res.status(404).json({ error: "Tài khoản không tồn tại." });
     notifyUser(req.user.id, "email_changed", "Đã thay đổi địa chỉ Email", `Email tài khoản của bạn đã được chuyển thành ${newEmail}.`);
     return res.json({
       ok: true,
@@ -739,14 +809,14 @@ app.post("/api/account/change-password", requireSameOrigin, requireAuth, require
     if (password.length < 10 || password.length > 128) {
       return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
     }
-    consumeVerificationCode({
+    await consumeVerificationCode({
       userId: req.user.id,
       purpose: "change_password",
       code,
       targetEmail: req.user.email
     });
     const passwordHash = await hashPassword(password);
-    db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, req.user.id);
+    await updateUserAccount(req.user.id, { passwordHash });
     notifyUser(req.user.id, "password_changed", "Đã đổi mật khẩu", "Mật khẩu tài khoản của bạn đã được cập nhật thành công.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu tài khoản thành công." });
   } catch (error) {
@@ -761,7 +831,7 @@ app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyA
     if (Number(req.user.adminLevel) >= 2) {
       return res.status(403).json({ error: "Không thể xóa tài khoản Admin cao nhất." });
     }
-    consumeVerificationCode({
+    await consumeVerificationCode({
       userId: req.user.id,
       purpose: "delete_account",
       code,
@@ -769,8 +839,8 @@ app.post("/api/account/delete", requireSameOrigin, requireAuth, requireUserOnlyA
     });
     const userId = req.user.id;
     await deleteAiSolutionHistoryForUser(userId);
-    destroySession(req, res);
-    deleteAccountPermanently(userId);
+    await destroySession(req, res);
+    await deleteAccountPermanently(userId);
     return res.json({ ok: true, deleted: true, message: "Tài khoản của bạn đã được xóa vĩnh viễn." });
   } catch (error) {
     const status = Number(error.status) || 400;
@@ -831,10 +901,10 @@ app.get("/api/presence/online", (req, res) => {
 
 // Admin information is never trusted from client-supplied role fields.
 
-function deleteAccountPermanently(id){
+async function deleteAccountPermanently(id){
   const pendingFiles=db.prepare("SELECT filename FROM document_submissions WHERE user_id=?").all(id);
-  const result=db.prepare("DELETE FROM users WHERE id=?").run(id);
-  if(!result.changes)return false;
+  const deleted = await deleteUserAccount(id);
+  if(!deleted)return false;
   try{deleteLearningResultsByUserId(id);}catch{}
   for(const file of pendingFiles){
     const storedPath=path.join(pendingDir,path.basename(file.filename));
@@ -858,34 +928,29 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
   const password=String(req.body?.password||"");
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return res.status(400).json({error:"Email không hợp lệ."});
 
-  const existing=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE").get(email);
+  const existing=await findUserByEmail(email);
   if(existing){
     if(Number(existing.admin_level)>=2)return res.status(409).json({error:"Email này thuộc Admin cấp cao nhất; không thể thêm lại."});
     if(existing.role==="admin"&&Number(existing.admin_level)>=1)return res.status(409).json({error:"Tài khoản này đã là Admin cấp dưới."});
-    const promote=db.transaction(()=>{
-      db.prepare("UPDATE users SET role='admin',admin_level=1 WHERE id=? AND admin_level<2").run(existing.id);
-      const updated=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(existing.id);
-      notifyAdmins("admin_promoted","Đã nâng quyền tài khoản thành Admin cấp dưới",`Tài khoản ${updated.name} (${updated.email}) đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.`,"admin");
-      return updated;
-    });
-    const updated=promote();
+    const updated=await updateUserAccount(existing.id,{role:"admin",adminLevel:1});
+    if(!updated)return res.status(404).json({error:"Tài khoản không còn tồn tại."});
+    notifyAdmins("admin_promoted","Đã nâng quyền tài khoản thành Admin cấp dưới","Tài khoản "+updated.name+" ("+updated.email+") đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.","admin");
     return res.json({ok:true,action:"promoted",user:publicUser(updated),message:"Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."});
   }
 
   if(name.length<2||name.length>80)return res.status(400).json({error:"Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự."});
   if(password.length<12||password.length>128)return res.status(400).json({error:"Với email chưa có tài khoản, mật khẩu tạm thời cần từ 12 đến 128 ký tự."});
   const passwordHash=await hashPassword(password);
-  let result;
+  let created;
   try{
-    result=db.prepare("INSERT INTO users(name,email,password_hash,role,admin_level) VALUES(?,?,?,'admin',1)").run(name,email,passwordHash);
+    created=await createUserAccount({name,email,passwordHash,role:"admin",adminLevel:1});
   }catch(error){
-    if(String(error.code||"").includes("CONSTRAINT")){
+    if(error.code==="23505"||/đã được đăng ký/i.test(String(error.message||""))||String(error.code||"").includes("CONSTRAINT")){
       return res.status(409).json({error:"Tài khoản vừa được tạo hoặc thay đổi đồng thời. Hãy tải lại danh sách rồi thử lại."});
     }
     throw error;
   }
-  const created=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(result.lastInsertRowid);
-  notifyAdmins("admin_created","Đã tạo Admin cấp dưới",`Tài khoản ${name} (${email}) đã được tạo mới.`,"admin");
+  notifyAdmins("admin_created","Đã tạo Admin cấp dưới","Tài khoản "+name+" ("+email+") đã được tạo mới.","admin");
   res.status(201).json({ok:true,action:"created",user:publicUser(created),message:"Đã tạo tài khoản Admin cấp dưới mới."});
 });
 
@@ -899,7 +964,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)
   if(Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa tài khoản Admin cao nhất."});
   if(Number(req.user.adminLevel)>=2){
     await deleteAiSolutionHistoryForUser(id);
-    if(!deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
+    if(!await deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'").run(req.user.id,id);
     return res.json({ok:true,deletedId:id,deleted:true,total:db.prepare("SELECT COUNT(*) AS count FROM users").get().count});
   }
@@ -930,7 +995,7 @@ app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,req
     if(target&&Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa Admin cao nhất."});
     if(target) {
       await deleteAiSolutionHistoryForUser(target.id);
-      deleteAccountPermanently(target.id);
+      await deleteAccountPermanently(target.id);
     }
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
     if(review.requested_by)notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
@@ -1705,6 +1770,7 @@ app.use((err,_req,res,_next)=>{
 
 
 
+await authReady;
 await createInitialAdmin();
 importLegacyDocuments();
 normalizeLegacyDocumentCategories();
