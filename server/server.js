@@ -154,7 +154,7 @@ function assessmentConfigFor(subject,category){
     const config=JSON.parse(fs.readFileSync(path.join(root,"configs","exam-layouts.json"),"utf8"));
     const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[đĐ]/g,"d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g,"");
     const match=Object.keys(config.subjects||{}).find(name=>normalize(name)===normalize(subject));
-    const subjectConfig=match?config.subjects[match]:(normalize(subject)==="dethithptquocgia"?config.subjects["Toán"]:null);
+    const subjectConfig=match?config.subjects[match]:null;
     if(!subjectConfig)return null;
     const lookupCat = category === "test" ? "exam" : category;
     return {layout:subjectConfig[lookupCat]||subjectConfig.assessment||null,grading:subjectConfig.grading||null};
