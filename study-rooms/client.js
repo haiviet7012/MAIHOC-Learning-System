@@ -1383,9 +1383,10 @@ export function mountStudyRooms(container, user) {
 
   function onPageShow(event) {
     if (!event.persisted || disposed) return;
+    pageHideHandled = false;
+    if (!currentRoom && !localStream) return;
     // A page restored from the browser's back/forward cache must not look joined
     // after pagehide has already stopped media and sent a best-effort leave request.
-    pageHideHandled = false;
     void leaveRoom(false).then(() => {
       if (!disposed) showError("Bạn đã quay lại trang; camera và microphone vẫn đang tắt.", true);
     });
