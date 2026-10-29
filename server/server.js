@@ -2334,8 +2334,11 @@ app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requireAdmin, async (req, res) => {
-  const document = await db.prepare("SELECT id,category FROM documents WHERE id=?").get(String(req.params.id));
-  if (!document) return res.status(404).json({ error: "Không tìm thấy đề." });
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+  const document = await db.prepare(
+    "SELECT id,category FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+  ).get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+  if (!document) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền quản lý tài liệu này." });
   if (!["exam", "practice", "test"].includes(document.category)) {
     return res.status(400).json({ error: "Chỉ tạo lời giải cho đề ôn tập, đề thi hoặc bài kiểm tra." });
   }
@@ -2345,12 +2348,14 @@ app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requir
 
 app.post("/api/admin/documents/:id/solution/review", requireSameOrigin, requireAdmin, async (req, res) => {
   const documentId = String(req.params.id);
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
-      SELECT d.subject,d.category,s.generated_json,s.solution_version,s.source_hash
-      FROM documents d JOIN exam_solutions s ON s.document_id=d.id WHERE d.id=?
+      SELECT d.subject,d.category,d.uploaded_by,s.generated_json,s.solution_version,s.source_hash
+      FROM documents d JOIN exam_solutions s ON s.document_id=d.id
+      WHERE d.id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
     `)
-    .get(documentId);
+    .get(...(isSubordinateAdmin ? [documentId, req.user.id] : [documentId]));
   if (!row) return res.status(404).json({ error: "Chưa có tác vụ lời giải cho đề này." });
   let generated;
   try {
@@ -2572,9 +2577,12 @@ app.post(
 
 app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, next) => {
   try {
-    const row = await db
-      .prepare("SELECT file_data,r2_key,original_name,content_type FROM answer_keys WHERE document_id=?")
-      .get(String(req.params.id));
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+    const row = await db.prepare(`
+      SELECT ak.file_data,ak.r2_key,ak.original_name,ak.content_type
+      FROM answer_keys ak JOIN documents d ON d.id=ak.document_id
+      WHERE ak.document_id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
+    `).get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
     const bytes = row?.r2_key
       ? await getDocumentBuffer(row, "r2_key", "file_data")
       : row?.file_data
@@ -2596,8 +2604,11 @@ app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, ne
 
 app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (req, res, next) => {
   try {
-    const doc = await db.prepare("SELECT id,filename,r2_key FROM documents WHERE id=?").get(req.params.id);
-    if (!doc) return res.status(404).json({ error: "Document was not found." });
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+    const doc = await db.prepare(
+      "SELECT id,filename,r2_key FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+    ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
+    if (!doc) return res.status(404).json({ error: "Không tìm thấy tài liệu hoặc bạn không có quyền xóa." });
     const ak = await db.prepare("SELECT r2_key FROM answer_keys WHERE document_id=?").get(doc.id);
     await db.prepare("DELETE FROM tests WHERE id=?").run(doc.id);
     try {
@@ -2661,11 +2672,17 @@ app.get("/api/documents/:id/file", async (req, res, next) => {
 });
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
-    .prepare(
-      "SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,u.name AS userName,u.email AS userEmail FROM document_submissions s JOIN users u ON u.id=s.user_id WHERE s.status='pending' ORDER BY s.id ASC"
-    )
-    .all();
+    .prepare(`
+      SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
+        s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
+        u.name AS userName,u.email AS userEmail
+      FROM document_submissions s JOIN users u ON u.id=s.user_id
+      WHERE s.status='pending' ${isSubordinateAdmin ? "AND s.user_id=?" : ""}
+      ORDER BY s.id ASC
+    `)
+    .all(...(isSubordinateAdmin ? [req.user.id] : []));
   res.json({ submissions: rows });
 });
 
