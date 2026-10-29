@@ -9,7 +9,7 @@ import {
 import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
-import "./account-features.js?v=20261030docs3";
+import "./account-features.js?v=20261030roles1";
 import { mountStudyRooms } from "../study-rooms/client.js";
 import {
     refreshTestsQueue,
@@ -424,7 +424,7 @@ function accountCenterPage() {
     if (currentUser.role === "admin") {
         return adminPage();
     }
-    const roleName = "Học viên (User)";
+    const roleName = "Học sinh";
     return `
       ${pageHeading("Trung tâm tài khoản", "Quản lý thông tin bảo mật và theo dõi tiến trình học tập theo thời gian thực.")}
       <div class="admin-toolbar">
@@ -563,7 +563,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     }).join("");
     let extra = "";
     if(payload.isSuperAdmin){
-      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Admin</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
+      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Giảng viên</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Giảng viên.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Giảng viên</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
     container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
@@ -955,7 +955,7 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Admin cấp dưới, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
+        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giảng viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -1444,9 +1444,9 @@ document.addEventListener("submit",async e=>{
     const body=Object.fromEntries(new FormData(form).entries());
     const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tạo/cấp quyền được Admin.");
+    if(!response.ok)throw new Error(data.error||"Không tạo/cấp quyền được Giảng viên.");
     form.reset();
-    toast(data.action==="promoted"?"Đã nâng quyền tài khoản hiện có thành Admin cấp dưới.":"Đã tạo tài khoản Admin cấp dưới mới.","success");
+    toast(data.action==="promoted"?"Đã nâng quyền tài khoản hiện có thành Giảng viên.":"Đã tạo tài khoản Giảng viên mới.","success");
     await loadAdminUsers();
   }catch(error){toast(error.message||"Không tạo được Admin.","error");}
   finally{button.disabled=false;}
