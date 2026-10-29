@@ -5,6 +5,7 @@
 
 import { initPeriodicTable } from "./periodic-table/periodic-table-view.js";
 import { initChemistrySolver } from "./ai-solver/solver-view.js";
+import { mountUniversalAiSolver } from "../ai-solver/index.js";
 
 export function mountChemistryModule(container, { subView = "periodic-table", initialElement = null, onNavigate } = {}) {
   let currentSubView = subView;
@@ -44,7 +45,7 @@ export function mountChemistryModule(container, { subView = "periodic-table", in
         }
       });
     } else if (currentSubView === "ai-solver") {
-      initChemistrySolver(subviewMount, { initialPrompt: carryOverPrompt });
+      mountUniversalAiSolver(subviewMount, { onNavigate: (r, p) => onNavigate?.(r, p) });
       carryOverPrompt = "";
     }
 
