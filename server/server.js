@@ -149,6 +149,18 @@ async function migrateFilesToR2() {
   }
   db.prepare("INSERT OR IGNORE INTO app_migrations(name) VALUES(?)").run(migration);
 }
+function isSubjectEnabled(subject) {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(root, "configs", "subjects.json"), "utf8"));
+    return (catalog.subjects || []).some(item => item.enabled === true && normalizeSubjectName(item.name) === normalizeSubjectName(subject));
+  } catch (error) {
+    console.error("Could not load subject catalog:", error.message);
+    return false;
+  }
+}
+function normalizeSubjectName(value) {
+  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
+}
 function assessmentConfigFor(subject,category){
   try{
     const config=JSON.parse(fs.readFileSync(path.join(root,"configs","exam-layouts.json"),"utf8"));
@@ -1331,6 +1343,7 @@ app.post("/api/documents",requireSameOrigin,requireAuth,upload.fields([{name:"do
   if(!new Set([".pdf",".doc",".docx",".ppt",".pptx",".txt",".png",".jpg",".jpeg"]).has(path.extname(file.originalname).toLowerCase()))return res.status(400).json({error:"Unsupported question document format."});
   if(answer&&!["practice","exam"].includes(cat))return res.status(400).json({error:"Answer keys can only be attached to practice and mock exam documents."});
   const subject=String(b.subject||"Toán"),grade=String(b.grade||"10"),title=String(b.title||file.originalname).slice(0,120),admin=req.user.role==="admin";
+   if (!isSubjectEnabled(subject)) return res.status(400).json({error:"Môn học chưa được kích hoạt trong configs/subjects.json."});
   const id=admin?`upload-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`:null,storageId=id||`submission-user-${req.user.id}-${crypto.randomUUID()}`;
   const fileKey=await saveFileToR2(admin?"documents":"pending",storageId,file);
   keys.push(fileKey);
