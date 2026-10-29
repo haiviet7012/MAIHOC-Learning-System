@@ -6,7 +6,7 @@
 import { escapeHTML } from "../../ui.js";
 
 function mathText(value) {
-  return escapeHTML(value ?? "").replace(/\\r?\\n/g, "<br>");
+  return escapeHTML(value ?? "").replace(/\r?\n/g, "<br>");
 }
 
 export function renderSolutionHtml(solution) {
