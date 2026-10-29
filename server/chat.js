@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
-import { db, publicUser } from "./auth.js";
+import { db, publicUser, authReady, authUsesPostgres, authPool, findUserById } from "./auth.js";
 
 const SESSION_COOKIE = "maihoc.sid";
 
@@ -79,12 +79,12 @@ export function getDirectConversationId(userId1, userId2) {
 /**
  * Ensures a direct conversation between userA and userB exists in DB.
  */
-export function getOrCreateDirectConversation(userAId, userBId) {
+export async function getOrCreateDirectConversation(userAId, userBId) {
   if (Number(userAId) === Number(userBId)) {
     throw new Error("Không thể nhắn tin riêng với chính mình.");
   }
 
-  const targetUser = db.prepare("SELECT id, name FROM users WHERE id = ?").get(userBId);
+  const targetUser = await findUserById(userBId);
   if (!targetUser) {
     throw new Error("Người dùng không tồn tại.");
   }
@@ -163,8 +163,9 @@ export function setupChat(server, app) {
   }
 
   // Socket Authentication Middleware using maihoc.sid cookie
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
+      await authReady;
       const cookieHeader = socket.request.headers.cookie || "";
       const cookies = parseCookies(cookieHeader);
       const token = cookies[SESSION_COOKIE];
@@ -173,18 +174,28 @@ export function setupChat(server, app) {
         return next(new Error("Vui lòng đăng nhập để kết nối chat."));
       }
 
-      const session = db.prepare(`
-        SELECT u.id, u.name, u.email, u.role, u.admin_level, s.expires_at
-        FROM sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token_hash = ?
-      `).get(hashToken(token));
-
-      if (!session || session.expires_at <= Date.now()) {
-        return next(new Error("Phiên đăng nhập đã hết hạn."));
+      const tokenHash = hashToken(token);
+      let session;
+      if (authUsesPostgres) {
+        const result = await authPool.query(
+          "SELECT u.id,u.name,u.email,u.role,u.admin_level,s.expires_at " +
+          "FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1",
+          [tokenHash]
+        );
+        session = result.rows[0] || null;
+      } else {
+        session = db.prepare(
+          "SELECT u.id,u.name,u.email,u.role,u.admin_level,s.expires_at " +
+          "FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
+        ).get(tokenHash);
       }
 
+      if (!session || Number(session.expires_at) <= Date.now()) {
+        return next(new Error("Phiên đăng nhập đã hết hạn."));
+      }
+      if (authUsesPostgres) await findUserById(session.id);
       socket.user = {
-        id: session.id,
+        id: Number(session.id),
         name: session.name,
         email: session.email,
         role: session.role
@@ -512,38 +523,42 @@ export function setupChat(server, app) {
   });
 
   // 2. Search users for direct chat
-  app.get("/api/chat/users", (req, res) => {
+  app.get("/api/chat/users", async(req, res) => {
     if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
     const currentUserId = req.user.id;
     const query = String(req.query.q || req.query.search || "").trim();
 
     try {
       let users = [];
-      if (query) {
-        // Allow searching by either display name or email (many users search by email).
-        users = db.prepare(`
-          SELECT id, name
-          FROM users
-          WHERE id != ?
-            AND (name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE)
-          ORDER BY name COLLATE NOCASE ASC LIMIT 25
-        `).all(currentUserId, `%${query}%`, `%${query}%`);
+      if (authUsesPostgres) {
+        const result = query
+          ? await authPool.query(
+              "SELECT id,name FROM users WHERE id<>$1 AND (LOWER(name) LIKE LOWER($2) OR LOWER(email) LIKE LOWER($2)) ORDER BY LOWER(name) ASC LIMIT 25",
+              [currentUserId, "%" + query + "%"]
+            )
+          : await authPool.query(
+              "SELECT id,name FROM users WHERE id<>$1 ORDER BY id DESC LIMIT 20",
+              [currentUserId]
+            );
+        users = result.rows;
+        for (const user of users) await findUserById(user.id);
+      } else if (query) {
+        users = db.prepare(
+          "SELECT id,name FROM users WHERE id<>? AND " +
+          "(name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE) " +
+          "ORDER BY name COLLATE NOCASE ASC LIMIT 25"
+        ).all(currentUserId, "%" + query + "%", "%" + query + "%");
       } else {
-        // Return recent users or top students
-        users = db.prepare(`
-          SELECT id, name
-          FROM users
-          WHERE id != ?
-          ORDER BY id DESC LIMIT 20
-        `).all(currentUserId);
+        users = db.prepare(
+          "SELECT id,name FROM users WHERE id<>? ORDER BY id DESC LIMIT 20"
+        ).all(currentUserId);
       }
 
-      const results = users.map(u => ({
-        id: u.id,
+      const results = users.map((u) => ({
+        id: Number(u.id),
         name: u.name,
         isOnline: isUserOnline(u.id)
       }));
-
       res.json({ users: results });
     } catch (err) {
       console.error("GET /api/chat/users error:", err);
@@ -552,7 +567,7 @@ export function setupChat(server, app) {
   });
 
   // 3. Create or get 1-1 conversation with a user
-  app.post("/api/chat/direct", (req, res) => {
+  app.post("/api/chat/direct", async(req, res) => {
     if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
     const currentUserId = req.user.id;
     const targetUserId = Number(req.body.targetUserId);
@@ -562,7 +577,7 @@ export function setupChat(server, app) {
     }
 
     try {
-      const conv = getOrCreateDirectConversation(currentUserId, targetUserId);
+      const conv = await getOrCreateDirectConversation(currentUserId, targetUserId);
       conv.partner.isOnline = isUserOnline(conv.partner.id);
       res.json(conv);
     } catch (err) {
