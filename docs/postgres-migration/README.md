@@ -37,6 +37,16 @@ Test the connection from `server/`:
 npm run check:postgres
 ```
 
+### PostgreSQL authentication preflight (read-only)
+
+After the connection check, run this read-only report against the **intended target database**:
+
+```powershell
+npm run check:postgres-auth
+```
+
+It verifies the required authentication tables and columns, reports account/session/presence/verification-code counts, and flags duplicate normalized email addresses. It does not create, update, or delete records. Passing the preflight is necessary but does not replace end-to-end registration, login, logout, password-reset, admin, and Socket.IO smoke tests.
+
 ### Step 2: Optional One-Time Data Import from Existing SQLite Files
 
 If you have existing local SQLite files (`server/data/maihoc.sqlite` and `server/data/learning-results.sqlite`) that you want to copy into a fresh/empty PostgreSQL database before first starting the server:
