@@ -12,7 +12,9 @@
     "test:cleanup": "node --test ./tests/k6-cleanup.test.js",
     "test:postgres-import": "node --test ./tests/migrate-sqlite-to-postgres.test.js",
     "inspect:postgres-cutover": "node ./inspect-postgres-cutover.js",
-    "test:postgres-cutover-report": "node --test ./tests/postgres-cutover-report.test.js"
+    "test:postgres-cutover-report": "node --test ./tests/postgres-cutover-report.test.js",
+    "cleanup:personal-history": "node ./scripts/cleanup-personal-history.js",
+    "test:personal-history-cleanup": "node --test ./tests/personal-history-cleanup.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1159.0",
