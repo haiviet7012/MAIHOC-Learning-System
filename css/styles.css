@@ -1788,7 +1788,7 @@ body.test-open #online-dashboard-launcher {
   display: flex;
   flex-direction: column;
   gap: var(--ai-history-gap);
-  max-height: calc(10 * var(--ai-history-row-height) + 9 * var(--ai-history-gap) + 16px);
+  max-height: calc(10 * var(--ai-history-row-height) + 9 * var(--ai-history-gap) + 18px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
