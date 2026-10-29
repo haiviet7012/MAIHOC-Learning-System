@@ -46,3 +46,10 @@
 .universal-ai-answer > .tiny { border-top:1px solid var(--border); margin:18px 0 0; padding-top:12px; line-height:1.6; }
 @media(max-width:960px) { .universal-ai-layout { grid-template-columns:1fr; } .universal-ai-page .solution-panel { min-height:340px; } .universal-ai-empty,.universal-ai-loading { min-height:300px; } }
 @media(max-width:560px) { .universal-ai-page .solver-panel,.universal-ai-page .solution-panel { padding:15px; } .universal-ai-upload-grid { grid-template-columns:1fr; } .universal-ai-upload { min-height:105px; } .universal-ai-actions { display:grid; grid-template-columns:1fr auto; } .universal-ai-actions [data-ai-submit] { grid-column:1/-1; } }
+
+
+/* MathJax output: keep long equations readable on desktop and mobile. */
+.universal-ai-answer-content mjx-container { max-width:100%; overflow-x:auto; overflow-y:hidden; }
+.universal-ai-answer-content mjx-container[display="true"] { margin:1em 0; padding:0.15em 0; }
+.solution-content mjx-container { max-width:100%; overflow-x:auto; overflow-y:hidden; }
+.solution-content mjx-container[display="true"] { margin:0.85em 0; }
