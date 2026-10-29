@@ -1,18 +1,21 @@
 import pg from "pg";
 
 const { Pool } = pg;
+const authBackend = String(process.env.MAIHOC_AUTH_BACKEND || "sqlite").trim().toLowerCase();
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("Thiếu biến môi trường DATABASE_URL");
+if (authBackend === "postgres" && !process.env.DATABASE_URL) {
+  throw new Error("MAIHOC_AUTH_BACKEND=postgres yêu cầu DATABASE_URL.");
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
-});
+export const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 10,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    })
+  : null;
 
-pool.on("error", (error) => {
+pool?.on("error", (error) => {
   console.error("Lỗi kết nối PostgreSQL:", error.message);
 });
