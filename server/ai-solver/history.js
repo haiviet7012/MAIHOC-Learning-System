@@ -7,7 +7,7 @@ function cleanText(value, maxLength, fallback = "") {
 }
 
 /**
- * Persist the AI answer as a private R2 object and keep only searchable metadata in SQLite.
+ * Persist the AI answer as a private R2 object and keep only searchable metadata in PostgreSQL.
  * The R2 key is never returned to the browser; all reads go through the owner-checked endpoint.
  */
 export async function saveAiSolutionHistory({ userId, subject, mode, source, title, prompt, solution }) {
@@ -36,7 +36,7 @@ export async function saveAiSolutionHistory({ userId, subject, mode, source, tit
   });
 
   try {
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO ai_solution_history(user_id, subject, mode, source, title, model_used, r2_key, created_at)
       VALUES(?,?,?,?,?,?,?,datetime('now'))
     `).run(
@@ -48,7 +48,7 @@ export async function saveAiSolutionHistory({ userId, subject, mode, source, tit
       cleanText(solution?.modelUsed, 100),
       key
     );
-    const row = db.prepare(`
+    const row = await db.prepare(`
       SELECT id, subject, mode, source, title, model_used AS modelUsed, created_at AS createdAt
       FROM ai_solution_history WHERE id=? AND user_id=?
     `).get(Number(result.lastInsertRowid), Number(userId));
@@ -61,8 +61,8 @@ export async function saveAiSolutionHistory({ userId, subject, mode, source, tit
   }
 }
 
-export function listAiSolutionHistory(userId) {
-  return db.prepare(`
+export async function listAiSolutionHistory(userId) {
+  return await db.prepare(`
     SELECT id, subject, mode, source, title, model_used AS modelUsed, created_at AS createdAt
     FROM ai_solution_history
     WHERE user_id=?
@@ -71,7 +71,7 @@ export function listAiSolutionHistory(userId) {
 }
 
 export async function getAiSolutionHistory(userId, historyId) {
-  const row = db.prepare(`
+  const row = await db.prepare(`
     SELECT id, subject, mode, source, title, model_used AS modelUsed, r2_key AS r2Key, created_at AS createdAt
     FROM ai_solution_history
     WHERE user_id=? AND id=?
@@ -98,7 +98,7 @@ export async function getAiSolutionHistory(userId, historyId) {
 
 /** Remove a user's private solution objects before their account metadata is cascaded away. */
 export async function deleteAiSolutionHistoryForUser(userId) {
-  const rows = db.prepare("SELECT r2_key AS r2Key FROM ai_solution_history WHERE user_id=?").all(Number(userId));
+  const rows = await db.prepare("SELECT r2_key AS r2Key FROM ai_solution_history WHERE user_id=?").all(Number(userId));
   const results = await Promise.allSettled(rows.map(row => deleteFromR2(row.r2Key)));
   for (const result of results) {
     if (result.status === "rejected") {

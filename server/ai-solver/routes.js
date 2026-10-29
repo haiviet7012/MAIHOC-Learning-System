@@ -67,10 +67,10 @@ async function persistTemporaryUpload(file, fieldName) {
   }
 }
 
-universalAiRouter.get("/history", (req, res) => {
+universalAiRouter.get("/history", async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: "Vui lòng đăng nhập để xem lịch sử giải bài AI." });
   try {
-    return res.json({ items: listAiSolutionHistory(req.user.id) });
+    return res.json({ items: await listAiSolutionHistory(req.user.id) });
   } catch (error) {
     console.error("[AI history] Could not load list:", error.message || error);
     return res.status(500).json({ error: "Không tải được lịch sử giải bài AI." });

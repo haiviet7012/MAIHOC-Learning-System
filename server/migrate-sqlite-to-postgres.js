@@ -1,15 +1,19 @@
 #!/usr/bin/env node
-import Database from "better-sqlite3";
-import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
-dotenv.config({ path: path.join(dirname, ".env") });
-dotenv.config({ path: path.resolve(dirname, "..", ".env") });
-dotenv.config();
+
+try {
+  const { default: dotenv } = await import("dotenv");
+  dotenv.config({ path: path.join(dirname, ".env") });
+  dotenv.config({ path: path.resolve(dirname, "..", ".env") });
+  dotenv.config();
+} catch {
+  // Allow pure helper unit tests to run even if dotenv is not installed
+}
 
 export function quoteIdent(value) {
   return '"' + String(value).replaceAll('"', '""') + '"';
@@ -152,9 +156,11 @@ function foreignKeyGroups(table) {
 }
 
 async function main() {
+  const { default: Database } = await import("better-sqlite3");
   const mainPath = path.resolve(arg("--main-db", path.join(dirname, "data", "maihoc.sqlite")));
   const resultsPath = path.resolve(arg("--results-db", path.join(dirname, "data", "learning-results.sqlite")));
   const apply = process.argv.includes("--apply");
+  const allowMultipleUsers = process.argv.includes("--allow-multiple-users");
   const confirmTarget = arg("--confirm-target");
   if (!process.env.DATABASE_URL) {
     throw new Error("Thiếu DATABASE_URL. Cấu hình trong server/.env hoặc file .env ở thư mục dự án.");
@@ -191,11 +197,11 @@ async function main() {
     }
 
     const users = mainDb.prepare("SELECT id, name, email, role FROM users ORDER BY id").all();
-    if (users.length !== 1 || Number(users[0].id) !== 1 || users[0].role !== "admin") {
-      throw new Error("Dừng import: yêu cầu nguồn chỉ có users.id=1 với role=admin. Thực tế: " + JSON.stringify(users));
+    if (!allowMultipleUsers && (users.length !== 1 || Number(users[0].id) !== 1 || users[0].role !== "admin")) {
+      throw new Error("Dừng import: yêu cầu nguồn chỉ có users.id=1 với role=admin (hoặc thêm --allow-multiple-users). Thực tế: " + JSON.stringify(users));
     }
     const resultTable = resultTables.find((table) => table.name === "learning_results");
-    if (resultTable) {
+    if (resultTable && !allowMultipleUsers) {
       const extraUsers = resultsDb.prepare("SELECT user_id, COUNT(*) AS count FROM learning_results WHERE user_id <> 1 GROUP BY user_id").all();
       if (extraUsers.length) throw new Error("learning_results còn dữ liệu user_id khác 1: " + JSON.stringify(extraUsers));
     }
@@ -221,14 +227,14 @@ async function main() {
         mainSQLite: mainPath,
         resultsSQLite: resultsPath,
         retainedUser: users[0],
+        userCount: users.length,
         tableCount: tables.length,
         totalRows: tables.reduce((sum, table) => sum + table.count, 0),
         tables: tables.map((table) => ({ database: table.source, table: table.name, rows: table.count, columns: table.columns.length })),
         existingPublicTables: publicTables.rows.map((row) => row.table_name),
         warnings: [
-          "This copies schema/data only; it does not switch server.js or other application modules to PostgreSQL.",
           "Existing PostgreSQL tables are never dropped or overwritten.",
-          "The source is required to contain exactly admin ID 1."
+          "Application runtime modules (auth.js, server.js, chat.js, tests-module, ai-solver) are now configured to use PostgreSQL via DATABASE_URL."
         ]
       };
       console.log(JSON.stringify(report, null, 2));
