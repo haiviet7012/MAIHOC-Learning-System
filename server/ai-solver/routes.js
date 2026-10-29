@@ -141,7 +141,7 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
             : `Bài tập ${input.subject} từ ảnh`;
         const saved = await saveAiSolutionHistory({
           userId: req.user.id,
-          subject: input.subject,
+          subject: solution.subject || input.subject,
           mode: input.mode,
           source,
           title,
