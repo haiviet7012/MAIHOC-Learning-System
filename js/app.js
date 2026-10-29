@@ -1,4 +1,4 @@
-import { SUBJECTS, CATEGORIES } from "./data.js";
+import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, getSubjectConfig, CATEGORIES } from "./data.js";
 import { initTheme } from "./theme.js";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
 import {
@@ -52,7 +52,7 @@ const findDoc = id =>
 const by = (grade, category) =>
     docs().filter(
         d =>
-            d.subject === "Toán" &&
+            d.subject === state.subject &&
             String(d.grade) === String(grade) &&
             d.category === category
     );
@@ -123,7 +123,7 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
     clearInterval(state.timer);
     state.timer = null;
 } }
-function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">Toán</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
+function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
     return `<section class="hero">
     <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
@@ -139,23 +139,14 @@ function homePage() {
 <p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
 }
 function subjectPickerPage() {
-    const subjects = [
-        { name: "Toán", icon: "∑", active: true, items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "Vật lý", icon: "⚛", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "Hóa học", icon: "⚗", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "Sinh học", icon: "❧", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "Tiếng Anh", icon: "A", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "Ngữ văn", icon: "文", items: ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] },
-        { name: "IELTS", icon: "✦", items: ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử (có tính giờ)"] },
-        { name: "Đề thi THPT quốc gia", icon: "▤", items: ["Đề thi các năm trước", "Đề thi thử trường / sở", "Phòng thi thử có tính giờ"] }
-    ];
-    return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">TOÁN ĐANG HOẠT ĐỘNG</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-math" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
+    const subjects = SUBJECT_CATALOG.map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử"] : ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] }));
+    return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">MÔN HỌC THEO CẤU HÌNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
 function subjectPage() {
-    return `${pageHeading("Môn Toán", "Chọn một khu vực học tập để tiếp tục.")}<div class="grid four">
-${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === "Toán").length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === "Toán" && d.grade === g).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
+    return `${pageHeading(`Môn ${state.subject}`, "Chọn một khu vực học tập để tiếp tục.")}<div class="grid four">
+${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
 }
-function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn Toán.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN TOÁN</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
+function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
 function resourceListPage(category, grade) {
     const list = by(grade, category);
     const isAssessment = category === "practice" || category === "exam";
@@ -916,14 +907,16 @@ async function doEvaluate(id) { const d = findDoc(id); if (!d)
 catch (e) {
     $("#difficulty-result").textContent = `Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;
 } }
-function subjectClick(subject) { if (subject === "Toán") {
-    go("subject");
+function subjectClick(subject) {
+    const config = getSubjectConfig(subject);
+    if (!config || !config.enabled) {
+        toast(`${subject}: môn học chưa được kích hoạt.`);
+        $("#subject-menu").classList.remove("open");
+        return;
+    }
+    go("subject", { subject: config.name, grade: config.grades?.[0] || "10" });
     $("#subject-menu").classList.remove("open");
 }
-else {
-    toast(`${subject}: sẽ được cập nhật trong thời gian tới — Coming soon!`);
-    $("#subject-menu").classList.remove("open");
-} }
 document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
@@ -967,12 +960,12 @@ document.addEventListener("click", async (e) => {
             go("subject-picker");
             return;
         }
-        if (a === "open-math") {
-            go("subject");
+        if (a === "open-math" || a === "open-subject") {
+            subjectClick(action.dataset.name || "Toán");
             return;
         }
         if (a === "coming-subject") {
-            toast(`${action.dataset.name}: sẽ được cập nhật trong thời gian tới — Coming soon!`);
+            toast(`${action.dataset.name}: môn học chưa được kích hoạt. Hãy bổ sung cấu hình đánh giá và nội dung trước khi bật.`);
             return;
         }
         if (a === "choose-grade") {
