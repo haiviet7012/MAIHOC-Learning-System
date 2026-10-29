@@ -117,7 +117,7 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
       parts.push({ text: instruction });
       const result = await model.generateContent({ contents: [{ role: "user", parts }] });
       const rawAnswer = result.response.text();
-      const subjectMarker = rawAnswer.match(/^\\s*\\[\\[MAIHOC_SUBJECT:\\s*([^\\]\\r\\n]{1,80})\\]\\]\\s*/i);
+      const subjectMarker = rawAnswer.match(/^\s*\[\[MAIHOC_SUBJECT:\s*([^\]\r\n]{1,80})\]\]\s*/i);
       const markedSubject = subjectMarker?.[1]?.trim();
       const answer = subjectMarker ? rawAnswer.slice(subjectMarker[0].length).trimStart() : rawAnswer;
       const detectedSubject = markedSubject && SUBJECT_NAMES.has(markedSubject)
