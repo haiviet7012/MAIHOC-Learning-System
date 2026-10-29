@@ -10,6 +10,25 @@ This is an operator-run import, not an automatic application database switch. Th
 4. Set DATABASE_URL in server/.env or the project root .env. Do not share or commit the connection string.
 5. Use a new/empty PostgreSQL database. The importer refuses a target whose public schema already has tables.
 
+## Read-only cutover data review
+
+Before the import, stop the local server and run a read-only report from the `server` directory:
+
+    npm run inspect:postgres-cutover
+
+The report summarizes row counts, database integrity, foreign-key violations, and counts grouped by detected owner/reference columns (such as `user_id`, `uploaded_by`, and `reviewed_by`). It labels tables as hints for review:
+- `ephemeral`: session, presence, reset-token, and verification-token tables.
+- `personal_activity_review`: progress, exam attempts, learning results, chats, notifications, and other user activity.
+- `user_submissions_review`: pending document/test submissions.
+- `shared_content_or_audit`: reusable learning content and review/audit records.
+- `review_manually`: tables without a known classification.
+
+These labels are **not deletion instructions**. Inspect the ownership breakdown and decide what to retain. The report does not write to SQLite or PostgreSQL and does not delete any records. It is intended to identify personal or temporary records before the runtime cutover; preserve shared documents, tests, answer keys, and solution-review records unless there is a specific reason to remove them.
+
+Run its unit tests with:
+
+    npm run test:postgres-cutover-report
+
 ## Dry run
 
 From PowerShell in D:\MAIHOC\maihoc-learning-web\server, run:
