@@ -28,7 +28,7 @@ function loadEnvFileFallback(filePath) {
 
 try {
   const { default: dotenv } = await import("dotenv");
-  dotenv.config({ path: path.join(__dirname, ".env") });
+  dotenv.config({ path: path.join(__dirname, ".env"), override: true });
   dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
   dotenv.config();
 } catch {
@@ -72,7 +72,7 @@ function buildSslConfig(connectionString = "") {
     sslEnv === "require" ||
     sslEnv === "1" ||
     /sslmode=(require|verify-ca|verify-full)/i.test(connectionString) ||
-    /\.render\.com|\.neon\.tech|\.supabase\.co|\.railway\.app/i.test(connectionString)
+    /\.render\.com|\.neon\.tech|\.supabase\.co|\.supabase\.com|\.railway\.app/i.test(connectionString)
   ) {
     return { rejectUnauthorized: false };
   }

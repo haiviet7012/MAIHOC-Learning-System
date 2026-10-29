@@ -46,7 +46,7 @@ import {
 } from "./auth.js";
 
 const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__earlyDir, ".env") });
+dotenv.config({ path: path.join(__earlyDir, ".env"), override: true });
 dotenv.config({ path: path.resolve(__earlyDir, "..", ".env") });
 dotenv.config();
 
