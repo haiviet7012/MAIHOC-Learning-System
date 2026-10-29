@@ -28,6 +28,7 @@ import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import { upsertLearningResult, deleteLearningResultsByUserId, deleteLearningResultsByItemId } from "./tests-module/results-db.js";
 import { chemistryRouter } from "./chemistry/routes.js";
+import { universalAiRouter } from "./ai-solver/routes.js";
 
 
 import {
@@ -1663,6 +1664,7 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 
 
 app.use("/api/chemistry", chemistryRouter);
+app.use("/api/ai", universalAiRouter);
 
 testsModule = installTestsModule({
   app,
