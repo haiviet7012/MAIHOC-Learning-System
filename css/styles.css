@@ -1776,3 +1776,90 @@ body.test-open #online-dashboard-launcher {
   .notifications-dialog .modal-heading h2 { font-size: 25px; }
   .notifications-dialog .notification-item-head { flex-direction: column; gap: 3px; }
 }
+
+
+/* =========================================================
+   PERSONAL AI SOLUTION HISTORY (10 fixed-height rows, then scroll)
+   ========================================================= */
+.account-ai-history-summary { margin: -3px 0 10px; }
+.account-ai-history-list {
+  --ai-history-row-height: 72px;
+  --ai-history-gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ai-history-gap);
+  max-height: calc(10 * var(--ai-history-row-height) + 9 * var(--ai-history-gap) + 18px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.account-ai-history-list[aria-busy="true"] { opacity: .78; }
+.account-ai-history-row {
+  box-sizing: border-box;
+  flex: 0 0 var(--ai-history-row-height);
+  height: var(--ai-history-row-height);
+  min-height: var(--ai-history-row-height);
+  max-height: var(--ai-history-row-height);
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(138px,auto) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color .15s ease, background .15s ease;
+}
+.account-ai-history-row:hover { border-color: var(--accent); background: var(--surface-2); }
+.account-ai-history-main { min-width: 0; }
+.account-ai-history-title-line { display:flex; align-items:center; gap:9px; min-width:0; }
+.account-ai-history-title-line strong {
+  display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:13px; font-weight:700; color:var(--text);
+}
+.account-ai-history-index {
+  flex:0 0 26px; width:26px; height:26px; display:grid; place-items:center;
+  border-radius:8px; background:var(--surface-2); color:var(--primary); font-size:11px; font-weight:800;
+}
+.account-ai-history-meta { display:flex; gap:5px 10px; flex-wrap:wrap; margin:4px 0 0 35px; color:var(--muted); font-size:10px; line-height:1.2; }
+.account-ai-history-meta span + span::before { content:"·"; margin-right:10px; color:var(--border); }
+.account-ai-history-date { color:var(--muted); font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.account-ai-history-open { white-space:nowrap; }
+.account-ai-history-empty { min-height:190px; display:grid; align-content:center; justify-items:center; gap:6px; text-align:center; padding:24px; }
+.account-ai-history-empty > span { color:var(--primary); font-size:28px; }
+.account-ai-history-empty p { max-width:480px; margin:0; }
+.ai-history-dialog {
+  width: min(980px, calc(100vw - 32px));
+  max-width: 980px;
+  max-height: 90vh;
+  padding: clamp(20px, 3vw, 32px);
+}
+.ai-history-dialog .modal-heading h2 { overflow-wrap:anywhere; font-size:clamp(22px,3vw,30px); }
+.ai-history-dialog-meta { margin:8px 0 16px; }
+.ai-history-problem { margin:0 0 16px; padding:14px 16px; border:1px solid var(--border); background:var(--surface-2); }
+.ai-history-problem h3 { margin:0 0 6px; font-size:12px; }
+.ai-history-problem p { margin:0; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; }
+.ai-history-dialog-status { margin:12px 0; }
+.ai-history-dialog-answer {
+  max-height:58vh; overflow:auto; overscroll-behavior:contain; padding:4px 2px;
+  color:var(--text); font-size:14px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.ai-history-dialog-answer mjx-container { max-width:100%; overflow-x:auto; overflow-y:hidden; }
+.ai-history-dialog-answer mjx-container[display="true"] { margin:1em 0; }
+@media(max-width:760px) {
+  .account-ai-history-list { --ai-history-row-height: 88px; }
+  .account-ai-history-row {
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-rows:minmax(0,1fr) auto;
+    gap:3px 8px; padding:7px 9px;
+  }
+  .account-ai-history-main { grid-column:1; grid-row:1; align-self:end; }
+  .account-ai-history-meta { gap:3px 6px; margin-left:0; white-space:nowrap; overflow:hidden; }
+  .account-ai-history-meta span + span::before { margin-right:6px; }
+  .account-ai-history-date { grid-column:1; grid-row:2; align-self:start; font-size:10px; }
+  .account-ai-history-open { grid-column:2; grid-row:1 / span 2; align-self:center; font-size:10px!important; padding:7px 8px!important; }
+  .ai-history-dialog { width:calc(100vw - 18px); max-height:92vh; padding:17px; }
+  .ai-history-dialog-answer { max-height:62vh; }
+}

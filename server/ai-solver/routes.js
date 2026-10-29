@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { uploadToR2, readFromR2, deleteFromR2 } from "../r2-storage.js";
 import { validateUniversalSolveRequest } from "./validator.js";
 import { solveUniversalProblem } from "./service.js";
+import { saveAiSolutionHistory, listAiSolutionHistory, getAiSolutionHistory } from "./history.js";
 
 export const universalAiRouter = express.Router();
 const requestsByIp = new Map();
@@ -66,6 +67,30 @@ async function persistTemporaryUpload(file, fieldName) {
   }
 }
 
+universalAiRouter.get("/history", (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: "Vui lòng đăng nhập để xem lịch sử giải bài AI." });
+  try {
+    return res.json({ items: listAiSolutionHistory(req.user.id) });
+  } catch (error) {
+    console.error("[AI history] Could not load list:", error.message || error);
+    return res.status(500).json({ error: "Không tải được lịch sử giải bài AI." });
+  }
+});
+
+universalAiRouter.get("/history/:id", async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: "Vui lòng đăng nhập để mở lời giải." });
+  if (!/^\d+$/.test(String(req.params.id || ""))) return res.status(400).json({ error: "Mã lịch sử không hợp lệ." });
+  try {
+    const record = await getAiSolutionHistory(req.user.id, req.params.id);
+    if (!record) return res.status(404).json({ error: "Không tìm thấy lời giải trong tài khoản này." });
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.json(record);
+  } catch (error) {
+    console.error("[AI history] Could not open saved solution:", error.message || error);
+    return res.status(502).json({ error: "Không thể mở lời giải đã lưu. Vui lòng thử lại." });
+  }
+});
+
 universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
   if (req.is("multipart/form-data")) {
     upload.fields([{ name: "file", maxCount: 1 }, { name: "image", maxCount: 1 }])(req, res, error => {
@@ -99,9 +124,41 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
     }
     const validation = validateUniversalSolveRequest(body);
     if (!validation.valid) return res.status(400).json({ error: validation.error });
-    const solution = await solveUniversalProblem(validation.data);
+    const input = validation.data;
+    const solution = await solveUniversalProblem(input);
+    let historyId = null;
+    let historySaved = null;
+
+    // Guest users can still solve exercises, but personal history is stored only for signed-in users.
+    if (req.user?.id) {
+      historySaved = false;
+      try {
+        const source = input.file ? "pdf" : input.image ? "image" : "text";
+        const title = input.file
+          ? `PDF · ${input.file.name}`
+          : input.prompt
+            ? input.prompt.replace(/\s+/g, " ").trim().slice(0, 180)
+            : `Bài tập ${input.subject} từ ảnh`;
+        const saved = await saveAiSolutionHistory({
+          userId: req.user.id,
+          subject: input.subject,
+          mode: input.mode,
+          source,
+          title,
+          prompt: input.prompt,
+          solution
+        });
+        if (saved) {
+          historyId = saved.id;
+          historySaved = true;
+        }
+      } catch (historyError) {
+        console.error("[AI history] Could not save solution:", historyError.message || historyError);
+      }
+    }
+
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ ok: true, solution });
+    return res.json({ ok: true, solution, historyId, historySaved });
   } catch (error) {
     const status = error.status || (error.code === "MISSING_API_KEY" ? 503 : 502);
     return res.status(status).json({ error: error.message || "Không thể giải bài lúc này." });

@@ -5,7 +5,7 @@ const SUBJECTS = [
   ["Ngữ văn", "✍️"], ["Sinh học", "🧬"], ["Đề thi THPT quốc gia", "🎓"], ["IELTS", "🌐"]
 ];
 
-export function mountUniversalAiSolver(container, { onNavigate } = {}) {
+export function mountUniversalAiSolver(container, { onNavigate, initialSubject = "Toán" } = {}) {
   let selectedImage = null;
   let selectedFile = null;
   let activeController = null;
@@ -29,7 +29,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
             <p class="solver-help">Chọn môn học, nhập nội dung đề hoặc đính kèm một tệp để bắt đầu.</p>
             <label class="universal-ai-field">Môn học
               <select class="universal-ai-subject">
-                ${SUBJECTS.map(([name]) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("")}
+                ${SUBJECTS.map(([name]) => `<option value="${escapeHTML(name)}" ${name === initialSubject ? "selected" : ""}>${escapeHTML(name)}</option>`).join("")}
               </select>
             </label>
             <label class="universal-ai-field">Nội dung đề bài
@@ -80,6 +80,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
             <article class="universal-ai-answer" hidden>
               <div class="universal-ai-answer-head"><span class="pill">✨ Lời giải AI</span><button class="button secondary small" type="button" data-ai-copy>Sao chép lời giải</button></div>
               <div class="universal-ai-answer-meta muted tiny" data-ai-meta></div>
+              <p class="universal-ai-history-save-status tiny muted" data-ai-history-status hidden></p>
               <div class="universal-ai-answer-content" data-ai-answer></div>
               <p class="tiny muted">Lời giải do AI hỗ trợ học tập; hãy đối chiếu khi đề bài có dữ kiện mờ, thiếu hoặc gây nhiều cách hiểu.</p>
             </article>
@@ -220,6 +221,19 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         const answerNode = container.querySelector("[data-ai-answer]");
         answerNode.innerHTML = escapeHTML(result.solution.answer || "AI chưa trả về nội dung lời giải.").replace(/\r?\n/g, "<br>");
         answer.hidden = false;
+        const historyStatus = container.querySelector("[data-ai-history-status]");
+        if (historyStatus) {
+          if (result.historySaved === true) {
+            historyStatus.hidden = false;
+            historyStatus.textContent = "✓ Đã lưu vào Trung tâm tài khoản · Lịch sử giải bài AI";
+            window.dispatchEvent(new CustomEvent("maihoc-ai-solution-saved", { detail: { historyId: result.historyId } }));
+          } else if (result.historySaved === false) {
+            historyStatus.hidden = false;
+            historyStatus.textContent = "Lời giải đã tạo nhưng chưa lưu được vào lịch sử. Bạn vẫn có thể sao chép kết quả.";
+          } else {
+            historyStatus.hidden = true;
+          }
+        }
         if (window.MathJax?.typesetPromise) {
           try { await window.MathJax.typesetPromise([answerNode]); }
           catch (mathError) { console.warn("MathJax could not typeset AI answer:", mathError); }
@@ -255,6 +269,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
       container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       container.querySelector("[data-ai-pdf-name]").textContent = "Chưa chọn tệp";
       container.querySelector("[data-ai-answer]").textContent = "";
+      container.querySelector("[data-ai-history-status]").hidden = true;
       answer.hidden = true;
       errorBox.hidden = true;
       empty.hidden = false;

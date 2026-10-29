@@ -9,7 +9,7 @@ import {
 import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
-import "./account-features.js";
+import "./account-features.js?v=20261029aihistory1";
 import { mountStudyRooms } from "../study-rooms/client.js";
 import {
     refreshTestsQueue,
@@ -18,8 +18,8 @@ import {
     wireTestsEvents,
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
-import { mountChemistryModule } from "./chemistry/index.js";
-import { mountUniversalAiSolver } from "./ai-solver/index.js";
+import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
+import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029aihistory1";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
@@ -529,6 +529,21 @@ function accountCenterPage() {
         </div>
         <div class="account-progress-list" id="account-progress-list" role="region" aria-label="Danh sách tiến trình học tập" tabindex="0">
           <p class="muted">Đang tải tiến trình học tập…</p>
+        </div>
+      </section>
+
+      <section class="account-section card account-ai-history-section">
+        <div class="account-section-head">
+          <div>
+            <span class="pill">AI · LỊCH SỬ CÁ NHÂN</span>
+            <h2>Lịch sử giải bài bằng AI</h2>
+            <p class="muted">Hiển thị tối đa 10 mục cùng lúc; cuộn trong danh sách để xem các lời giải cũ. Chọn một mục để mở lại lời giải đầy đủ.</p>
+          </div>
+          <button type="button" class="button secondary small" data-ai-history-refresh>↻ Làm mới lịch sử</button>
+        </div>
+        <div class="account-ai-history-summary muted tiny" id="account-ai-history-summary">Đang tải lịch sử giải bài…</div>
+        <div class="account-ai-history-list" id="account-ai-history-list" role="region" aria-label="Lịch sử giải bài bằng AI, tối đa 10 mục hiển thị trước khi cuộn" tabindex="0">
+          <p class="muted">Đang tải lịch sử giải bài…</p>
         </div>
       </section>
 

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20261029v2">
+  <link rel="stylesheet" href="css/styles.css?v=20261029v3">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="css/tests.css?v=20261029v1">
   <link rel="stylesheet" href="css/chat.css">
@@ -186,6 +186,23 @@
     <div class="modal-heading"><div><p class="eyebrow">TRUNG TÂM THÔNG BÁO</p><h2>Thông báo</h2></div><button type="button" class="close-button" data-close="notifications-dialog" aria-label="Đóng">×</button></div>
     <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button><button type="button" class="text-button danger-text" id="notifications-delete-all">Xóa tất cả</button></div>
     <div id="notifications-list" class="notifications-list"><p class="muted">Đang tải thông báo…</p></div>
+  </dialog>
+
+  <dialog id="ai-solution-history-dialog" class="modal ai-history-dialog">
+    <div class="modal-heading">
+      <div>
+        <p class="eyebrow">LỊCH SỬ GIẢI BÀI AI</p>
+        <h2 id="ai-history-dialog-title">Lời giải AI</h2>
+      </div>
+      <button type="button" class="close-button" data-close="ai-solution-history-dialog" aria-label="Đóng">×</button>
+    </div>
+    <p class="muted tiny ai-history-dialog-meta" id="ai-history-dialog-meta"></p>
+    <section class="ai-history-problem" id="ai-history-problem-section" hidden>
+      <h3>Đề bài đã nhập (tóm tắt)</h3>
+      <p id="ai-history-dialog-prompt"></p>
+    </section>
+    <p id="ai-history-dialog-status" class="muted ai-history-dialog-status">Chọn một lời giải để mở.</p>
+    <article id="ai-history-dialog-answer" class="ai-history-dialog-answer"></article>
   </dialog>
 
   <dialog id="login-dialog" class="modal compact">
@@ -399,7 +416,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=20261029v5"></script>
+  <script type="module" src="js/app.js?v=20261029v6"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="js/chat.js"></script>
 </body>
