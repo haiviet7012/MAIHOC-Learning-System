@@ -263,7 +263,7 @@ export function mountStudyRooms(container, user) {
   }
 
   function roomCard(room, isAdmin = false) {
-    const isOwner = user?.id === room.creatorId;
+    const isOwner = Number(user?.id) === Number(room.creatorId);
     const canClose = isOwner;
     
     const joinLabel = room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia";
@@ -418,7 +418,7 @@ export function mountStudyRooms(container, user) {
                   </div>
                   <div class="study-room-tile-reactions" data-tile-reactions="${escapeHtml(participant?.participantId || "local")}"></div>
                   <div class="study-room-video-label">
-                    <strong>${escapeHtml(user?.name || "Bạn")}</strong> <span>(Bạn${currentRoom.creatorId === user?.id ? " · Chủ phòng" : ""})</span>
+                    <strong>${escapeHtml(user?.name || "Bạn")}</strong> <span>(Bạn${Number(currentRoom.creatorId) === Number(user?.id) ? " · Chủ phòng" : ""})</span>
                   </div>
                 </article>
               `}
