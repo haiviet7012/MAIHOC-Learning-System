@@ -8,14 +8,21 @@
         "defaultAnswerVariant": "1001"
       },
       "assessment": {
+        "totalQuestions": 22,
+        "totalScore": 10,
         "sections": [
           {
             "order": 1,
             "sectionId": "I",
             "type": "multiple_choice",
-            "title": "Phần I. Trắc nghiệm",
+            "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
             "count": 12,
-            "options": ["A", "B", "C", "D"],
+            "options": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
             "grading": {
               "pointsPerCorrect": 0.25
             }
@@ -24,9 +31,14 @@
             "order": 2,
             "sectionId": "II",
             "type": "true_false",
-            "title": "Phần II. Đúng / Sai",
+            "title": "Phần II. Trắc nghiệm đúng / sai",
             "count": 4,
-            "statements": ["a", "b", "c", "d"],
+            "statements": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ],
             "grading": {
               "pointsByCorrectStatements": {
                 "0": 0,
@@ -41,7 +53,7 @@
             "order": 3,
             "sectionId": "III",
             "type": "essay",
-            "title": "Phần III. Tự luận / Trả lời ngắn",
+            "title": "Phần III. Trắc nghiệm trả lời ngắn",
             "count": 6,
             "grading": {
               "pointsPerCorrect": 0.5
@@ -56,14 +68,21 @@
         "defaultAnswerVariant": "1001"
       },
       "assessment": {
+        "totalQuestions": 28,
+        "totalScore": 10,
         "sections": [
           {
             "order": 1,
             "sectionId": "I",
             "type": "multiple_choice",
-            "title": "Phần I. Trắc nghiệm",
+            "title": "Phần I. Trắc nghiệm nhiều lựa chọn",
             "count": 18,
-            "options": ["A", "B", "C", "D"],
+            "options": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
             "grading": {
               "pointsPerCorrect": 0.25
             }
@@ -72,9 +91,14 @@
             "order": 2,
             "sectionId": "II",
             "type": "true_false",
-            "title": "Phần II. Đúng / Sai",
+            "title": "Phần II. Trắc nghiệm đúng / sai",
             "count": 4,
-            "statements": ["a", "b", "c", "d"],
+            "statements": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ],
             "grading": {
               "pointsByCorrectStatements": {
                 "0": 0,
@@ -89,7 +113,7 @@
             "order": 3,
             "sectionId": "III",
             "type": "essay",
-            "title": "Phần III. Tự luận / Trả lời ngắn",
+            "title": "Phần III. Trắc nghiệm trả lời ngắn",
             "count": 6,
             "grading": {
               "pointsPerCorrect": 0.25
@@ -111,7 +135,12 @@
             "type": "multiple_choice",
             "title": "Phần I. Trắc nghiệm",
             "count": 18,
-            "options": ["A", "B", "C", "D"],
+            "options": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
             "grading": {
               "pointsPerCorrect": 0.25
             }
@@ -122,7 +151,12 @@
             "type": "true_false",
             "title": "Phần II. Đúng / Sai",
             "count": 4,
-            "statements": ["a", "b", "c", "d"],
+            "statements": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ],
             "grading": {
               "pointsByCorrectStatements": {
                 "0": 0,
@@ -159,7 +193,12 @@
             "type": "multiple_choice",
             "title": "Phần I. Trắc nghiệm",
             "count": 18,
-            "options": ["A", "B", "C", "D"],
+            "options": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
             "grading": {
               "pointsPerCorrect": 0.25
             }
@@ -170,7 +209,12 @@
             "type": "true_false",
             "title": "Phần II. Đúng / Sai",
             "count": 4,
-            "statements": ["a", "b", "c", "d"],
+            "statements": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ],
             "grading": {
               "pointsByCorrectStatements": {
                 "0": 0,
@@ -207,7 +251,12 @@
             "type": "multiple_choice",
             "title": "Phần I. Trắc nghiệm",
             "count": 40,
-            "options": ["A", "B", "C", "D"],
+            "options": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
             "grading": {
               "pointsPerCorrect": 0.25
             }
