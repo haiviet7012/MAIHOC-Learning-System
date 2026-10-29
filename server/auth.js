@@ -44,13 +44,21 @@ function writeCookie(res, token, maxAgeSeconds) {
 
 export function publicUser(user) {
   if (!user) return null;
+  const rawCreatedAt = user.created_at ?? user.createdAt ?? user.created_at_ms ?? null;
+  let createdAt = rawCreatedAt;
+  if (typeof rawCreatedAt === "number" || /^\\d{10,13}$/.test(String(rawCreatedAt ?? "").trim())) {
+    const timestamp = Number(rawCreatedAt);
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      createdAt = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp).toISOString();
+    }
+  }
   return {
     id: Number(user.id),
     name: user.name,
     email: user.email,
     role: user.role,
-    adminLevel: Number(user.admin_level || 0),
-    createdAt: user.created_at
+    adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
+    createdAt
   };
 }
 
