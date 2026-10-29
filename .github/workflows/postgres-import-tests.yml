@@ -5,6 +5,7 @@ on:
     paths:
       - "server/migrate-sqlite-to-postgres.js"
       - "server/inspect-postgres-cutover.js"
+      - "server/scripts/cleanup-personal-history.js"
       - "server/tests/**"
       - "server/package.json"
       - "server/package-lock.json"
@@ -14,6 +15,7 @@ on:
     paths:
       - "server/migrate-sqlite-to-postgres.js"
       - "server/inspect-postgres-cutover.js"
+      - "server/scripts/cleanup-personal-history.js"
       - "server/tests/**"
       - "server/package.json"
       - "server/package-lock.json"
@@ -38,6 +40,9 @@ jobs:
       - name: Test read-only PostgreSQL cutover report
         working-directory: server
         run: npm run test:postgres-cutover-report
+      - name: Test guarded personal history cleanup
+        working-directory: server
+        run: npm run test:personal-history-cleanup
       - name: Test cleanup safety guardrails
         working-directory: server
         run: npm run test:cleanup
