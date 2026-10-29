@@ -1,5 +1,6 @@
 const MAX_PROMPT_LENGTH = 12000;
-const MAX_FILE_BASE64_LENGTH = 11 * 1024 * 1024;
+// Keep one uploaded image/PDF comfortably under express.json({ limit: "4mb" }).
+const MAX_FILE_BASE64_LENGTH = 3 * 1024 * 1024;
 const ALLOWED_SUBJECTS = new Set([
   "Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học",
   "Đề thi THPT quốc gia", "IELTS"
