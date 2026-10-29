@@ -7,7 +7,7 @@ test("quotes PostgreSQL identifiers safely", () => {
 });
 
 test("maps common SQLite types", () => {
-  assert.equal(postgresType("INTEGER"), "INTEGER");
+  assert.equal(postgresType("INTEGER"), "BIGINT");
   assert.equal(postgresType("REAL"), "DOUBLE PRECISION");
   assert.equal(postgresType("BLOB"), "BYTEA");
   assert.equal(postgresType("TEXT"), "TEXT");
