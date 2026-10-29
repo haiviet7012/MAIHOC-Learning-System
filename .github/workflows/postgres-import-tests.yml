@@ -13,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "server/migrate-sqlite-to-postgres.js"
+      - "server/inspect-postgres-cutover.js"
       - "server/tests/**"
       - "server/package.json"
       - "server/package-lock.json"
