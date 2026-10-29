@@ -122,7 +122,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         imageInput.value = "";
         return;
       }
-      if (file.size > 8 * 1024 * 1024) {
+      if (file.size > 2 * 1024 * 1024) {
         errorBox.hidden = false;
         errorBox.textContent = "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 8 MB.";
         imageInput.value = "";
