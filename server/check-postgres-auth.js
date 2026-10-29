@@ -56,7 +56,7 @@ if (!process.env.DATABASE_URL) {
       note: "Chỉ đọc PostgreSQL; không tạo, sửa hoặc xóa dữ liệu."
     };
 
-    if (!missing.includes("users")) {
+    if (!missing.includes("users") && !missingColumns.some((column) => column.startsWith("users."))) {
       const [users, admins, duplicates] = await Promise.all([
         pool.query("SELECT COUNT(*)::bigint AS count FROM users"),
         pool.query("SELECT COUNT(*)::bigint AS count FROM users WHERE role='admin'"),
@@ -71,7 +71,7 @@ if (!process.env.DATABASE_URL) {
         count: Number(row.count)
       }));
     }
-    if (!missing.includes("sessions")) {
+    if (!missing.includes("sessions") && !missingColumns.some((column) => column.startsWith("sessions."))) {
       const sessions = await pool.query(
         "SELECT COUNT(*) FILTER (WHERE expires_at > $1)::bigint AS active, " +
         "COUNT(*) FILTER (WHERE expires_at <= $1)::bigint AS expired FROM sessions",
@@ -82,11 +82,11 @@ if (!process.env.DATABASE_URL) {
         expired: Number(sessions.rows[0].expired)
       }};
     }
-    if (!missing.includes("user_presence")) {
+    if (!missing.includes("user_presence") && !missingColumns.some((column) => column.startsWith("user_presence."))) {
       const presence = await pool.query("SELECT COUNT(*)::bigint AS count FROM user_presence");
       report.counts = { ...(report.counts || {}), presenceRows: Number(presence.rows[0].count) };
     }
-    if (!missing.includes("email_verification_codes")) {
+    if (!missing.includes("email_verification_codes") && !missingColumns.some((column) => column.startsWith("email_verification_codes."))) {
       const codes = await pool.query(
         "SELECT COUNT(*)::bigint AS count FROM email_verification_codes WHERE expires_at > $1",
         [Date.now()]
