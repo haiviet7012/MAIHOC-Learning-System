@@ -53,3 +53,18 @@
 .universal-ai-answer-content mjx-container[display="true"] { margin:1em 0; padding:0.15em 0; }
 .solution-content mjx-container { max-width:100%; overflow-x:auto; overflow-y:hidden; }
 .solution-content mjx-container[display="true"] { margin:0.85em 0; }
+
+
+/* Paste-a-screenshot support */
+.universal-ai-paste-hint { margin:-5px 0 12px; line-height:1.65; }
+.universal-ai-paste-hint kbd {
+  display:inline-block; min-width:20px; padding:1px 5px; margin:0 1px;
+  border:1px solid var(--border); border-bottom-width:2px; border-radius:3px;
+  background:var(--surface); color:var(--text); font:inherit; font-size:11px;
+  text-align:center;
+}
+.universal-ai-image-preview {
+  display:block; max-width:100%; width:auto; max-height:150px; object-fit:contain;
+  margin:8px auto 0; border:1px solid var(--border); background:var(--surface);
+}
+.universal-ai-image-preview[hidden] { display:none; }
