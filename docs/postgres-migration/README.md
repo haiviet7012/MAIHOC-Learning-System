@@ -13,8 +13,8 @@ This folder contains **operator-run tools** for inspecting/migrating MAI HỌC d
 
 ## Files
 
-- `preview-k6-users.js`: read-only preview for accounts matching explicit email/name patterns.
-- `cleanup-k6-users.js`: dry-run by default; requires `--apply` and a reviewed user-id allow-list to delete test users from both SQLite databases.
+- `server/scripts/preview-k6-users.js`: read-only preview for accounts matching explicit email/name patterns.
+- `server/scripts/cleanup-k6-users.js`: dry-run by default; requires `--apply` and a reviewed user-id allow-list to delete test users from both SQLite databases.
 - `postgres-preflight.sql`: checks that the PostgreSQL connection works and prints current schema/table inventory.
 - `README.md`: operator workflow.
 
@@ -23,7 +23,7 @@ This folder contains **operator-run tools** for inspecting/migrating MAI HỌC d
 Run in PowerShell from `D:\\MAIHOC\\maihoc-learning-web\\server` after taking a backup:
 
 ```powershell
-node ..\\scripts\\preview-k6-users.js --db .\\data\\maihoc.sqlite --email-regex '(?i)(k6|loadtest|load-test|grafana|vu[0-9]+|testuser[0-9]+)'
+node .\\scripts\\preview-k6-users.js --db .\\data\\maihoc.sqlite --email-regex '(?i)(k6|loadtest|load-test|grafana|vu[0-9]+|testuser[0-9]+)'
 ```
 
 Review the full candidate list. If the test emails use a different pattern, adjust the regex and inspect each candidate. The preview never deletes data.
@@ -31,7 +31,7 @@ Review the full candidate list. If the test emails use a different pattern, adju
 ## Cleanup (dry-run first)
 
 ```powershell
-node ..\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14
+node .\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14
 ```
 
 This reports rows that would be removed. The user IDs above are examples only; replace them with **reviewed IDs from your own preview**. It does not apply changes unless `--apply` is supplied.
