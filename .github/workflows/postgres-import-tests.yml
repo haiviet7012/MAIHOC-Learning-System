@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "server/migrate-sqlite-to-postgres.js"
+      - "server/inspect-postgres-cutover.js"
       - "server/tests/**"
       - "server/package.json"
       - "server/package-lock.json"
@@ -33,6 +34,9 @@ jobs:
       - name: Test SQLite to PostgreSQL conversion helpers
         working-directory: server
         run: npm run test:postgres-import
+      - name: Test read-only PostgreSQL cutover report
+        working-directory: server
+        run: npm run test:postgres-cutover-report
       - name: Test cleanup safety guardrails
         working-directory: server
         run: npm run test:cleanup
