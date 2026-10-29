@@ -811,8 +811,8 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
     const code = String(req.body?.code || "").trim();
     const password = String(req.body?.password || "");
     if (!email) return res.status(400).json({ error: "Thiếu địa chỉ email cần đặt lại mật khẩu." });
-    if (password.length < 10 || password.length > 128) {
-      return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: "Mật khẩu mới cần có từ 8 đến 128 ký tự." });
     }
     const user = await db.prepare("SELECT id,name,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     if (!user) {
@@ -965,8 +965,8 @@ app.post(
     try {
       const code = String(req.body?.code || "").trim();
       const password = String(req.body?.password || "");
-      if (password.length < 10 || password.length > 128) {
-        return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+      if (password.length < 8 || password.length > 128) {
+        return res.status(400).json({ error: "Mật khẩu mới cần có từ 8 đến 128 ký tự." });
       }
       await consumeVerificationCode({
         userId: req.user.id,
@@ -1159,10 +1159,10 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   if (name.length < 2 || name.length > 80) {
     return res.status(400).json({ error: "Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự." });
   }
-  if (password.length < 12 || password.length > 128) {
+  if (password.length < 8 || password.length > 128) {
     return res
       .status(400)
-      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 12 đến 128 ký tự." });
+      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
   }
   const passwordHash = await hashPassword(password);
   let result;
