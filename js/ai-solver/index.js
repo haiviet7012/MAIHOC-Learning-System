@@ -40,7 +40,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
                 <input class="universal-ai-image" type="file" accept="image/png,image/jpeg,image/webp" hidden>
                 <span class="universal-ai-upload-icon">🖼️</span>
                 <strong>Chọn ảnh đề bài</strong>
-                <span class="solver-help">PNG, JPG, WebP · tối đa 8 MB</span>
+                <span class="solver-help">PNG, JPG, WebP · tối đa 2 MB</span>
                 <span class="universal-ai-file-name" data-ai-image-name>Chưa chọn ảnh</span>
               </label>
               <label class="solver-dropzone universal-ai-upload" data-ai-pdf-zone>
