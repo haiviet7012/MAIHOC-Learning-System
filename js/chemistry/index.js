@@ -4,11 +4,11 @@
  */
 
 import { initPeriodicTable } from "./periodic-table/periodic-table-view.js";
-import { initChemistrySolver } from "./ai-solver/solver-view.js";
 import { mountUniversalAiSolver } from "../ai-solver/index.js";
 
 export function mountChemistryModule(container, { subView = "periodic-table", initialElement = null, onNavigate } = {}) {
   let currentSubView = subView;
+  let activeSolverCleanup = null;
   let carryOverPrompt = initialElement
     ? `Tính chất hóa học, phương trình phản ứng tiêu biểu và bài toán ví dụ liên quan đến nguyên tố ${initialElement}.`
     : "";
@@ -45,11 +45,14 @@ export function mountChemistryModule(container, { subView = "periodic-table", in
         }
       });
     } else if (currentSubView === "ai-solver") {
-      mountUniversalAiSolver(subviewMount, { onNavigate: (r, p) => onNavigate?.(r, p) });
+      activeSolverCleanup?.();
+      activeSolverCleanup = mountUniversalAiSolver(subviewMount, { onNavigate: (r, p) => onNavigate?.(r, p) });
       carryOverPrompt = "";
     }
 
     container.querySelector("#tab-ptable")?.addEventListener("click", () => {
+      activeSolverCleanup?.();
+      activeSolverCleanup = null;
       currentSubView = "periodic-table";
       renderHub();
     });
@@ -71,6 +74,8 @@ export function mountChemistryModule(container, { subView = "periodic-table", in
   renderHub();
 
   return () => {
+    activeSolverCleanup?.();
+    activeSolverCleanup = null;
     container.innerHTML = "";
   };
 }
