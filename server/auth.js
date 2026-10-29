@@ -309,31 +309,71 @@ function writeCookie(res, token, maxAgeSeconds) {
 
 function mirrorUserRow(user) {
   if (!user || user.id == null) throw new Error("Không thể đồng bộ tài khoản rỗng vào SQLite mirror.");
+  const values = {
+    id: Number(user.id),
+    name: String(user.name || ""),
+    email: String(user.email || ""),
+    passwordHash: String(user.password_hash || ""),
+    role: String(user.role || "user"),
+    adminLevel: Number(user.admin_level || 0),
+    createdAt: String(user.created_at || new Date().toISOString())
+  };
+  const current = db.prepare(
+    "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users WHERE id=?"
+  ).get(values.id);
+  if (current &&
+      String(current.name) === values.name &&
+      String(current.email) === values.email &&
+      String(current.password_hash) === values.passwordHash &&
+      String(current.role) === values.role &&
+      Number(current.admin_level || 0) === values.adminLevel &&
+      String(current.created_at) === values.createdAt) {
+    return user;
+  }
   db.prepare(
     "INSERT INTO users(id,name,email,password_hash,role,admin_level,created_at) " +
     "VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET " +
     "name=excluded.name,email=excluded.email,password_hash=excluded.password_hash," +
     "role=excluded.role,admin_level=excluded.admin_level,created_at=excluded.created_at"
   ).run(
-    Number(user.id), String(user.name || ""), String(user.email || ""),
-    String(user.password_hash || ""), String(user.role || "user"),
-    Number(user.admin_level || 0), String(user.created_at || new Date().toISOString())
+    values.id, values.name, values.email, values.passwordHash,
+    values.role, values.adminLevel, values.createdAt
   );
   return user;
 }
 
 async function initializePostgresAuth() {
-  const requiredTables = ["users", "sessions", "user_presence", "email_verification_codes"];
-  const result = await postgresPool.query(
+  const requiredColumns = {
+    users: ["id", "name", "email", "password_hash", "role", "admin_level", "created_at"],
+    sessions: ["token_hash", "user_id", "expires_at", "created_at"],
+    user_presence: ["user_id", "last_seen_at", "activity"],
+    email_verification_codes: ["id", "user_id", "email", "purpose", "target_email", "code_hash", "expires_at", "attempts", "created_at"]
+  };
+  const tableResult = await postgresPool.query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY($1::text[])",
-    [requiredTables]
+    [Object.keys(requiredColumns)]
   );
-  const existing = new Set(result.rows.map((row) => row.table_name));
-  const missing = requiredTables.filter((table) => !existing.has(table));
-  if (missing.length) {
+  const existingTables = new Set(tableResult.rows.map((row) => row.table_name));
+  const missingTables = Object.keys(requiredColumns).filter((table) => !existingTables.has(table));
+  const columnResult = await postgresPool.query(
+    "SELECT table_name,column_name FROM information_schema.columns " +
+    "WHERE table_schema='public' AND table_name = ANY($1::text[])",
+    [Object.keys(requiredColumns)]
+  );
+  const availableColumns = new Map();
+  for (const row of columnResult.rows) {
+    if (!availableColumns.has(row.table_name)) availableColumns.set(row.table_name, new Set());
+    availableColumns.get(row.table_name).add(row.column_name);
+  }
+  const missingColumns = Object.entries(requiredColumns).flatMap(([table, columns]) =>
+    columns.filter((column) => existingTables.has(table) && !availableColumns.get(table)?.has(column))
+      .map((column) => table + "." + column)
+  );
+  if (missingTables.length || missingColumns.length) {
     throw new Error(
-      "PostgreSQL chưa được nhập schema/dữ liệu MAI HỌC. Thiếu bảng: " + missing.join(", ") +
-      ". Hãy chạy migrate-sqlite-to-postgres.js sau khi kiểm tra báo cáo trước khi bật MAIHOC_AUTH_BACKEND=postgres."
+      "PostgreSQL chưa có schema auth tương thích. Thiếu bảng: " + (missingTables.join(", ") || "không có") +
+      "; thiếu cột: " + (missingColumns.join(", ") || "không có") +
+      ". Hãy chạy migration và check-postgres-auth.js trước khi bật MAIHOC_AUTH_BACKEND=postgres."
     );
   }
 
