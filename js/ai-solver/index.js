@@ -218,7 +218,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         container.querySelector("[data-ai-meta]").textContent =
           `${result.solution.subject} · ${mode === "quick" ? "Giải nhanh" : "Giải chi tiết"} · ${result.solution.modelUsed}`;
         const answerNode = container.querySelector("[data-ai-answer]");
-        answerNode.innerHTML = escapeHTML(result.solution.answer || "AI chưa trả về nội dung lời giải.").replace(/\\r?\\n/g, "<br>");
+        answerNode.innerHTML = escapeHTML(result.solution.answer || "AI chưa trả về nội dung lời giải.").replace(/\r?\n/g, "<br>");
         answer.hidden = false;
         if (window.MathJax?.typesetPromise) {
           try { await window.MathJax.typesetPromise([answerNode]); }
