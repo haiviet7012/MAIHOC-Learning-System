@@ -200,16 +200,9 @@ fs.mkdirSync(pendingDir,{recursive:true});
 
 fs.mkdirSync(documentsDir,{recursive:true});
 
-async function notifyUser(userId,type,title,message,link=null){
-  await db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(userId,type,title,message,link);
-}
+function notifyUser(userId,type,title,message,link=null){db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(userId,type,title,message,link);}
 
-async function notifyAdmins(type,title,message,link=null){
-  const admins = authUsesPostgres
-    ? (await authPool.query("SELECT id FROM users WHERE role='admin'")).rows
-    : db.prepare("SELECT id FROM users WHERE role='admin'").all();
-  for(const a of admins) await notifyUser(a.id,type,title,message,link);
-}
+function notifyAdmins(type,title,message,link=null){const admins=db.prepare("SELECT id FROM users WHERE role='admin'").all();for(const a of admins)notifyUser(a.id,type,title,message,link);}
 
 let testsModule=null;
 const activeSolutionJobs=new Set();
