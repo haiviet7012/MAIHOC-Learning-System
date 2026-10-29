@@ -5,7 +5,7 @@ const SUBJECTS = [
   ["Ngữ văn", "✍️"], ["Sinh học", "🧬"], ["Đề thi THPT quốc gia", "🎓"], ["IELTS", "🌐"]
 ];
 
-export function mountUniversalAiSolver(container, { onNavigate } = {}) {
+export function mountUniversalAiSolver(container, { onNavigate, initialSubject = "Toán" } = {}) {
   let selectedImage = null;
   let selectedFile = null;
   let activeController = null;
@@ -29,7 +29,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
             <p class="solver-help">Chọn môn học, nhập nội dung đề hoặc đính kèm một tệp để bắt đầu.</p>
             <label class="universal-ai-field">Môn học
               <select class="universal-ai-subject">
-                ${SUBJECTS.map(([name]) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("")}
+                ${SUBJECTS.map(([name]) => `<option value="${escapeHTML(name)}" ${name === initialSubject ? "selected" : ""}>${escapeHTML(name)}</option>`).join("")}
               </select>
             </label>
             <label class="universal-ai-field">Nội dung đề bài
