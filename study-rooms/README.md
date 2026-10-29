@@ -17,7 +17,9 @@ Module phòng học trực tiếp, được tách riêng để dễ bảo trì:
 ## Kỹ thuật và giới hạn
 
 - Không cần thêm thư viện npm mới; module dùng Express/SQLite/auth hiện tại và HTTP polling để chuyển tín hiệu cùng chat.
-- Audio/video chạy peer-to-peer bằng WebRTC và STUN. Một số mạng NAT/firewall cần TURN server để kết nối media ổn định; bản này chưa cấu hình TURN.
+- Audio/video dùng WebRTC. Backend gọi Cloudflare Realtime TURN để cấp ICE credentials có thời hạn 24 giờ và giữ API token ở biến môi trường máy chủ. Khi TURN chưa được cấu hình hoặc tạm lỗi, module quay về STUN; một số mạng NAT/firewall nghiêm ngặt vẫn có thể không kết nối được.
+- Khai báo `CLOUDFLARE_TURN_KEY_ID` và `CLOUDFLARE_API_TOKEN` trong `server/.env`. Không commit hoặc chia sẻ giá trị thật; không đưa TURN API token vào `study-rooms/client.js`.
+- Client giữ ICE candidates đến khi remote description được áp dụng, tránh mất candidate do signaling qua HTTP polling không đồng bộ.
 - Camera/microphone cần được người dùng cấp quyền trên trình duyệt và thường cần HTTPS ở môi trường production (localhost được trình duyệt cho phép).
 - Phòng và lịch sử chat đang nằm trong bộ nhớ của tiến trình Node.js; khi server khởi động lại, các phòng đang hoạt động và lịch sử chat sẽ mất.
 - Admin có quyền vào bất kỳ phòng nào để giám sát. Khi Admin tham gia, giao diện hiển thị thông báo/nhãn **Admin đang giám sát** cho người tham gia; chức năng không có chế độ tham gia bí mật.
