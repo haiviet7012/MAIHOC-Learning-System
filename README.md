@@ -24,7 +24,7 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 *Developer*
 
 **Nguyễn Đức Hải - FPTU HN**  
-*Developer Assistant*
+*Developer*
 
 **Nguyễn Xuân Hoàng - FPTU HN**  
 *Developer*
