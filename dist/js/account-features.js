@@ -636,7 +636,7 @@ function renderOnlineUsersList() {
   listNode.innerHTML = filtered.map(u => {
     const isSelf = activeUser && Number(u.id) === Number(activeUser.id);
     const isAdmin = u.role === "admin";
-    const roleLabel = isAdmin ? "Admin" : "User";
+    const roleLabel = !isAdmin ? "Học sinh" : Number(u.adminLevel) >= 2 ? "Quản lý MAIHOC" : "Giảng viên";
     const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
     return `
       <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""} ${isSelf ? "" : "is-clickable"}"
