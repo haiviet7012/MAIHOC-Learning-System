@@ -40,14 +40,14 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
                 <input class="universal-ai-image" type="file" accept="image/png,image/jpeg,image/webp" hidden>
                 <span class="universal-ai-upload-icon">🖼️</span>
                 <strong>Chọn ảnh đề bài</strong>
-                <span class="solver-help">PNG, JPG, WebP · tối đa 2 MB</span>
+                <span class="solver-help">PNG, JPG, WebP · tối đa 20 MB</span>
                 <span class="universal-ai-file-name" data-ai-image-name>Chưa chọn ảnh</span>
               </label>
               <label class="solver-dropzone universal-ai-upload" data-ai-pdf-zone>
                 <input class="universal-ai-pdf" type="file" accept="application/pdf,.pdf" hidden>
                 <span class="universal-ai-upload-icon">📄</span>
                 <strong>Chọn tệp PDF</strong>
-                <span class="solver-help">Tối đa 2 MB, 80 trang</span>
+                <span class="solver-help">Tối đa 20 MB, 80 trang</span>
                 <span class="universal-ai-file-name" data-ai-pdf-name>Chưa chọn tệp</span>
               </label>
             </div>
@@ -122,9 +122,9 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         imageInput.value = "";
         return;
       }
-      if (file.size > 2 * 1024 * 1024) {
+      if (file.size > 20 * 1024 * 1024) {
         errorBox.hidden = false;
-        errorBox.textContent = "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2 MB.";
+        errorBox.textContent = "Ảnh quá lớn. Vui lòng chọn ảnh tối đa 20 MB.";
         imageInput.value = "";
         return;
       }
@@ -144,9 +144,9 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         pdfInput.value = "";
         return;
       }
-      if (file.size > 8 * 1024 * 1024) {
+      if (file.size > 20 * 1024 * 1024) {
         errorBox.hidden = false;
-        errorBox.textContent = "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 2 MB.";
+        errorBox.textContent = "PDF quá lớn. Vui lòng chọn tệp tối đa 20 MB.";
         pdfInput.value = "";
         return;
       }
@@ -200,25 +200,16 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
       cancel.hidden = false;
       activeController = new AbortController();
       try {
-        const payload = {
-          prompt: text,
-          subject: container.querySelector(".universal-ai-subject").value,
-          mode,
-          image: selectedImage ? {
-            mimeType: selectedImage.type,
-            data: await readAsBase64(selectedImage)
-          } : null,
-          file: selectedFile ? {
-            name: selectedFile.name,
-            mimeType: "application/pdf",
-            data: await readAsBase64(selectedFile)
-          } : null
-        };
+        const payload = new FormData();
+        payload.set("prompt", text);
+        payload.set("subject", container.querySelector(".universal-ai-subject").value);
+        payload.set("mode", mode);
+        if (selectedImage) payload.set("image", selectedImage, selectedImage.name);
+        if (selectedFile) payload.set("file", selectedFile, selectedFile.name);
         const response = await fetch("/api/ai/solve", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify(payload),
+          body: payload,
           signal: activeController.signal
         });
         const result = await response.json().catch(() => ({}));
@@ -226,8 +217,13 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         if (destroyed) return;
         container.querySelector("[data-ai-meta]").textContent =
           `${result.solution.subject} · ${mode === "quick" ? "Giải nhanh" : "Giải chi tiết"} · ${result.solution.modelUsed}`;
-        container.querySelector("[data-ai-answer]").textContent = result.solution.answer || "AI chưa trả về nội dung lời giải.";
+        const answerNode = container.querySelector("[data-ai-answer]");
+        answerNode.innerHTML = escapeHTML(result.solution.answer || "AI chưa trả về nội dung lời giải.").replace(/\r?\n/g, "<br>");
         answer.hidden = false;
+        if (window.MathJax?.typesetPromise) {
+          try { await window.MathJax.typesetPromise([answerNode]); }
+          catch (mathError) { console.warn("MathJax could not typeset AI answer:", mathError); }
+        }
       } catch (err) {
         if (destroyed) return;
         if (err.name === "AbortError") {

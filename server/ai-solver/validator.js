@@ -1,6 +1,7 @@
 const MAX_PROMPT_LENGTH = 12000;
-// Keep one uploaded image/PDF comfortably under express.json({ limit: "4mb" }).
-const MAX_FILE_BASE64_LENGTH = 3 * 1024 * 1024;
+// Base64 expands binary uploads by roughly 4/3; enforce the 20 MB binary limit as well.
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BASE64_LENGTH = Math.ceil(MAX_FILE_BYTES * 4 / 3) + 16;
 const ALLOWED_SUBJECTS = new Set([
   "Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học",
   "Đề thi THPT quốc gia", "IELTS"
@@ -41,8 +42,8 @@ export function validateUniversalSolveRequest(body) {
     if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
       return { valid: false, error: "Ảnh phải ở định dạng PNG, JPG hoặc WebP." };
     }
-    if (!data || data.length > MAX_FILE_BASE64_LENGTH) {
-      return { valid: false, error: "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2 MB." };
+    if (!data || data.length > MAX_FILE_BASE64_LENGTH || Math.floor(data.length * 3 / 4) > MAX_FILE_BYTES) {
+      return { valid: false, error: "Ảnh quá lớn. Vui lòng chọn ảnh tối đa 20 MB." };
     }
     validatedImage = { mimeType: mimeType === "image/jpg" ? "image/jpeg" : mimeType, data };
   }
@@ -53,8 +54,8 @@ export function validateUniversalSolveRequest(body) {
     if (!ALLOWED_PDF_TYPES.has(mimeType) && !name.toLowerCase().endsWith(".pdf")) {
       return { valid: false, error: "Chỉ hỗ trợ tệp PDF." };
     }
-    if (!data || data.length > MAX_FILE_BASE64_LENGTH) {
-      return { valid: false, error: "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 2 MB." };
+    if (!data || data.length > MAX_FILE_BASE64_LENGTH || Math.floor(data.length * 3 / 4) > MAX_FILE_BYTES) {
+      return { valid: false, error: "PDF quá lớn. Vui lòng chọn tệp tối đa 20 MB." };
     }
     validatedPdf = { mimeType: "application/pdf", name, data };
   }

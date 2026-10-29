@@ -14,8 +14,8 @@ const SUBJECT_GUIDANCE = {
 
 async function extractPdfText(file) {
   const data = Buffer.from(file.data, "base64");
-  if (data.length > 8 * 1024 * 1024) {
-    const error = new Error("PDF vượt quá dung lượng 8 MB.");
+  if (data.length > 20 * 1024 * 1024) {
+    const error = new Error("PDF vượt quá dung lượng 20 MB.");
     error.status = 413;
     throw error;
   }
@@ -76,7 +76,7 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
     `MÔN HỌC: ${subject}`,
     `HƯỚNG DẪN CHUYÊN MÔN: ${SUBJECT_GUIDANCE[subject]}`,
     `CHẾ ĐỘ: ${mode === "quick" ? "GIẢI NHANH: nêu phương pháp cốt lõi và đáp án, giữ các bước thiết yếu để kiểm chứng." : "GIẢI CHI TIẾT: phân tích dữ kiện, giải từng bước, giải thích tại sao dùng phương pháp đó và kiểm tra kết quả."}`,
-    "Quy tắc: Không bịa dữ kiện. Nếu ảnh/PDF mờ hoặc thiếu nội dung, nói rõ phần không đọc được. Nếu đề có nhiều câu, giữ số thứ tự và giải từng câu. Dùng Markdown dễ đọc, công thức LaTeX khi phù hợp. Với câu trắc nghiệm phải ghi đáp án và giải thích ngắn. Không thêm lời chào dài dòng.",
+    "Quy tắc: Không bịa dữ kiện. Nếu ảnh/PDF mờ hoặc thiếu nội dung, nói rõ phần không đọc được. Nếu đề có nhiều câu, giữ số thứ tự và giải từng câu. Dùng Markdown dễ đọc. MỌI biểu thức toán học, phân số, số mũ/chỉ số, vector, đơn vị có ký hiệu, phương trình hóa học và công thức vật lý phải viết bằng LaTeX; dùng \\( ... \\) cho công thức trong dòng và \\[ ... \\] cho công thức riêng dòng. Hóa học dùng \\mathrm{H_2O}, \\rightarrow, \\ce{} chỉ khi MathJax mhchem được bật (ưu tiên công thức chỉ số thông thường nếu không). Tránh dùng Unicode ký hiệu làm thay thế công thức như x², H₂O, ->, <=. Với câu trắc nghiệm phải ghi đáp án và giải thích ngắn. Không thêm lời chào dài dòng.",
     image ? "Đọc cả nội dung trong ảnh đính kèm." : "",
     "ĐỀ BÀI:",
     problemText || "(Đề bài được cung cấp trong tệp/ảnh đính kèm.)"

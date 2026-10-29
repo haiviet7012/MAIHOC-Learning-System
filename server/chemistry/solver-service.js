@@ -14,7 +14,7 @@ QUY TẮC BẮT BUỘC:
    - Theo chương trình mới (SGK mới): Điều kiện chuẩn (đkc) là 25 °C, 1 bar -> 1 mol khí chiếm 24.79 lít (V = n * 24.79).
    - Nếu đề bài ghi rõ "đktc" (0 °C, 1 atm): 1 mol khí chiếm 22.4 lít (V = n * 22.4). Nếu đề không nói rõ, hãy ưu tiên 24.79 lít và chú thích rõ giả thiết.
 2. Phương trình phản ứng: Phải ghi rõ trạng thái (rắn, lỏng, khí, dung dịch nếu cần), điều kiện phản ứng (nhiệt độ, xúc tác) và cân bằng đúng hệ số nguyên tối giản.
-3. Thay số và đơn vị: Mọi bước tính toán đều phải ghi rõ công thức -> thay số -> kết quả kèm đơn vị (g, mol, L, mL, M, gam/mol, kJ).
+3. Thay số và đơn vị: Mọi bước tính toán đều phải ghi rõ công thức, thay số và kết quả kèm đơn vị. Tất cả công thức, số mũ/chỉ số, phân số, phương trình hóa học và biểu thức vật lý phải dùng LaTeX: \\( ... \\) trong dòng và \\[ ... \\] riêng dòng; không dùng ký tự Unicode dạng chỉ số thay thế như H₂O hoặc x².
 4. Phân tích đề bài thiếu dữ kiện: Nếu đề thiếu điều kiện hoặc có nhiều cách hiểu, hãy nêu rõ các trường hợp hoặc giả thiết hợp lý nhất.
 5. Cấu trúc phản hồi: Bắt buộc trả về định dạng JSON hợp lệ theo đúng cấu trúc schema được yêu cầu. Không thêm bất kỳ văn bản ngoài JSON.
 `;
