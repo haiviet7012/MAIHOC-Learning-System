@@ -420,10 +420,22 @@ export async function queryTeacherTestScores({
   subject = "",
   grade = "",
   testId = "",
-  gradingStatus = ""
+  gradingStatus = "",
+  allowedTestIds
 } = {}) {
   const clauses = ["category = 'test'"];
   const params = [];
+
+  // An explicit list is a server-enforced ownership scope. An empty list means
+  // this instructor has no tests, so it must not fall back to an unfiltered export.
+  if (Array.isArray(allowedTestIds)) {
+    if (!allowedTestIds.length) {
+      clauses.push("1 = 0");
+    } else {
+      clauses.push(`item_id IN (${allowedTestIds.map(() => "?").join(", ")})`);
+      params.push(...allowedTestIds.map(String));
+    }
+  }
 
   if (subject && subject !== "all") {
     clauses.push("(subject_name = ? OR subject_code = ?)");
@@ -456,14 +468,16 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
   await syncFromMainDatabase(mainDb);
   const rows = await queryTeacherTestScores(filters);
 
+  const creatorScoped = filters.createdById !== undefined && filters.createdById !== null;
   const allTests = await mainDb
     .prepare(`
       SELECT t.*, u.name AS creatorName
       FROM tests t
       LEFT JOIN users u ON u.id = t.created_by
+      ${creatorScoped ? "WHERE t.created_by = ?" : ""}
       ORDER BY t.subject ASC, CAST(t.grade AS INTEGER) ASC, t.created_at DESC
     `)
-    .all();
+    .all(...(creatorScoped ? [filters.createdById] : []));
 
   const headers = [
     "STT",
