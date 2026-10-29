@@ -975,17 +975,20 @@ export function mountStudyRooms(container, user) {
       } else if (event.type === "signal-ice") {
         const fromId = event.fromParticipantId;
         if (!fromId || !event.payload?.candidate) continue;
+
+        // The peer connection must be created first, even if this ICE event
+        // is received before the offer. ensurePeer() also fetches TURN servers.
         const knownMember = members.find(member => member.participantId === fromId);
         const peer = await ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
-        if (peer) {
-          if (!peer.pc.remoteDescription) {
-            peer.pendingIceCandidates.push(event.payload.candidate);
-          } else {
-            try {
-              await peer.pc.addIceCandidate(event.payload.candidate);
-            } catch (error) {
-              console.warn("[Study Rooms] Could not add ICE candidate:", error.message);
-            }
+        if (!peer) continue;
+
+        if (!peer.pc.remoteDescription) {
+          peer.pendingIceCandidates.push(event.payload.candidate);
+        } else {
+          try {
+            await peer.pc.addIceCandidate(event.payload.candidate);
+          } catch (error) {
+            console.warn("[Study Rooms] Could not add ICE candidate:", error.message);
           }
         }
       } else if (event.type === "room-closed") {
