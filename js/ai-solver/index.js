@@ -9,6 +9,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
   let selectedImage = null;
   let selectedImagePreviewUrl = null;
   let selectedFile = null;
+  let clipboardPasteHandler = null;
   let activeController = null;
   let destroyed = false;
 
@@ -184,7 +185,13 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
       }
       selectedFile = file;
       selectedImage = null;
+      if (selectedImagePreviewUrl) URL.revokeObjectURL(selectedImagePreviewUrl);
+      selectedImagePreviewUrl = null;
+      const preview = container.querySelector("[data-ai-image-preview]");
+      preview.removeAttribute("src");
+      preview.hidden = true;
       imageInput.value = "";
+      container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       container.querySelector("[data-ai-pdf-name]").textContent = file.name;
       container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       errorBox.hidden = true;
@@ -208,7 +215,8 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
     imageInput.addEventListener("change", () => setImage(imageInput.files?.[0]));
     pdfInput.addEventListener("change", () => setPdf(pdfInput.files?.[0]));
     // Clipboard paste works without clipboard-read permission because it handles the user's paste gesture.
-    container.addEventListener("paste", handleClipboardPaste);
+    clipboardPasteHandler = handleClipboardPaste;
+    container.addEventListener("paste", clipboardPasteHandler);
 
     modeButtons.forEach(button => button.addEventListener("click", () => {
       mode = button.dataset.aiMode;
@@ -337,7 +345,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
     activeController?.abort();
     if (selectedImagePreviewUrl) URL.revokeObjectURL(selectedImagePreviewUrl);
     selectedImagePreviewUrl = null;
-    container.removeEventListener("paste", handleClipboardPaste);
+    if (clipboardPasteHandler) container.removeEventListener("paste", clipboardPasteHandler);
     container.innerHTML = "";
   };
 }
