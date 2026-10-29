@@ -193,7 +193,6 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
       imageInput.value = "";
       container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       container.querySelector("[data-ai-pdf-name]").textContent = file.name;
-      container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       errorBox.hidden = true;
     }
 
