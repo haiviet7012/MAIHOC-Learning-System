@@ -1,6 +1,6 @@
 # SQLite to PostgreSQL data import (MAI HỌC)
 
-This is an operator-run import, not an automatic application database switch. The current app still uses SQLite APIs. Do not point Render web traffic at PostgreSQL until the application runtime has been migrated and tested.
+This is an operator-run import, not an automatic application database switch. The staged cutover branch moves authentication/account/session/email-verification storage to PostgreSQL when `MAIHOC_AUTH_BACKEND=postgres` is explicitly enabled. The rest of the application (documents, tests, submissions, grading, notifications, learning history and chat data) still runs through SQLite. See [the migration overview](README.md) for exact scope and rollout steps.
 
 ## Before running
 
@@ -57,7 +57,7 @@ Check the reported PostgreSQL database name. Ensure the target is the intended R
 
 ## Apply import
 
-**Recommended sequence:** until a separate application-runtime PR has been merged and is ready to deploy, run only the dry run. If you import now while the site still writes to SQLite, the PostgreSQL copy will immediately become stale. Apply the import during the cutover window, after pausing writes and confirming the runtime migration is ready.
+**Recommended sequence:** review and prepare the staged PostgreSQL auth/account cutover PR first. Apply the import during the maintenance/cutover window, after pausing web writes and immediately before deploying the compatible runtime with `MAIHOC_AUTH_BACKEND=postgres`. If you import but continue to write new account data only to SQLite, the PostgreSQL account copy will become stale.
 
 Only after the dry-run report is correct and both SQLite files are backed up, run using the exact database name shown in the report. For a database called maihoc:
 
@@ -76,8 +76,8 @@ Run these queries in the Render PostgreSQL SQL console:
     SELECT COUNT(*) AS learning_results FROM learning_results;
     SELECT COUNT(*) AS result_subjects FROM subjects_catalog;
 
-Verify only admin ID 1 remains and compare counts with the dry-run report. Keep the SQLite files and backups.
+Verify only admin ID 1 remains and compare counts with the dry-run report. Then run `npm run check:postgres-auth` for the required auth-table/duplicate-email check. Keep the SQLite files and backups.
 
 ## Important limitation
 
-This is only the data/schema import step. server.js, auth.js, chat.js, and the tests module still use SQLite-specific synchronous APIs. A separate runtime migration must convert those repositories/routes to PostgreSQL async calls, then test login, uploads, tests, grading, notifications, chat, and progress. Do not deploy the current SQLite runtime against the imported PostgreSQL schema.
+This import plus the staged cutover branch makes PostgreSQL authoritative only for account/session/email-verification operations. Other business tables remain SQLite-backed at runtime, and several legacy modules read SQLite compatibility mirrors. Do not consider the whole site migrated to PostgreSQL. Verify registration/login/logout, password reset, admin account management, online presence and Socket.IO auth after deployment; test existing upload, test, grading, notification, chat-history and progress behavior separately.
