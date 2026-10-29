@@ -130,3 +130,14 @@ test("cleanup refuses to run if other user accounts exist", () => {
     results.close();
   }
 });
+
+test("cleanup only permits the designated admin ID 1", () => {
+  const main = createMainDb();
+  const results = createResultsDb();
+  try {
+    assert.throws(() => buildPersonalHistoryReport(main, results, 2), /admin ID 1/);
+  } finally {
+    main.close();
+    results.close();
+  }
+});
