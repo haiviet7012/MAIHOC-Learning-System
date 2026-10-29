@@ -335,6 +335,19 @@ export function installTestsModule({
       CREATE INDEX IF NOT EXISTS test_submissions_test_user_idx ON test_submissions(test_id, user_id, id DESC);
       CREATE INDEX IF NOT EXISTS test_submissions_status_idx ON test_submissions(grading_status, submitted_at DESC);
     `);
+    // Backfill legacy tests from their document uploader when the explicit creator was not recorded.
+    // Built-in samples have no uploader and remain unassigned; students still see all tests.
+    await db.prepare(`
+      UPDATE tests
+      SET created_by = (
+        SELECT d.uploaded_by FROM documents d WHERE d.id = tests.document_id
+      )
+      WHERE created_by IS NULL
+        AND EXISTS (
+          SELECT 1 FROM documents d
+          WHERE d.id = tests.document_id AND d.uploaded_by IS NOT NULL
+        )
+    `).run();
   }
 
   async function seedInitialSampleTests() {
