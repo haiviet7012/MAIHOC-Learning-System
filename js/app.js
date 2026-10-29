@@ -624,6 +624,33 @@ function accountCenterPage() {
     `;
 }
 
+function formatAdminCreatedAt(value) {
+    if (value === null || value === undefined || value === "") return "—";
+
+    let date;
+    if (value instanceof Date) {
+        date = value;
+    } else if (typeof value === "number" || /^\d{10,13}$/.test(String(value).trim())) {
+        const timestamp = Number(value);
+        date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+    } else {
+        const raw = String(value).trim();
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+        const normalized = raw.includes(" ") ? raw.replace(" ", "T") : raw;
+        date = new Date(
+            !hasTimezone && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)
+                ? normalized + "Z"
+                : normalized
+        );
+    }
+
+    if (!date || !Number.isFinite(date.getTime())) return "—";
+    return date.toLocaleString("vi-VN", {
+        dateStyle: "short",
+        timeStyle: "short"
+    });
+}
+
 function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
@@ -636,7 +663,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     $("#admin-user-total").textContent = String(payload.total ?? payload.users?.length ?? 0);
     status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
     const rows = (payload.users || []).map(u => {
-      const created = u.createdAt ? new Date(u.createdAt.replace(" ", "T") + "Z").toLocaleString("vi-VN") : "—";
+      const created = formatAdminCreatedAt(u.createdAt);
       const roleLabel = u.role !== "admin" ? "User" : Number(u.adminLevel) >= 2 ? "Admin cao nhất" : "Admin cấp dưới";
       const canRequestDelete = Number(u.id)!==Number(payload.currentUserId) && Number(u.adminLevel)<2;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
