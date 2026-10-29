@@ -39,6 +39,9 @@ jobs:
       - name: Check runtime JavaScript syntax
         working-directory: server
         run: npm run test:syntax
+      - name: Test auth runtime guardrails
+        working-directory: server
+        run: npm run test:auth-runtime
       - name: Test SQLite to PostgreSQL conversion helpers
         working-directory: server
         run: npm run test:postgres-import
