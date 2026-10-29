@@ -619,7 +619,7 @@ async function loadAccountAiHistory() {
   if (!list || !activeUser || activeUser.role === "admin") return;
   list.setAttribute("aria-busy", "true");
   try {
-    const data = await request("/api/ai/history?limit=300");
+    const data = await request("/api/ai/history");
     if (!$("#account-ai-history-list")) return;
     const items = Array.isArray(data.items) ? data.items : [];
     if (summary) summary.textContent = items.length
