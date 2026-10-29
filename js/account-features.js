@@ -333,6 +333,11 @@ document.addEventListener("click", async event => {
     toastNotice("Đã cập nhật tiến trình học tập.");
     return;
   }
+  if (event.target.closest("[data-ai-history-refresh]")) {
+    await loadAccountAiHistory();
+    toastNotice("Đã cập nhật lịch sử giải bài AI.");
+    return;
+  }
   if (
     event.target.closest("#online-dashboard-collapse") ||
     event.target.closest("#online-dashboard-launcher")
@@ -604,6 +609,100 @@ async function loadAccountCenterProgress() {
   } catch (error) {
     if ($("#account-progress-list")) {
       $("#account-progress-list").innerHTML = `<p class="auth-error">${esc(error.message || "Không tải được tiến trình học tập.")}</p>`;
+    }
+  }
+}
+
+async function loadAccountAiHistory() {
+  const list = $("#account-ai-history-list");
+  const summary = $("#account-ai-history-summary");
+  if (!list || !activeUser || activeUser.role === "admin") return;
+  list.setAttribute("aria-busy", "true");
+  try {
+    const data = await request("/api/ai/history?limit=300");
+    if (!$("#account-ai-history-list")) return;
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (summary) summary.textContent = items.length
+      ? `${items.length} lời giải đã lưu · mới nhất ở đầu danh sách`
+      : "Chưa có lời giải AI nào được lưu cho tài khoản này.";
+    if (!items.length) {
+      list.innerHTML = '<div class="account-ai-history-empty"><span aria-hidden="true">✦</span><p class="muted">Khi bạn giải bài bằng AI trong lúc đăng nhập, lời giải sẽ được lưu tại đây để mở lại sau.</p></div>';
+      return;
+    }
+    const sourceLabels = { text: "Nhập văn bản", image: "Ảnh đề bài", pdf: "Tệp PDF" };
+    list.innerHTML = items.map((item, index) => {
+      const mode = item.mode === "quick" || item.mode === "concise" ? "Giải nhanh" : item.mode === "hint" ? "Gợi ý phương pháp" : "Giải chi tiết";
+      return `
+        <article class="account-ai-history-row" data-ai-history-row="${esc(item.id)}">
+          <div class="account-ai-history-main">
+            <div class="account-ai-history-title-line">
+              <span class="account-ai-history-index">${index + 1}</span>
+              <strong title="${esc(item.title || "Bài tập AI")}">${esc(item.title || "Bài tập AI")}</strong>
+            </div>
+            <div class="account-ai-history-meta">
+              <span>${esc(item.subject || "Môn học")}</span>
+              <span>${esc(mode)}</span>
+              <span>${esc(sourceLabels[item.source] || "Đề bài")}</span>
+            </div>
+          </div>
+          <time class="account-ai-history-date">${esc(formatVietnameseDate(item.createdAt))}</time>
+          <a class="button secondary small account-ai-history-open" href="#ai-solution-history-dialog" data-ai-history-open="${esc(item.id)}">Mở lời giải <span aria-hidden="true">↗</span></a>
+        </article>`;
+    }).join("");
+  } catch (error) {
+    if (list) list.innerHTML = `<p class="auth-error">${esc(error.message || "Không tải được lịch sử giải bài AI.")}</p>`;
+    if (summary) summary.textContent = "Không thể đồng bộ lịch sử.";
+  } finally {
+    if ($("#account-ai-history-list")) list.removeAttribute("aria-busy");
+  }
+}
+
+async function openSavedAiSolution(historyId) {
+  const dialog = $("#ai-solution-history-dialog");
+  const title = $("#ai-history-dialog-title");
+  const meta = $("#ai-history-dialog-meta");
+  const prompt = $("#ai-history-dialog-prompt");
+  const answer = $("#ai-history-dialog-answer");
+  const status = $("#ai-history-dialog-status");
+  if (!dialog || !answer) return;
+  if (window.MathJax?.typesetClear) window.MathJax.typesetClear([answer]);
+  if (title) title.textContent = "Đang tải lời giải…";
+  if (meta) meta.textContent = "";
+  if (prompt) prompt.textContent = "";
+  if (answer) answer.textContent = "";
+  if (status) {
+    status.hidden = false;
+    status.textContent = "Đang lấy lời giải đã lưu…";
+    status.className = "muted ai-history-dialog-status";
+  }
+  if (!dialog.open) dialog.showModal();
+  try {
+    const data = await request("/api/ai/history/" + encodeURIComponent(historyId));
+    if (title) title.textContent = data.title || "Lời giải AI";
+    if (meta) meta.textContent = [
+      data.subject || "Môn học",
+      data.mode === "quick" || data.mode === "concise" ? "Giải nhanh" : data.mode === "hint" ? "Gợi ý phương pháp" : "Giải chi tiết",
+      formatVietnameseDate(data.createdAt),
+      data.modelUsed || ""
+    ].filter(Boolean).join(" · ");
+    if (prompt) {
+      prompt.textContent = data.promptPreview || "Đề bài được gửi qua tệp đính kèm.";
+      prompt.hidden = !data.promptPreview;
+    }
+    const answerText = typeof data.solution?.answer === "string"
+      ? data.solution.answer
+      : (data.solution ? JSON.stringify(data.solution, null, 2) : "Không có nội dung lời giải.");
+    answer.innerHTML = esc(answerText).replace(/\r?\n/g, "<br>");
+    if (status) status.hidden = true;
+    if (window.MathJax?.typesetPromise) {
+      try { await window.MathJax.typesetPromise([answer]); }
+      catch (mathError) { console.warn("[AI history] MathJax rendering failed:", mathError); }
+    }
+  } catch (error) {
+    if (status) {
+      status.hidden = false;
+      status.textContent = error.message || "Không thể mở lời giải đã lưu.";
+      status.className = "auth-error ai-history-dialog-status";
     }
   }
 }
@@ -1350,6 +1449,16 @@ window.addEventListener("maihoc-auth-changed",loadUser);
 window.addEventListener("maihoc-account-center-open", () => {
   if (activeUser?.role === "admin") return;
   loadAccountCenterProgress();
+  loadAccountAiHistory();
+});
+window.addEventListener("maihoc-ai-solution-saved", () => {
+  if ($("#account-ai-history-list") && activeUser?.role !== "admin") loadAccountAiHistory();
+});
+document.addEventListener("click", async event => {
+  const link = event.target.closest("[data-ai-history-open]");
+  if (!link) return;
+  event.preventDefault();
+  await openSavedAiSolution(link.dataset.aiHistoryOpen);
 });
 window.addEventListener("maihoc-route-changed", event => {
   const route = event.detail?.route || "home";
@@ -1382,6 +1491,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshOnlineDashboard();
     if ($("#account-progress-list") && activeUser && activeUser.role !== "admin") loadAccountCenterProgress();
+    if ($("#account-ai-history-list") && activeUser && activeUser.role !== "admin") loadAccountAiHistory();
   }
 });
 
