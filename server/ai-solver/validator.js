@@ -1,5 +1,5 @@
-const MAX_PROMPT_LENGTH = 18000;
-const MAX_FILE_BASE64_LENGTH = 12 * 1024 * 1024;
+const MAX_PROMPT_LENGTH = 12000;
+const MAX_FILE_BASE64_LENGTH = 11 * 1024 * 1024;
 const ALLOWED_SUBJECTS = new Set([
   "Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học",
   "Đề thi THPT quốc gia", "IELTS"
