@@ -961,3 +961,4 @@ export async function initPostgresSchema(targetDb = db) {
     return schemaInitPromise;
   }
   return runInit();
+}
