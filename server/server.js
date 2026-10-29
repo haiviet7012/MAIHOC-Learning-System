@@ -1103,8 +1103,17 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
     .all();
   const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
   const total = Number(totalRow?.count || 0);
+  const formattedUsers = users.map(user => {
+    const publicAccount = publicUser(user);
+    const createdAt = user.created_at ?? user.createdAt ?? null;
+    return {
+      ...publicAccount,
+      createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
+    };
+  });
+  res.setHeader("Cache-Control", "private, no-store");
   res.json({
-    users: users.map(publicUser),
+    users: formattedUsers,
     total,
     currentUserId: req.user.id,
     isSuperAdmin: Number(req.user.adminLevel) >= 2
