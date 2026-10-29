@@ -18,8 +18,8 @@ import {
     wireTestsEvents,
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
-import { mountChemistryModule } from "./chemistry/index.js";
-import { mountUniversalAiSolver } from "./ai-solver/index.js";
+import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
+import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029aihistory1";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
