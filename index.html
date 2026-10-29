@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="css/styles.css?v=20261029v3">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="css/tests.css?v=20261029v1">
-  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/chat.css?v=20261030v1">
   <link rel="stylesheet" href="js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
   <link rel="stylesheet" href="js/chemistry/ai-solver/solver.css?v=20261029v8">
   <link rel="stylesheet" href="js/ai-solver/solver.css?v=20261029v4">
@@ -224,8 +224,8 @@
       <p class="muted">Tài khoản mới mặc định là User. Quyền Admin chỉ được cấp qua cấu hình quản trị phía máy chủ.</p>
       <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
       <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
-      <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
-      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+      <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="Ít nhất 8 ký tự"></label>
+      <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
       <p id="register-error" class="auth-error" role="alert" hidden></p>
       <div class="modal-actions"><button class="button secondary" type="button" data-close="register-dialog">Hủy</button><button class="button primary" type="submit">Tạo tài khoản</button></div>
       <p class="tiny muted"><button class="text-button" data-open-forgot-password type="button">Quên mật khẩu?</button> · Đã có tài khoản? <button class="text-button" id="switch-to-login" type="button">Đăng nhập</button></p>
@@ -260,8 +260,8 @@
       <div id="verify-dev-code-box" class="verify-dev-code-box" hidden></div>
       <label>Mã xác minh<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required minlength="6" maxlength="6" placeholder="6 chữ số"></label>
       <div id="verify-password-fields" class="verify-password-fields">
-        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Ít nhất 10 ký tự"></label>
-        <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
+        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Ít nhất 8 ký tự"></label>
+        <label>Nhập lại mật khẩu<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Nhập lại mật khẩu"></label>
       </div>
       <p id="reset-password-error" class="auth-error" role="alert" hidden></p>
       <p id="reset-password-status" class="muted" role="status" hidden></p>
@@ -416,8 +416,16 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=20261030v1"></script>
+<<<<<<< HEAD
+
+  <script type="module" src="js/app.js?v=20261030v2"></script>
+
+
+
+=======
+  <script type="module" src="js/app.js?v=20261030testowner1"></script>
+>>>>>>> bf60022f27e1aef45b73da7274d6357e2c792033
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="js/chat.js"></script>
+  <script type="module" src="js/chat.js?v=20261030v1"></script>
 </body>
 </html>

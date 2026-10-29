@@ -20,12 +20,20 @@ jobs:
         run: |
           node --check server/server.js
           node --check server/auth.js
+          node --check server/postgres.js
           node --check server/check-postgres-auth.js
           node --check server/tests-module/index.js
+          node --check server/tests-module/results-db.js
           node --check server/study-rooms/server.js
           node --check server/grading/engine.js
           node --test tests/grading-config.test.js
       - name: Check browser modules
         run: |
           node --input-type=module --check < js/app.js
+          node --input-type=module --check < js/account-features.js
+          node --input-type=module --check < dist/js/app.js
+          node --input-type=module --check < dist/js/account-features.js
+          node --input-type=module --check < study-rooms/client.js
+          node --input-type=module --check < js/tests/index.js
+          node --input-type=module --check < dist/js/tests/index.js
           node --input-type=module --check < study-rooms/client.js

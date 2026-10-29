@@ -9,7 +9,7 @@ import {
 import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
-import "./account-features.js?v=20261029aihistory1";
+import "./account-features.js?v=20261030docs3";
 import { mountStudyRooms } from "../study-rooms/client.js";
 import {
     refreshTestsQueue,
@@ -591,15 +591,15 @@ function accountCenterPage() {
         <section class="account-section card">
           <span class="pill">MẬT KHẨU</span>
           <h3>Đổi mật khẩu tài khoản</h3>
-          <p class="muted">Nhập mật khẩu mới (tối thiểu 10 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+          <p class="muted">Nhập mật khẩu mới (tối thiểu 8 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
           <form id="account-change-password-form" class="account-form">
             <label>
               Mật khẩu mới
-              <input name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 10 ký tự">
+              <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 8 ký tự">
             </label>
             <label>
               Nhập lại mật khẩu mới
-              <input name="confirmPassword" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
+              <input name="confirmPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
             </label>
             <p class="auth-error" id="account-password-error" hidden></p>
             <div class="account-form-actions">
@@ -624,6 +624,33 @@ function accountCenterPage() {
     `;
 }
 
+function formatAdminCreatedAt(value) {
+    if (value === null || value === undefined || value === "") return "—";
+
+    let date;
+    if (value instanceof Date) {
+        date = value;
+    } else if (typeof value === "number" || /^\d{10,13}$/.test(String(value).trim())) {
+        const timestamp = Number(value);
+        date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+    } else {
+        const raw = String(value).trim();
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+        const normalized = raw.includes(" ") ? raw.replace(" ", "T") : raw;
+        date = new Date(
+            !hasTimezone && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)
+                ? normalized + "Z"
+                : normalized
+        );
+    }
+
+    if (!date || !Number.isFinite(date.getTime())) return "—";
+    return date.toLocaleString("vi-VN", {
+        dateStyle: "short",
+        timeStyle: "short"
+    });
+}
+
 function adminPage() { return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>2 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
@@ -636,14 +663,14 @@ async function loadAdminUsers() { if (state.route !== "admin")
     $("#admin-user-total").textContent = String(payload.total ?? payload.users?.length ?? 0);
     status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
     const rows = (payload.users || []).map(u => {
-      const created = u.createdAt ? new Date(u.createdAt.replace(" ", "T") + "Z").toLocaleString("vi-VN") : "—";
+      const created = formatAdminCreatedAt(u.createdAt);
       const roleLabel = u.role !== "admin" ? "User" : Number(u.adminLevel) >= 2 ? "Admin cao nhất" : "Admin cấp dưới";
       const canRequestDelete = Number(u.id)!==Number(payload.currentUserId) && Number(u.adminLevel)<2;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
     let extra = "";
     if(payload.isSuperAdmin){
-      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Admin</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
+      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Admin</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
     container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
@@ -676,7 +703,7 @@ function render() {
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
-    view.classList.toggle("chemistry-workspace", state.route === "chemistry" || (state.route === "subject" && state.subject === "Hóa học"));
+    view.classList.toggle("chemistry-workspace", state.route === "chemistry");
     view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);

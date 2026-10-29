@@ -44,13 +44,21 @@ function writeCookie(res, token, maxAgeSeconds) {
 
 export function publicUser(user) {
   if (!user) return null;
+  const rawCreatedAt = user.created_at ?? user.createdAt ?? user.created_at_ms ?? null;
+  let createdAt = rawCreatedAt;
+  if (typeof rawCreatedAt === "number" || /^\\d{10,13}$/.test(String(rawCreatedAt ?? "").trim())) {
+    const timestamp = Number(rawCreatedAt);
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      createdAt = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp).toISOString();
+    }
+  }
   return {
     id: Number(user.id),
     name: user.name,
     email: user.email,
     role: user.role,
-    adminLevel: Number(user.admin_level || 0),
-    createdAt: user.created_at
+    adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
+    createdAt
   };
 }
 
@@ -94,8 +102,8 @@ export async function registerUser({ name, email, password }) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail) || safeEmail.length > 254) {
     throw new Error("Email không hợp lệ.");
   }
-  if (secret.length < 10 || secret.length > 128) {
-    throw new Error("Mật khẩu cần từ 10 đến 128 ký tự.");
+  if (secret.length < 8 || secret.length > 128) {
+    throw new Error("Mật khẩu cần từ 8 đến 128 ký tự.");
   }
   const passwordHash = await hashPassword(secret);
   try {
@@ -231,7 +239,7 @@ export async function createInitialAdmin() {
   const name = String(process.env.ADMIN_NAME || "MAI HỌC Admin").trim();
   if (!email && !password) return;
   if (!email || !password) throw new Error("Cần cấu hình cả ADMIN_EMAIL và ADMIN_PASSWORD để tạo Admin ban đầu.");
-  if (password.length < 12) throw new Error("ADMIN_PASSWORD cần có ít nhất 12 ký tự.");
+  if (password.length < 8) throw new Error("ADMIN_PASSWORD cần có ít nhất 8 ký tự.");
   const existing = await db.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE").get(email);
   if (existing) {
     await db.prepare("UPDATE users SET role='admin', admin_level=2 WHERE id=?").run(existing.id);

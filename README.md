@@ -24,7 +24,7 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 *Developer*
 
 **Nguyễn Đức Hải - FPTU HN**  
-*Developer Assistant*
+*Developer*
 
 **Nguyễn Xuân Hoàng - FPTU HN**  
 *Developer*
@@ -38,6 +38,15 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 
 **Đỗ Gia Bách - UL-VNU**  
 *Sales Manager*
+
+### 🐶 Mascot - KOL
+
+
+**Nguyễn Mạnh Cường - HUST**  
+*Mascot + KOL*
+
+**Đỗ Ngọc Minh - HUST**  
+*KOL*
 
 
 <div align="center">

@@ -14,68 +14,94 @@
   bottom: 24px;
   right: 24px;
   z-index: 990;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 48px;
+  max-height: 48px;
+  padding: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   background: var(--primary);
   color: #ffffff;
   border: 1px solid var(--primary-2, var(--primary));
-  border-radius: 999px;
-  padding: 12px 18px;
-  font-weight: 600;
-  font-size: 14px;
+  border-radius: 50% !important;
   box-shadow: 0 10px 25px rgba(18, 59, 112, 0.28);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, background 0.2s ease;
   user-select: none;
+  box-sizing: border-box;
 }
 
 :root.dark .chat-launcher {
   background: var(--accent);
   color: #07111e;
+  border-color: var(--accent);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 .chat-launcher:hover {
-  transform: translateY(-2px) scale(1.02);
+  transform: translateY(-2px) scale(1.05);
   box-shadow: 0 14px 32px rgba(18, 59, 112, 0.35);
 }
 
+:root.dark .chat-launcher:hover {
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6);
+}
+
 .chat-launcher:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.96);
+}
+
+.chat-launcher:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .chat-launcher-icon {
-  font-size: 18px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .chat-launcher-text {
-  letter-spacing: 0.02em;
+  display: none !important;
 }
 
 /* Unread Badge */
 .chat-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px !important;
   background: var(--danger, #d83242);
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 2px 6px rgba(216, 50, 66, 0.4);
+  border: 2px solid var(--surface, #ffffff);
+  pointer-events: none;
+  z-index: 1;
+  box-sizing: border-box;
 }
 
 :root.dark .chat-unread-badge {
   background: #ff5263;
   color: #ffffff;
+  border-color: var(--surface, #111b2a);
 }
 
 /* Floating Chat Window */
@@ -659,11 +685,13 @@
   .chat-launcher {
     bottom: 16px;
     right: 16px;
-    padding: 10px 14px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
   }
   
   .chat-launcher-text {
-    display: none;
+    display: none !important;
   }
   
   .chat-window {
@@ -681,4 +709,3 @@
     bottom: 74px;
   }
 }
-

@@ -46,7 +46,7 @@ import {
 } from "./auth.js";
 
 const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__earlyDir, ".env") });
+dotenv.config({ path: path.join(__earlyDir, ".env"), override: true });
 dotenv.config({ path: path.resolve(__earlyDir, "..", ".env") });
 dotenv.config();
 
@@ -811,8 +811,8 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
     const code = String(req.body?.code || "").trim();
     const password = String(req.body?.password || "");
     if (!email) return res.status(400).json({ error: "Thiếu địa chỉ email cần đặt lại mật khẩu." });
-    if (password.length < 10 || password.length > 128) {
-      return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: "Mật khẩu mới cần có từ 8 đến 128 ký tự." });
     }
     const user = await db.prepare("SELECT id,name,email FROM users WHERE email=? COLLATE NOCASE").get(email);
     if (!user) {
@@ -965,8 +965,8 @@ app.post(
     try {
       const code = String(req.body?.code || "").trim();
       const password = String(req.body?.password || "");
-      if (password.length < 10 || password.length > 128) {
-        return res.status(400).json({ error: "Mật khẩu mới cần có từ 10 đến 128 ký tự." });
+      if (password.length < 8 || password.length > 128) {
+        return res.status(400).json({ error: "Mật khẩu mới cần có từ 8 đến 128 ký tự." });
       }
       await consumeVerificationCode({
         userId: req.user.id,
@@ -1103,8 +1103,17 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
     .all();
   const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
   const total = Number(totalRow?.count || 0);
+  const formattedUsers = users.map(user => {
+    const publicAccount = publicUser(user);
+    const createdAt = user.created_at ?? user.createdAt ?? null;
+    return {
+      ...publicAccount,
+      createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
+    };
+  });
+  res.setHeader("Cache-Control", "private, no-store");
   res.json({
-    users: users.map(publicUser),
+    users: formattedUsers,
     total,
     currentUserId: req.user.id,
     isSuperAdmin: Number(req.user.adminLevel) >= 2
@@ -1159,10 +1168,10 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   if (name.length < 2 || name.length > 80) {
     return res.status(400).json({ error: "Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự." });
   }
-  if (password.length < 12 || password.length > 128) {
+  if (password.length < 8 || password.length > 128) {
     return res
       .status(400)
-      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 12 đến 128 ký tự." });
+      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
   }
   const passwordHash = await hashPassword(password);
   let result;
@@ -1361,11 +1370,35 @@ app.delete("/api/notifications", requireSameOrigin, requireAuth, async (req, res
 });
 
 app.get("/api/admin/progress", requireAdmin, async (req, res) => {
+  const subordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
-    .prepare(
-      "SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,CASE WHEN p.item_type IN ('exam','test') THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId,CASE WHEN p.item_type='test' THEN (SELECT ts.id FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS testSubmissionId,CASE WHEN p.item_type='test' THEN (SELECT ts.grading_status FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS gradingStatus FROM user_progress p JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 300"
-    )
-    .all();
+    .prepare(`
+      SELECT p.id,u.name AS userName,u.email AS userEmail,p.item_type AS itemType,
+        p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,
+        p.progress_percent AS progressPercent,p.score,p.updated_at AS updatedAt,
+        CASE WHEN p.item_type IN ('exam','test') THEN (
+          SELECT a.id FROM exam_attempts a
+          WHERE a.user_id=p.user_id AND a.document_id=p.item_id
+          ORDER BY a.id DESC LIMIT 1
+        ) ELSE NULL END AS latestAttemptId,
+        CASE WHEN p.item_type='test' THEN (
+          SELECT ts.id FROM test_submissions ts
+          WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id
+          ORDER BY ts.id DESC LIMIT 1
+        ) ELSE NULL END AS testSubmissionId,
+        CASE WHEN p.item_type='test' THEN (
+          SELECT ts.grading_status FROM test_submissions ts
+          WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id
+          ORDER BY ts.id DESC LIMIT 1
+        ) ELSE NULL END AS gradingStatus
+      FROM user_progress p
+      JOIN users u ON u.id=p.user_id
+      LEFT JOIN tests owned_test ON owned_test.id=p.item_id AND p.item_type='test'
+      ${subordinateAdmin ? "WHERE (p.item_type <> 'test' OR owned_test.created_by = ?)" : ""}
+      ORDER BY p.updated_at DESC
+      LIMIT 300
+    `)
+    .all(...(subordinateAdmin ? [req.user.id] : []));
   res.json({ progress: rows });
 });
 
@@ -2219,19 +2252,24 @@ app.post(
 
 // -------------------- DOCUMENT LIBRARY API --------------------
 
-app.get("/api/documents", async (_req, res) => {
-  const documents = await db
-    .prepare(`
-      SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
-        d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
-      FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id ORDER BY d.uploaded_at DESC
-    `)
-    .all();
-  res.setHeader("Cache-Control", "no-store");
+app.get("/api/documents", async (req, res) => {
+  const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+  const sql = `
+    SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
+      d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
+    FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
+    ${isSubordinateAdmin ? "WHERE d.uploaded_by=?" : ""}
+    ORDER BY d.uploaded_at DESC
+  `;
+  const documents = isSubordinateAdmin
+    ? await db.prepare(sql).all(req.user.id)
+    : await db.prepare(sql).all();
+  res.setHeader("Cache-Control", "private, no-store");
   res.json(documents.map(documentResponse));
 });
 
 app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
     .prepare(`
       SELECT d.id,d.category,d.title,d.grade,d.original_name AS originalName,
@@ -2242,9 +2280,11 @@ app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
         es.error_code AS solutionErrorCode,es.error_message AS solutionErrorMessage
       FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
       LEFT JOIN exam_solutions es ON es.document_id=d.id
-      WHERE d.category IN ('theory','practice','exam','test') ORDER BY d.grade,d.title
+      WHERE d.category IN ('theory','practice','exam','test')
+        ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
+      ORDER BY d.grade,d.title
     `)
-    .all();
+    .all(...(isSubordinateAdmin ? [req.user.id] : []));
   const sections = { theory: [], practice: [], exam: [], test: [] };
   for (const row of rows) {
     sections[row.category].push({
@@ -2273,16 +2313,18 @@ app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
-      SELECT d.id,d.title,d.subject,d.category,d.original_name,ak.original_name AS referenceAnswerName,
+      SELECT d.id,d.title,d.subject,d.category,d.original_name,d.uploaded_by,ak.original_name AS referenceAnswerName,
         s.status,s.progress,s.phase,s.model,s.source_hash,s.generated_json,s.approved_json,
         s.error_code,s.error_message,s.solution_version,s.generated_at,s.approved_at
       FROM documents d LEFT JOIN exam_solutions s ON s.document_id=d.id
-      LEFT JOIN answer_keys ak ON ak.document_id=d.id WHERE d.id=?
+      LEFT JOIN answer_keys ak ON ak.document_id=d.id
+      WHERE d.id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
     `)
-    .get(String(req.params.id));
-  if (!row) return res.status(404).json({ error: "Không tìm thấy đề." });
+    .get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+  if (!row) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền xem tài liệu này." });
   let generated = null,
     approved = null;
   try {
@@ -2325,8 +2367,11 @@ app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requireAdmin, async (req, res) => {
-  const document = await db.prepare("SELECT id,category FROM documents WHERE id=?").get(String(req.params.id));
-  if (!document) return res.status(404).json({ error: "Không tìm thấy đề." });
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+  const document = await db.prepare(
+    "SELECT id,category FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+  ).get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+  if (!document) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền quản lý tài liệu này." });
   if (!["exam", "practice", "test"].includes(document.category)) {
     return res.status(400).json({ error: "Chỉ tạo lời giải cho đề ôn tập, đề thi hoặc bài kiểm tra." });
   }
@@ -2336,12 +2381,14 @@ app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requir
 
 app.post("/api/admin/documents/:id/solution/review", requireSameOrigin, requireAdmin, async (req, res) => {
   const documentId = String(req.params.id);
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
-      SELECT d.subject,d.category,s.generated_json,s.solution_version,s.source_hash
-      FROM documents d JOIN exam_solutions s ON s.document_id=d.id WHERE d.id=?
+      SELECT d.subject,d.category,d.uploaded_by,s.generated_json,s.solution_version,s.source_hash
+      FROM documents d JOIN exam_solutions s ON s.document_id=d.id
+      WHERE d.id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
     `)
-    .get(documentId);
+    .get(...(isSubordinateAdmin ? [documentId, req.user.id] : [documentId]));
   if (!row) return res.status(404).json({ error: "Chưa có tác vụ lời giải cho đề này." });
   let generated;
   try {
@@ -2538,10 +2585,11 @@ app.post(
       if (![".pdf", ".txt", ".json", ".csv", ".docx"].includes(path.extname(req.file.originalname).toLowerCase())) {
         return res.status(400).json({ error: "Invalid answer key format." });
       }
+      const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
       const doc = await db
-        .prepare("SELECT id,category,subject FROM documents WHERE id=?")
-        .get(String(req.params.id));
-      if (!doc) return res.status(404).json({ error: "Question document was not found." });
+        .prepare("SELECT id,category,subject FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : ""))
+        .get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+      if (!doc) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền quản lý tài liệu này." });
       if (!["practice", "exam", "test"].includes(doc.category)) {
         return res.status(400).json({ error: "Theory documents do not need an answer key." });
       }
@@ -2563,9 +2611,12 @@ app.post(
 
 app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, next) => {
   try {
-    const row = await db
-      .prepare("SELECT file_data,r2_key,original_name,content_type FROM answer_keys WHERE document_id=?")
-      .get(String(req.params.id));
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+    const row = await db.prepare(`
+      SELECT ak.file_data,ak.r2_key,ak.original_name,ak.content_type
+      FROM answer_keys ak JOIN documents d ON d.id=ak.document_id
+      WHERE ak.document_id=? ${isSubordinateAdmin ? "AND d.uploaded_by=?" : ""}
+    `).get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
     const bytes = row?.r2_key
       ? await getDocumentBuffer(row, "r2_key", "file_data")
       : row?.file_data
@@ -2587,8 +2638,11 @@ app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, ne
 
 app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (req, res, next) => {
   try {
-    const doc = await db.prepare("SELECT id,filename,r2_key FROM documents WHERE id=?").get(req.params.id);
-    if (!doc) return res.status(404).json({ error: "Document was not found." });
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
+    const doc = await db.prepare(
+      "SELECT id,filename,r2_key FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+    ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
+    if (!doc) return res.status(404).json({ error: "Không tìm thấy tài liệu hoặc bạn không có quyền xóa." });
     const ak = await db.prepare("SELECT r2_key FROM answer_keys WHERE document_id=?").get(doc.id);
     await db.prepare("DELETE FROM tests WHERE id=?").run(doc.id);
     try {
@@ -2613,7 +2667,10 @@ app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (r
 
 app.get("/api/documents/:id/file", async (req, res, next) => {
   try {
-    const doc = await db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);
+    const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+    const doc = await db.prepare(
+      "SELECT * FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+    ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
     if (!doc) return res.sendStatus(404);
     const bytes = await getDocumentBuffer(doc);
     if (!bytes) return res.status(410).json({ error: "File tài liệu không còn trong R2 hoặc kho cũ." });
@@ -2652,11 +2709,18 @@ app.get("/api/documents/:id/file", async (req, res, next) => {
 });
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
-    .prepare(
-      "SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,u.name AS userName,u.email AS userEmail FROM document_submissions s JOIN users u ON u.id=s.user_id WHERE s.status='pending' ORDER BY s.id ASC"
-    )
-    .all();
+    .prepare(`
+      SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
+        s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
+        u.name AS userName,u.email AS userEmail
+      FROM document_submissions s JOIN users u ON u.id=s.user_id
+      WHERE s.status='pending'
+        ${isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : ""}
+      ORDER BY s.id ASC
+    `)
+    .all(...(isSubordinateAdmin ? [req.user.id] : []));
   res.json({ submissions: rows });
 });
 
@@ -2668,10 +2732,15 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     if (!Number.isInteger(id) || !["approved", "rejected"].includes(decision)) {
       return res.status(400).json({ error: "Invalid review decision." });
     }
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const sub = await db
-      .prepare("SELECT * FROM document_submissions WHERE id=? AND status='pending'")
-      .get(id);
-    if (!sub) return res.status(404).json({ error: "Pending document was not found." });
+      .prepare(
+        "SELECT s.* FROM document_submissions s JOIN users u ON u.id=s.user_id " +
+        "WHERE s.id=? AND s.status='pending' " +
+        (isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : "")
+      )
+      .get(...(isSubordinateAdmin ? [id, req.user.id] : [id]));
+    if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
     const bytes = await getDocumentBuffer(sub, "r2_key", "file_data");
     if (decision === "approved" && !bytes) {
       return res.status(410).json({ error: "The stored document file is missing." });
