@@ -59,7 +59,7 @@ async function extractPdfContent(buffer,{includeImages=true}={}) {
   const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs");
   const canvasModule=includeImages?await import("@napi-rs/canvas"):null;
   if(canvasModule)for(const name of ["DOMMatrix","ImageData","Path2D"])if(!globalThis[name]&&canvasModule[name])globalThis[name]=canvasModule[name];
-  const task = pdfjs.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, isEvalSupported: false });
+  const task = pdfjs.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, isEvalSupported: false, verbosity: 0 });
   const pdf = await task.promise;
   const pages = [];
   const images=[];

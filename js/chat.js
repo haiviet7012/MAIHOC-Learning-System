@@ -515,7 +515,7 @@
   // ----------------------------------------------------
   async function loadGlobalMessages() {
     try {
-      const res = await fetch("/api/chat/conversations/global/messages?limit=50");
+      const res = await fetch("/api/chat/conversations/global/messages?limit=50", { credentials: "same-origin" });
       if (!res.ok) return;
       const data = await res.json();
       dom.globalMessages.innerHTML = "";
@@ -530,7 +530,7 @@
 
   async function loadConversations() {
     try {
-      const res = await fetch("/api/chat/conversations");
+      const res = await fetch("/api/chat/conversations", { credentials: "same-origin" });
       if (!res.ok) return;
       const data = await res.json();
       const list = data.conversations || [];
@@ -709,7 +709,7 @@
     // Load messages
     dom.directMessages.innerHTML = '<p class="chat-empty-hint">Đang tải tin nhắn...</p>';
     try {
-      const res = await fetch(`/api/chat/conversations/${encodeURIComponent(convId)}/messages?limit=50`);
+      const res = await fetch(`/api/chat/conversations/${encodeURIComponent(convId)}/messages?limit=50`, { credentials: "same-origin" });
       if (res.ok) {
         const data = await res.json();
         dom.directMessages.innerHTML = "";

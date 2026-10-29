@@ -234,7 +234,7 @@ async function extractPdfAnswerRows(buffer) {
   const loadingTask = pdfjs.getDocument({
     data: Uint8Array.from(buffer),
     useSystemFonts: true,
-    isEvalSupported: false
+    isEvalSupported: false, verbosity: 0
   });
   const pdf = await loadingTask.promise;
   const rows = [];
@@ -342,7 +342,7 @@ async function extractPdfOcrRows(buffer) {
   const loadingTask = pdfjs.getDocument({
     data: Uint8Array.from(buffer),
     useSystemFonts: true,
-    isEvalSupported: false
+    isEvalSupported: false, verbosity: 0
   });
   const pdf = await loadingTask.promise;
   const rows = [];

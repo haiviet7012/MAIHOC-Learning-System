@@ -62,7 +62,7 @@ async function extractRawTextFromBuffer(buffer, filename = "") {
       const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(buffer),
         useSystemFonts: true,
-        isEvalSupported: false
+        isEvalSupported: false, verbosity: 0
       });
       const pdf = await loadingTask.promise;
       const pages = [];

@@ -90,6 +90,7 @@ export async function uploadToR2({
     })
   );
 
+  console.log(`[R2] Uploaded object to bucket "${R2_BUCKET_NAME}": ${key} (${normalizedBody.byteLength} bytes)`);
   return { key, bucket: R2_BUCKET_NAME, bytes: normalizedBody.byteLength };
 }
 

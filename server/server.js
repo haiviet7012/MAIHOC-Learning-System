@@ -167,7 +167,6 @@ function assessmentConfigFor(subject,category){
 const app=express();
 app.set("trust proxy", 1);
 const server=http.createServer(app);
-setupChat(server,app);
 
 const port=Number(process.env.PORT||3000);
 
@@ -271,6 +270,8 @@ app.use((req,res,next)=>{
 app.use(express.json({limit:"4mb"}));
 
 app.use(loadCurrentUser);
+
+setupChat(server,app);
 
 // Do not expose backend source, environment files or the local account database as static assets.
 
