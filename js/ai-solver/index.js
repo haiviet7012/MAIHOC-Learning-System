@@ -7,6 +7,7 @@ const SUBJECTS = [
 
 export function mountUniversalAiSolver(container, { onNavigate, initialSubject = "Toán" } = {}) {
   let selectedImage = null;
+  let selectedImagePreviewUrl = null;
   let selectedFile = null;
   let activeController = null;
   let destroyed = false;
@@ -35,13 +36,15 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
             <label class="universal-ai-field">Nội dung đề bài
               <textarea class="solver-textarea universal-ai-prompt" maxlength="18000" placeholder="Nhập hoặc dán câu hỏi, nhiều câu hỏi hay đề bài tại đây…"></textarea>
             </label>
+            <p class="universal-ai-paste-hint muted tiny">💡 Có ảnh chụp màn hình? Bấm vào ô đề bài rồi nhấn <kbd>Ctrl</kbd> + <kbd>V</kbd> (Mac: <kbd>⌘</kbd> + <kbd>V</kbd>) để dán ảnh trực tiếp.</p>
             <div class="universal-ai-upload-grid">
               <label class="solver-dropzone universal-ai-upload" data-ai-image-zone>
                 <input class="universal-ai-image" type="file" accept="image/png,image/jpeg,image/webp" hidden>
                 <span class="universal-ai-upload-icon">🖼️</span>
-                <strong>Chọn ảnh đề bài</strong>
+                <strong>Chọn hoặc dán ảnh đề bài</strong>
                 <span class="solver-help">PNG, JPG, WebP · tối đa 20 MB</span>
                 <span class="universal-ai-file-name" data-ai-image-name>Chưa chọn ảnh</span>
+                <img class="universal-ai-image-preview" data-ai-image-preview alt="Xem trước ảnh đề bài" hidden>
               </label>
               <label class="solver-dropzone universal-ai-upload" data-ai-pdf-zone>
                 <input class="universal-ai-pdf" type="file" accept="application/pdf,.pdf" hidden>
@@ -115,7 +118,7 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
       });
     }
 
-    function setImage(file) {
+    function setImage(file, { pasted = false } = {}) {
       if (!file) return;
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
         errorBox.hidden = false;
@@ -129,12 +132,40 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
         imageInput.value = "";
         return;
       }
+      if (selectedImagePreviewUrl) URL.revokeObjectURL(selectedImagePreviewUrl);
       selectedImage = file;
+      selectedImagePreviewUrl = URL.createObjectURL(file);
       selectedFile = null;
       pdfInput.value = "";
-      container.querySelector("[data-ai-image-name]").textContent = file.name;
+      imageInput.value = "";
+      container.querySelector("[data-ai-image-name]").textContent = pasted
+        ? `Đã dán ảnh chụp màn hình · ${file.name}`
+        : file.name;
       container.querySelector("[data-ai-pdf-name]").textContent = "Chưa chọn tệp";
+      const preview = container.querySelector("[data-ai-image-preview]");
+      preview.src = selectedImagePreviewUrl;
+      preview.hidden = false;
       errorBox.hidden = true;
+    }
+
+    function handleClipboardPaste(event) {
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      const supportedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+      const item = Array.from(clipboard.items || []).find(entry =>
+        entry.kind === "file" && supportedTypes.has(entry.type.toLowerCase())
+      );
+      const clipboardFiles = Array.from(clipboard.files || []);
+      const blob = item?.getAsFile() || clipboardFiles.find(file => supportedTypes.has(file.type.toLowerCase()));
+      if (!blob) return; // Preserve ordinary text paste.
+      event.preventDefault();
+      const extension = blob.type === "image/jpeg" ? "jpg" : blob.type.split("/")[1] || "png";
+      const filename = `screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
+      const screenshot = new File([blob], filename, {
+        type: blob.type,
+        lastModified: Date.now()
+      });
+      setImage(screenshot, { pasted: true });
     }
 
     function setPdf(file) {
@@ -176,6 +207,8 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
     }
     imageInput.addEventListener("change", () => setImage(imageInput.files?.[0]));
     pdfInput.addEventListener("change", () => setPdf(pdfInput.files?.[0]));
+    // Clipboard paste works without clipboard-read permission because it handles the user's paste gesture.
+    container.addEventListener("paste", handleClipboardPaste);
 
     modeButtons.forEach(button => button.addEventListener("click", () => {
       mode = button.dataset.aiMode;
@@ -263,11 +296,16 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
       activeController?.abort();
       prompt.value = "";
       selectedImage = null;
+      if (selectedImagePreviewUrl) URL.revokeObjectURL(selectedImagePreviewUrl);
+      selectedImagePreviewUrl = null;
       selectedFile = null;
       imageInput.value = "";
       pdfInput.value = "";
       container.querySelector("[data-ai-image-name]").textContent = "Chưa chọn ảnh";
       container.querySelector("[data-ai-pdf-name]").textContent = "Chưa chọn tệp";
+      const preview = container.querySelector("[data-ai-image-preview]");
+      preview.removeAttribute("src");
+      preview.hidden = true;
       container.querySelector("[data-ai-answer]").textContent = "";
       container.querySelector("[data-ai-history-status]").hidden = true;
       answer.hidden = true;
@@ -297,6 +335,9 @@ export function mountUniversalAiSolver(container, { onNavigate, initialSubject =
   return () => {
     destroyed = true;
     activeController?.abort();
+    if (selectedImagePreviewUrl) URL.revokeObjectURL(selectedImagePreviewUrl);
+    selectedImagePreviewUrl = null;
+    container.removeEventListener("paste", handleClipboardPaste);
     container.innerHTML = "";
   };
 }
