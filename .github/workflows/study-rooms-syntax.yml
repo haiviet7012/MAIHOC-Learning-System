@@ -16,10 +16,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install server dependencies
+        run: npm ci --prefix server
       - name: Check server modules
         run: |
           node --check server/server.js
           node --check server/auth.js
+          node --check server/postgres.js
           node --check server/chat.js
           node --check server/check-postgres-auth.js
           node --check server/tests-module/index.js
