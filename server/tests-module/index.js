@@ -1141,15 +1141,44 @@ export function installTestsModule({
         const filename = storedFilename(documentFile.originalname);
         const contentType = contentTypeFor(documentFile.originalname);
 
-        const documentR2Key = saveFileToR2
-          ? await saveFileToR2("tests", id, documentFile)
-          : null;
-        if (documentR2Key) uploadedR2Keys.push(documentR2Key);
+        // A test upload must be stored in R2. Never silently fall back to
+        // SQLite/local disk when the R2 uploader was not injected.
+        if (typeof saveFileToR2 !== "function") {
+          const error = new Error("Dịch vụ lưu trữ R2 chưa được khởi tạo. Vui lòng thử lại sau hoặc liên hệ quản trị viên.");
+          error.code = "R2_NOT_CONFIGURED";
+          error.statusCode = 503;
+          throw error;
+        }
+
+        const documentR2Key = await saveFileToR2("tests", id, documentFile);
+        if (typeof documentR2Key !== "string" || !documentR2Key.trim()) {
+          const error = new Error("R2 không trả về Object Key cho file đề. Bài kiểm tra chưa được tạo.");
+          error.code = "R2_UPLOAD_NO_KEY";
+          error.statusCode = 502;
+          throw error;
+        }
+        uploadedR2Keys.push(documentR2Key);
+        console.info("[R2] test document uploaded", JSON.stringify({
+          testId: id,
+          objectKey: documentR2Key,
+          bytes: documentFile.size
+        }));
 
         let answerKeyR2Key = null;
-        if (answerKeyFile && saveFileToR2) {
+        if (answerKeyFile) {
           answerKeyR2Key = await saveFileToR2("answer-keys", id, answerKeyFile);
+          if (typeof answerKeyR2Key !== "string" || !answerKeyR2Key.trim()) {
+            const error = new Error("R2 không trả về Object Key cho file đáp án. Bài kiểm tra chưa được tạo.");
+            error.code = "R2_UPLOAD_NO_KEY";
+            error.statusCode = 502;
+            throw error;
+          }
           uploadedR2Keys.push(answerKeyR2Key);
+          console.info("[R2] test answer key uploaded", JSON.stringify({
+            testId: id,
+            objectKey: answerKeyR2Key,
+            bytes: answerKeyFile.size
+          }));
         }
 
         createdLocalPath = path.join(documentsDir, filename);
@@ -1207,6 +1236,12 @@ export function installTestsModule({
               : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
         });
       } catch (error) {
+        if (error?.code === "R2_NOT_CONFIGURED" || error?.code === "R2_UPLOAD_NO_KEY") {
+          console.error("[R2] test creation blocked", JSON.stringify({
+            code: error.code,
+            message: error.message
+          }));
+        }
         if (createdTestId) {
           try {
             db.prepare("DELETE FROM tests WHERE id = ?").run(createdTestId);

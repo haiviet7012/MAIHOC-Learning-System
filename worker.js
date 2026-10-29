@@ -1,10 +1,11 @@
-
 function isBackendRequest(pathname) {
   return (
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname === "/socket.io" ||
-    pathname.startsWith("/socket.io/")
+    pathname.startsWith("/socket.io/") ||
+    pathname === "/vendor" ||
+    pathname.startsWith("/vendor/")
   );
 }
 

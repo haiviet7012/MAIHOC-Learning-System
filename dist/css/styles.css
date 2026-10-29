@@ -1210,10 +1210,14 @@ body.test-open #online-dashboard-launcher {
   display: none !important;
 }
 
-#tests-open {
+#tests-open,
+#admin-open,
+#account-center-open {
   font-weight: 600;
 }
-#tests-open.is-active-route {
+#tests-open.is-active-route,
+#admin-open.is-active-route,
+#account-center-open.is-active-route {
   border-color: var(--accent);
   background: var(--surface-2);
   color: var(--primary);

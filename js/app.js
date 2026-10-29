@@ -561,6 +561,8 @@ function render() {
     if (onlineDashboard) onlineDashboard.hidden = !isMainLobby;
     if (onlineLauncher) onlineLauncher.hidden = !isMainLobby;
     $("#tests-open")?.classList.toggle("is-active-route", state.route === "tests");
+    $("#admin-open")?.classList.toggle("is-active-route", state.route === "admin");
+    $("#account-center-open")?.classList.toggle("is-active-route", state.route === "account-center");
 
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
