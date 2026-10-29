@@ -865,7 +865,12 @@ async function cleanPresenceAndListOnline(now = Date.now()) {
       "ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,p.last_seen_at DESC,u.name ASC LIMIT 200",
       [cutoff, now]
     );
-    return result.rows;
+    return result.rows.map((row) => ({
+      ...row,
+      id: Number(row.id),
+      adminLevel: Number(row.adminLevel || 0),
+      lastSeenAt: Number(row.lastSeenAt)
+    }));
   }
   db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
   db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
