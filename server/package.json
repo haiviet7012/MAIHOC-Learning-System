@@ -9,8 +9,11 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "check:postgres": "node ./check-postgres.js",
+    "migrate:postgres": "node ./migrate-sqlite-to-postgres.js",
     "test:cleanup": "node --test ./tests/k6-cleanup.test.js",
     "test:postgres-import": "node --test ./tests/migrate-sqlite-to-postgres.test.js",
+    "test:postgres-runtime": "node --test ./tests/postgres-runtime.test.js",
     "inspect:postgres-cutover": "node ./inspect-postgres-cutover.js",
     "test:postgres-cutover-report": "node --test ./tests/postgres-cutover-report.test.js",
     "cleanup:personal-history": "node ./scripts/cleanup-personal-history.js",

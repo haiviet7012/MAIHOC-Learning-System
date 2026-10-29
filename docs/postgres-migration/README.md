@@ -1,65 +1,65 @@
-# PostgreSQL migration and k6 test-data cleanup
+# PostgreSQL migration and runtime cutover guide (MAI HỌC)
 
-This folder contains **operator-run tools** for inspecting/migrating MAI HỌC data and removing synthetic k6 users without deleting shared learning content.
+This folder contains **operator-run tools** and documentation for migrating MAI HỌC from local SQLite files to **PostgreSQL (`pg`)** so that user accounts, login sessions, documents, tests, submissions, grading results, chat history, and notifications persist across Render redeployments.
 
-## Safety model
+## Current status of the project
 
-- Nothing here runs automatically at application startup.
-- Always create verified backups of both `maihoc.sqlite` and `learning-results.sqlite` before any operation.
-- Never identify test users by role alone. Generate a preview, verify the email patterns and IDs, then pass a reviewed allow-list.
-- Shared content tables (documents, tests, answer keys, solution configs) are not deleted by the cleanup script.
-- Run the cleanup first against a local copy and verify account/login/content behavior before using a production database.
-- This kit does **not** switch the current app to PostgreSQL. The application and its modules still issue SQLite-specific queries. Deploying only `DATABASE_URL` will not migrate the app.
+1. **Object Storage (Cloudflare R2)**:
+   - Document files, answer-key files, and AI solver history blobs are stored in Cloudflare R2 (`server/r2-storage.js`).
+2. **Database Runtime (`server/postgres.js` + Runtime Modules)**:
+   - All runtime modules (`server/auth.js`, `server/server.js`, `server/chat.js`, `server/ai-solver/history.js`, `server/ai-solver/routes.js`, `server/tests-module/index.js`, `server/tests-module/results-db.js`) have been migrated from synchronous `better-sqlite3` calls to **asynchronous PostgreSQL (`pg.Pool`)** queries via `server/postgres.js`.
+   - Both previous SQLite databases (`maihoc.sqlite` with 22 tables and `learning-results.sqlite` with 2 tables: `subjects_catalog` and `learning_results`) now operate against the single unified PostgreSQL database configured by `DATABASE_URL`.
+   - At server startup (`initializeApplicationRuntime()` in `server/server.js`), `initPostgresSchema()` idempotently ensures all 24 tables, indexes (including case-insensitive `LOWER(email)` unique index on `users`), backward-compatible columns, and `IDENTITY` sequences are initialized and synchronized.
 
 ## Files
 
-- `server/scripts/preview-k6-users.js`: read-only preview for accounts matching explicit email/name patterns.
-- `server/scripts/cleanup-k6-users.js`: dry-run by default; requires `--apply` and a reviewed user-id allow-list to delete test users from both SQLite databases.
-- `postgres-preflight.sql`: checks that the PostgreSQL connection works and prints current schema/table inventory.
-- `README.md`: operator workflow.
+- `server/postgres.js`: PostgreSQL connection pool (`pg`), `AsyncLocalStorage` transaction & savepoint manager, SQLite-to-PostgreSQL SQL dialect adapter (`?` / `@param` -> `$1..$n`, `COLLATE NOCASE` -> `LOWER()`, `INSERT OR IGNORE` -> `ON CONFLICT DO NOTHING`, `MAX(a,b)` -> `GREATEST(a,b)`, `RETURNING id`), and idempotent 24-table schema initializer.
+- `server/check-postgres.js`: verifies `DATABASE_URL` connectivity and prints current database name and server timestamp.
+- `server/migrate-sqlite-to-postgres.js`: one-time importer that copies schema and existing rows from `data/maihoc.sqlite` and `data/learning-results.sqlite` into an empty PostgreSQL database.
+- `server/scripts/preview-k6-users.js` & `server/scripts/cleanup-k6-users.js`: preview and remove synthetic k6 load-test accounts before importing SQLite data.
+- `server/tests/postgres-runtime.test.js`: automated tests covering PostgreSQL SQL translation, login/registration/session persistence, sample test seeding, immediate grading, and deferred teacher grading with batch auto-regrade.
 
-## Cleanup preview
+## Deployment & Cutover Workflow
 
-Run in PowerShell from `D:\\MAIHOC\\maihoc-learning-web\\server` after taking a backup:
+### Step 1: Configure `DATABASE_URL`
 
-```powershell
-node .\\scripts\\preview-k6-users.js --db .\\data\\maihoc.sqlite --email-regex '(?i)(k6|loadtest|load-test|grafana|vu[0-9]+|testuser[0-9]+)'
+In `server/.env` (for local testing) and in **Render Dashboard -> Environment** (for production), set:
+
+```env
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
 ```
 
-Review the full candidate list. If the test emails use a different pattern, adjust the regex and inspect each candidate. The preview never deletes data.
+*(Tip: On Render Web Service, use the **Internal Database URL** for fast, zero-egress connection within the same region; from your local machine, use the **External Database URL**).*
 
-## Cleanup (dry-run first)
-
-```powershell
-node .\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14
-```
-
-This reports rows that would be removed. The user IDs above are examples only; replace them with **reviewed IDs from your own preview**. It does not apply changes unless `--apply` is supplied.
-
-After reviewing the dry-run output and verifying backups:
+Test the connection from `server/`:
 
 ```powershell
-node ..\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14 --apply
+npm run check:postgres
 ```
 
-The script verifies that:
-- at least one admin remains;
-- no admin ID is in the deletion allow-list;
-- each target ID exists;
-- both SQLite changes commit as individual transactions (two separate database files cannot share one SQLite transaction).
+### Step 2: Optional One-Time Data Import from Existing SQLite Files
 
-Run first on copies. If one database transaction fails after the other has committed, restore both backup files and rerun after fixing the problem.
+If you have existing local SQLite files (`server/data/maihoc.sqlite` and `server/data/learning-results.sqlite`) that you want to copy into a fresh/empty PostgreSQL database before first starting the server:
 
-## PostgreSQL connection preflight
+1. Run a dry-run first:
+   ```powershell
+   npm run migrate:postgres
+   ```
+2. Apply the import (using the exact target database name printed in the dry-run report):
+   ```powershell
+   node .\migrate-sqlite-to-postgres.js --apply --confirm-target <database_name>
+   ```
+   *(If your SQLite database already has multiple real user accounts that you want to preserve alongside Admin ID 1, pass `--allow-multiple-users`).*
 
-After setting `DATABASE_URL` locally (do not commit it), run:
+If you are starting on a fresh PostgreSQL database without importing old SQLite files, simply set `ADMIN_EMAIL`, `ADMIN_PASSWORD` (at least 12 characters), and `ADMIN_NAME` in your environment variables—`server.js` will automatically create all 24 tables, seed the initial Admin account (`admin_level = 2`), and seed the sample tests and subjects catalog on startup.
+
+### Step 3: Run Automated Verification Tests
+
+From the project root and `server/` directory:
 
 ```powershell
-node --env-file=.env .\\check-postgres.js
+npm test
+cd server
+npm run test:postgres-import
+npm run test:postgres-runtime
 ```
-
-To inspect PostgreSQL without changing data, connect with your provider's SQL console and run `postgres-preflight.sql`. A successful connection does not mean the application has been migrated.
-
-## Required remaining application work
-
-The current code uses SQLite APIs (`db.prepare`, `db.exec`, `db.pragma`, and synchronous transactions) throughout `auth.js`, `server.js`, `chat.js`, `tests-module`, and other modules. A correct PostgreSQL migration needs a repository-wide data-access layer or a carefully staged conversion, with schema/type changes, parameter/SQL compatibility changes, transaction handling, ID generation, and integration tests. Do not point production traffic at PostgreSQL until that work is complete and data counts/content checks pass.
