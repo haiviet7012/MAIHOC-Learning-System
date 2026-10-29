@@ -66,7 +66,10 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
               <p>Nhập đề bài hoặc tải ảnh/PDF lên rồi nhấn “Bắt đầu giải”.</p>
             </div>
             <div class="universal-ai-loading" hidden>
-              <span class="spinner universal-ai-spinner"></span>
+              <div class="universal-ai-loader-logo" aria-hidden="true">
+                <span class="universal-ai-loader-ring"></span>
+                <img class="universal-ai-loading-logo" src="/images/mai-hoc-logo.jpg" alt="">
+              </div>
               <h2>AI đang phân tích đề bài…</h2>
               <p class="muted">Tệp PDF đang được trích xuất văn bản nếu có thể đọc được.</p>
             </div>
