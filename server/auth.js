@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 dotenv.config();
 
 const configuredAuthBackend = String(
-  process.env.MAIHOC_AUTH_BACKEND || (process.env.DATABASE_URL ? "postgres" : "sqlite")
+  process.env.MAIHOC_AUTH_BACKEND || "sqlite"
 ).trim().toLowerCase();
 if (!["postgres", "sqlite"].includes(configuredAuthBackend)) {
   throw new Error("MAIHOC_AUTH_BACKEND chỉ nhận postgres hoặc sqlite.");
@@ -420,6 +420,32 @@ export async function findUserById(id) {
     return result.rows[0] || null;
   }
   return db.prepare("SELECT * FROM users WHERE id=?").get(Number(id)) || null;
+}
+
+export async function listUserAccounts(limit = 500) {
+  await authReady;
+  const safeLimit = Math.max(1, Math.min(500, Math.trunc(Number(limit) || 500)));
+  if (authUsesPostgres) {
+    const result = await postgresPool.query(
+      "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT $1",
+      [safeLimit]
+    );
+    const sync = db.transaction(() => {
+      for (const user of result.rows) mirrorUserRow(user);
+    });
+    sync();
+    return result.rows;
+  }
+  return db.prepare("SELECT * FROM users ORDER BY id DESC LIMIT ?").all(safeLimit);
+}
+
+export async function countUserAccounts() {
+  await authReady;
+  if (authUsesPostgres) {
+    const result = await postgresPool.query("SELECT COUNT(*)::bigint AS count FROM users");
+    return Number(result.rows[0]?.count || 0);
+  }
+  return Number(db.prepare("SELECT COUNT(*) AS count FROM users").get()?.count || 0);
 }
 
 export async function createUserAccount({ name, email, passwordHash, role = "user", adminLevel = 0 }) {
