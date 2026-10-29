@@ -9,7 +9,7 @@ import {
 import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
-import "./account-features.js?v=20261029aihistory1";
+import "./account-features.js?v=20261030progressstatus2";
 import { mountStudyRooms } from "../study-rooms/client.js";
 import {
     refreshTestsQueue,
