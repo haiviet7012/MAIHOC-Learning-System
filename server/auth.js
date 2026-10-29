@@ -14,6 +14,9 @@ dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 dotenv.config();
 
 const AUTH_STORAGE = String(process.env.AUTH_STORAGE || "sqlite").trim().toLowerCase();
+if (!["sqlite", "postgres"].includes(AUTH_STORAGE)) {
+  throw new Error("AUTH_STORAGE must be either sqlite or postgres.");
+}
 export const isPostgresAuthEnabled = AUTH_STORAGE === "postgres";
 let authPgPool = null;
 
@@ -410,6 +413,56 @@ async function findPostgresUserById(userId) {
     [Number(userId)]
   );
   return result.rows[0] || null;
+}
+
+export async function initializePostgresAuthCompatibilityMirror() {
+  if (!isPostgresAuthEnabled) return { enabled: false };
+
+  const pgUsers = (await authPgPool.query(
+    "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users ORDER BY id"
+  )).rows;
+  const sqliteUsers = db.prepare("SELECT id FROM users ORDER BY id").all();
+  const pgIds = new Set(pgUsers.map((user) => Number(user.id)));
+  const sqliteIds = new Set(sqliteUsers.map((user) => Number(user.id)));
+  const sqliteOnlyIds = [...sqliteIds].filter((id) => !pgIds.has(id));
+  if (sqliteOnlyIds.length) {
+    throw new Error(
+      "PostgreSQL auth cutover stopped: SQLite contains user IDs absent from PostgreSQL (" +
+      sqliteOnlyIds.slice(0, 20).join(", ") +
+      "). Stop writes and reconcile/re-import the account snapshot before enabling AUTH_STORAGE=postgres."
+    );
+  }
+
+  // Keep legacy joins (chat, notifications and account dashboards) on a consistent mirror.
+  for (const user of pgUsers) mirrorUserToSqlite(user);
+
+  const pgSessions = (await authPgPool.query(
+    "SELECT token_hash,user_id,expires_at,created_at FROM sessions WHERE expires_at > $1 ORDER BY created_at",
+    [Date.now()]
+  )).rows;
+  db.exec("DELETE FROM sessions");
+  const insertSession = db.prepare(
+    "INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)"
+  );
+  for (const session of pgSessions) {
+    insertSession.run(
+      session.token_hash, Number(session.user_id), Number(session.expires_at), Number(session.created_at)
+    );
+  }
+
+  const pgPresence = (await authPgPool.query(
+    "SELECT user_id,last_seen_at,activity FROM user_presence"
+  )).rows;
+  db.exec("DELETE FROM user_presence");
+  const insertPresence = db.prepare(
+    "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?)"
+  );
+  for (const presence of pgPresence) {
+    insertPresence.run(
+      Number(presence.user_id), Number(presence.last_seen_at), presence.activity || "Đang trực tuyến"
+    );
+  }
+  return { enabled: true, users: pgUsers.length, sessions: pgSessions.length };
 }
 
 export async function hashPassword(password) {
