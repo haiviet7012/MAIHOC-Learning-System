@@ -537,7 +537,7 @@ function accountCenterPage() {
           <div>
             <span class="pill">AI · LỊCH SỬ CÁ NHÂN</span>
             <h2>Lịch sử giải bài bằng AI</h2>
-            <p class="muted">Các lời giải được lưu theo thời gian mới nhất. Chọn một mục để mở lại lời giải đầy đủ.</p>
+            <p class="muted">Hiển thị tối đa 10 mục cùng lúc; cuộn trong danh sách để xem các lời giải cũ. Chọn một mục để mở lại lời giải đầy đủ.</p>
           </div>
           <button type="button" class="button secondary small" data-ai-history-refresh>↻ Làm mới lịch sử</button>
         </div>
