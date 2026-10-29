@@ -4,10 +4,41 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 // const db = require('./db'); // Nạp kết nối SQLite từ file db.js cùng thư mục
 const scrypt = promisify(crypto.scrypt);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
+dotenv.config();
+
+const AUTH_STORAGE = String(process.env.AUTH_STORAGE || "sqlite").trim().toLowerCase();
+export const isPostgresAuthEnabled = AUTH_STORAGE === "postgres";
+let authPgPool = null;
+
+if (isPostgresAuthEnabled) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("AUTH_STORAGE=postgres requires DATABASE_URL.");
+  }
+  const postgres = await import("./postgres.js");
+  authPgPool = postgres.pool;
+  const requiredTables = ["users", "sessions", "user_presence"];
+  const schemaResult = await authPgPool.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' AND table_name = ANY($1::text[])",
+    [requiredTables]
+  );
+  const present = new Set(schemaResult.rows.map((row) => row.table_name));
+  const missing = requiredTables.filter((name) => !present.has(name));
+  if (missing.length) {
+    await authPgPool.end();
+    throw new Error(
+      "AUTH_STORAGE=postgres but the imported schema is incomplete. Missing tables: " + missing.join(", ") +
+      ". Import and verify the SQLite data before enabling PostgreSQL auth."
+    );
+  }
+}
+
 const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 
@@ -290,7 +321,95 @@ function writeCookie(res, token, maxAgeSeconds) {
 
 export function publicUser(user) {
   if (!user) return null;
-  return { id: user.id, name: user.name, email: user.email, role: user.role, adminLevel: Number(user.admin_level || 0), createdAt: user.created_at };
+  return {
+    id: Number(user.id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    adminLevel: Number(user.admin_level || 0),
+    createdAt: user.created_at
+  };
+}
+
+function mirrorUserToSqlite(user) {
+  if (!user) throw new Error("Cannot mirror an empty PostgreSQL user.");
+  db.prepare(`
+    INSERT INTO users (id,name,email,password_hash,role,admin_level,created_at)
+    VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      name=excluded.name,
+      email=excluded.email,
+      password_hash=excluded.password_hash,
+      role=excluded.role,
+      admin_level=excluded.admin_level,
+      created_at=excluded.created_at
+  `).run(
+    Number(user.id),
+    String(user.name),
+    String(user.email).trim().toLowerCase(),
+    String(user.password_hash),
+    String(user.role || "user"),
+    Number(user.admin_level || 0),
+    String(user.created_at || new Date().toISOString())
+  );
+}
+
+export async function syncPostgresUserFromSqlite(userId) {
+  if (!isPostgresAuthEnabled) return;
+  const user = db.prepare(
+    "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users WHERE id=?"
+  ).get(Number(userId));
+  if (!user) return;
+  const client = await authPgPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`
+      INSERT INTO users (id,name,email,password_hash,role,admin_level,created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT(id) DO UPDATE SET
+        name=EXCLUDED.name,
+        email=EXCLUDED.email,
+        password_hash=EXCLUDED.password_hash,
+        role=EXCLUDED.role,
+        admin_level=EXCLUDED.admin_level,
+        created_at=EXCLUDED.created_at
+    `, [
+      Number(user.id), user.name, String(user.email).trim().toLowerCase(),
+      user.password_hash, user.role, Number(user.admin_level || 0), user.created_at
+    ]);
+    // Preserve safe generated IDs if an account was created by a legacy admin route.
+    await client.query(`
+      SELECT setval(
+        pg_get_serial_sequence('users','id'),
+        GREATEST((SELECT COALESCE(MAX(id),1) FROM users),1),
+        true
+      )
+    `);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deletePostgresUser(userId) {
+  if (!isPostgresAuthEnabled) return;
+  await authPgPool.query("DELETE FROM users WHERE id=$1", [Number(userId)]);
+}
+
+export async function deletePostgresSessionsForUser(userId) {
+  if (!isPostgresAuthEnabled) return;
+  await authPgPool.query("DELETE FROM sessions WHERE user_id=$1", [Number(userId)]);
+}
+
+async function findPostgresUserById(userId) {
+  const result = await authPgPool.query(
+    "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users WHERE id=$1",
+    [Number(userId)]
+  );
+  return result.rows[0] || null;
 }
 
 export async function hashPassword(password) {
@@ -316,6 +435,29 @@ export async function registerUser({ name, email, password }) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail) || safeEmail.length > 254) throw new Error("Email không hợp lệ.");
   if (secret.length < 10 || secret.length > 128) throw new Error("Mật khẩu cần từ 10 đến 128 ký tự.");
   const passwordHash = await hashPassword(secret);
+  if (isPostgresAuthEnabled) {
+    const client = await authPgPool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        "INSERT INTO users (name,email,password_hash,role,admin_level) VALUES ($1,$2,$3,'user',0) RETURNING *",
+        [safeName, safeEmail, passwordHash]
+      );
+      const user = result.rows[0];
+      // Keep the SQLite account mirror for older modules that still join against users.
+      mirrorUserToSqlite(user);
+      await client.query("COMMIT");
+      return publicUser(user);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      if (error.code === "23505" || String(error.code || "").includes("CONSTRAINT")) {
+        throw new Error("Email này đã được đăng ký.");
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
   try {
     const result = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,'user')")
       .run(safeName, safeEmail, passwordHash);
@@ -328,7 +470,12 @@ export async function registerUser({ name, email, password }) {
 
 export async function authenticateUser(email, password) {
   const safeEmail = String(email || "").trim().toLowerCase();
-  const user = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(safeEmail);
+  const user = isPostgresAuthEnabled
+    ? (await authPgPool.query(
+        "SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1",
+        [safeEmail]
+      )).rows[0]
+    : db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(safeEmail);
   if (!user) {
     await hashPassword("dummy-password-for-timing-only").catch(() => null);
     return null;
@@ -337,25 +484,71 @@ export async function authenticateUser(email, password) {
   return publicUser(user);
 }
 
-export function createSession(userId, res) {
+export async function createSession(userId, res) {
   const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(token);
   const now = Date.now();
-  db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)")
-    .run(hashToken(token), userId, now + SESSION_MS, now);
-  db.prepare("INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,'Đang trực tuyến') ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(userId, now);
-  db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
+  const expiresAt = now + SESSION_MS;
+  if (isPostgresAuthEnabled) {
+    const client = await authPgPool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES ($1,$2,$3,$4)",
+        [tokenHash, Number(userId), expiresAt, now]
+      );
+      await client.query(
+        "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES($1,$2,'Đang trực tuyến') ON CONFLICT(user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,activity='Đang trực tuyến'",
+        [Number(userId), now]
+      );
+      // Chat and the remaining legacy modules currently validate sessions through SQLite.
+      db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)")
+        .run(tokenHash, Number(userId), expiresAt, now);
+      db.prepare("INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,'Đang trực tuyến') ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity='Đang trực tuyến'")
+        .run(Number(userId), now);
+      db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
+      await client.query("DELETE FROM sessions WHERE expires_at < $1", [now]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } else {
+    db.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)")
+      .run(tokenHash, Number(userId), expiresAt, now);
+    db.prepare("INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,'Đang trực tuyến') ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(Number(userId), now);
+    db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
+  }
   writeCookie(res, token, Math.floor(SESSION_MS / 1000));
 }
 
-export function destroySession(req, res) {
+export async function destroySession(req, res) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (token && /^[a-f0-9]{64}$/i.test(token)) {
-    db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
+    const tokenHash = hashToken(token);
+    if (isPostgresAuthEnabled) {
+      await authPgPool.query("DELETE FROM sessions WHERE token_hash=$1", [tokenHash]);
+    }
+    db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash);
   }
   if (req.user?.id) {
-    const remaining = db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND expires_at>?").get(req.user.id, Date.now());
-    if (!Number(remaining?.count)) db.prepare("DELETE FROM user_presence WHERE user_id=?").run(req.user.id);
-    else db.prepare("UPDATE user_presence SET last_seen_at=? WHERE user_id=?").run(Date.now(), req.user.id);
+    const now = Date.now();
+    const remaining = isPostgresAuthEnabled
+      ? Number((await authPgPool.query(
+          "SELECT COUNT(*)::int AS count FROM sessions WHERE user_id=$1 AND expires_at>$2",
+          [Number(req.user.id), now]
+        )).rows[0]?.count || 0)
+      : Number(db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=? AND expires_at>?").get(Number(req.user.id), now)?.count || 0);
+    if (!remaining) {
+      if (isPostgresAuthEnabled) await authPgPool.query("DELETE FROM user_presence WHERE user_id=$1", [Number(req.user.id)]);
+      db.prepare("DELETE FROM user_presence WHERE user_id=?").run(Number(req.user.id));
+    } else {
+      if (isPostgresAuthEnabled) await authPgPool.query("UPDATE user_presence SET last_seen_at=$1 WHERE user_id=$2", [now, Number(req.user.id)]);
+      db.prepare("UPDATE user_presence SET last_seen_at=? WHERE user_id=?").run(now, Number(req.user.id));
+    }
   }
   writeCookie(res, "", 0);
 }
@@ -363,18 +556,27 @@ export function destroySession(req, res) {
 
 const presenceUpdateCache = new Map(); // Lưu thời điểm ghi DB gần nhất của từng userId
 const PRESENCE_WRITE_INTERVAL_MS = 60 * 1000; // Chỉ ghi xuống SQLite tối đa 1 lần / 60 giây cho mỗi user
-export function loadCurrentUser(req, res, next) {
+export async function loadCurrentUser(req, res, next) {
   try {
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
     if (token && /^[a-f0-9]{64}$/i.test(token)) {
-      const session = db.prepare(`
-        SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at
-        FROM sessions s JOIN users u ON u.id=s.user_id
-        WHERE s.token_hash=?
-      `).get(hashToken(token));
-      if (session && session.expires_at > Date.now()) {
+      const tokenHash = hashToken(token);
+      const session = isPostgresAuthEnabled
+        ? (await authPgPool.query(`
+            SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at
+            FROM sessions s JOIN users u ON u.id=s.user_id
+            WHERE s.token_hash=$1
+            LIMIT 1
+          `, [tokenHash])).rows[0]
+        : db.prepare(`
+            SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at
+            FROM sessions s JOIN users u ON u.id=s.user_id
+            WHERE s.token_hash=?
+          `).get(tokenHash);
+      const expiresAt = Number(session?.expires_at);
+      if (session && expiresAt > Date.now()) {
         req.user = publicUser(session);
-        req.sessionTokenHash = hashToken(token);
+        req.sessionTokenHash = tokenHash;
 
         const nowMs = Date.now();
         const currentUserId = req.user.id;
@@ -383,6 +585,13 @@ export function loadCurrentUser(req, res, next) {
         if (nowMs - lastUpdateMs >= PRESENCE_WRITE_INTERVAL_MS) {
           presenceUpdateCache.set(currentUserId, nowMs);
           try {
+            if (isPostgresAuthEnabled) {
+              await authPgPool.query(`
+                INSERT INTO user_presence (user_id, last_seen_at)
+                VALUES ($1,$2)
+                ON CONFLICT(user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at
+              `, [currentUserId, nowMs]);
+            }
             db.prepare(`
               INSERT INTO user_presence (user_id, last_seen_at)
               VALUES (?, ?)
@@ -392,14 +601,16 @@ export function loadCurrentUser(req, res, next) {
             // Presence updates are best-effort and must not fail authenticated requests.
           }
         }
-
       } else if (session) {
-        db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hashToken(token));
+        if (isPostgresAuthEnabled) await authPgPool.query("DELETE FROM sessions WHERE token_hash=$1", [tokenHash]);
+        db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash);
         writeCookie(res, "", 0);
       }
     }
     next();
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 }
 
 export function requireAuth(req, res, next) {
@@ -427,6 +638,27 @@ export async function createInitialAdmin() {
   if (!email && !password) return;
   if (!email || !password) throw new Error("Cần cấu hình cả ADMIN_EMAIL và ADMIN_PASSWORD để tạo Admin ban đầu.");
   if (password.length < 12) throw new Error("ADMIN_PASSWORD cần có ít nhất 12 ký tự.");
+
+  if (isPostgresAuthEnabled) {
+    const existing = (await authPgPool.query(
+      "SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1",
+      [email]
+    )).rows[0];
+    if (existing) {
+      await authPgPool.query("UPDATE users SET role='admin',admin_level=2 WHERE id=$1", [Number(existing.id)]);
+      mirrorUserToSqlite(await findPostgresUserById(existing.id));
+      return;
+    }
+    const passwordHash = await hashPassword(password);
+    const created = (await authPgPool.query(
+      "INSERT INTO users (name,email,password_hash,role,admin_level) VALUES ($1,$2,$3,'admin',2) RETURNING *",
+      [name, email, passwordHash]
+    )).rows[0];
+    mirrorUserToSqlite(created);
+    console.log("Đã tạo tài khoản Admin ban đầu trong PostgreSQL từ cấu hình môi trường.");
+    return;
+  }
+
   const existing = db.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE").get(email);
   if (existing) {
     db.prepare("UPDATE users SET role='admin', admin_level=2 WHERE id=?").run(existing.id);
