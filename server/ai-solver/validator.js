@@ -42,7 +42,7 @@ export function validateUniversalSolveRequest(body) {
       return { valid: false, error: "Ảnh phải ở định dạng PNG, JPG hoặc WebP." };
     }
     if (!data || data.length > MAX_FILE_BASE64_LENGTH) {
-      return { valid: false, error: "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 8 MB." };
+      return { valid: false, error: "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2 MB." };
     }
     validatedImage = { mimeType: mimeType === "image/jpg" ? "image/jpeg" : mimeType, data };
   }
