@@ -1080,7 +1080,7 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giáo viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
+        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giảng viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -1449,7 +1449,7 @@ function applyAuthUI() {
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = currentUser?.role !== "admin";
     $("#admin-open").hidden = currentUser?.role !== "admin";
     $("#user-greeting").hidden = !signedIn;
-    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? " · Admin" : ""}` : "";
+    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? (Number(currentUser.adminLevel) >= 2 ? " · Admin" : " · Giảng viên") : ""}` : "";
 }
 async function refreshAuthUI() {
     try {
@@ -1575,7 +1575,7 @@ async function loadAccountDeletionRequests(){
     const requests=data.requests||[];
     const pending=requests.filter(r=>r.status==="pending");
     if(!pending.length){box.innerHTML='<p class="muted">Không có yêu cầu chờ duyệt.</p>';return;}
-    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giáo viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
+    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giảng viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
 document.addEventListener("submit",async e=>{
@@ -1590,7 +1590,7 @@ document.addEventListener("submit",async e=>{
     form.reset();
     toast(data.action==="promoted"?"Đã nâng quyền tài khoản hiện có thành Giảng viên.":"Đã tạo tài khoản Giảng viên mới.","success");
     await loadAdminUsers();
-  }catch(error){toast(error.message||"Không tạo được Admin.","error");}
+  }catch(error){toast(error.message||"Không tạo được Giảng viên.","error");}
   finally{button.disabled=false;}
 });
 document.addEventListener("click",async e=>{
