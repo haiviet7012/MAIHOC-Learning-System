@@ -171,7 +171,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
 
   // Cloudflare Realtime TURN credentials are short-lived and must be generated server-side.
   const turnKeyId = String(process.env.CLOUDFLARE_TURN_KEY_ID || "").trim();
-  const turnApiToken = String(process.env.CLOUDFLARE_API_TOKEN || "").trim();
+  const turnApiToken = String(process.env.CLOUDFLARE_TURN_API_TOKEN || "").trim();
   let cachedIceServers = null;
   let cachedIceServersExpiresAt = 0;
 
