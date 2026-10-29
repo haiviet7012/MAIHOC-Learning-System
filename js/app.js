@@ -532,6 +532,21 @@ function accountCenterPage() {
         </div>
       </section>
 
+      <section class="account-section card account-ai-history-section">
+        <div class="account-section-head">
+          <div>
+            <span class="pill">AI · LỊCH SỬ CÁ NHÂN</span>
+            <h2>Lịch sử giải bài bằng AI</h2>
+            <p class="muted">Các lời giải được lưu theo thời gian mới nhất. Chọn một mục để mở lại lời giải đầy đủ.</p>
+          </div>
+          <button type="button" class="button secondary small" data-ai-history-refresh>↻ Làm mới lịch sử</button>
+        </div>
+        <div class="account-ai-history-summary muted tiny" id="account-ai-history-summary">Đang tải lịch sử giải bài…</div>
+        <div class="account-ai-history-list" id="account-ai-history-list" role="region" aria-label="Lịch sử giải bài bằng AI, tối đa 10 mục hiển thị trước khi cuộn" tabindex="0">
+          <p class="muted">Đang tải lịch sử giải bài…</p>
+        </div>
+      </section>
+
       <div class="account-settings-grid">
         <section class="account-section card">
           <span class="pill">BẢO MẬT GMAIL</span>
