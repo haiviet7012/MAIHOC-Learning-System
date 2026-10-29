@@ -1,65 +1,94 @@
-# PostgreSQL migration and k6 test-data cleanup
+# MAI HỌC PostgreSQL migration and test-data tools
 
-This folder contains **operator-run tools** for inspecting/migrating MAI HỌC data and removing synthetic k6 users without deleting shared learning content.
+This folder contains operator-run tools for reviewing SQLite data and importing it into PostgreSQL. Import is never run automatically at application startup.
 
-## Safety model
+## Current cutover scope
 
-- Nothing here runs automatically at application startup.
-- Always create verified backups of both `maihoc.sqlite` and `learning-results.sqlite` before any operation.
-- Never identify test users by role alone. Generate a preview, verify the email patterns and IDs, then pass a reviewed allow-list.
-- Shared content tables (documents, tests, answer keys, solution configs) are not deleted by the cleanup script.
-- Run the cleanup first against a local copy and verify account/login/content behavior before using a production database.
-- This kit does **not** switch the current app to PostgreSQL. The application and its modules still issue SQLite-specific queries. Deploying only `DATABASE_URL` will not migrate the app.
+The branch \`feature/postgres-auth-cutover\` adds a **staged authentication/account cutover**, not a whole-application database rewrite.
+
+When \`MAIHOC_AUTH_BACKEND=postgres\` is explicitly enabled:
+
+- PostgreSQL is authoritative for \`users\`, \`sessions\`, \`user_presence\`, and \`email_verification_codes\`.
+- Registration/login, account lookup, password/email updates, admin promotion/creation, session creation/revocation, and email verification use PostgreSQL.
+- A local SQLite compatibility mirror is still maintained for \`users\`, \`sessions\`, and \`user_presence\`, because existing chat and other legacy modules read these tables synchronously. Socket.IO session authentication uses PostgreSQL.
+- Business/application tables such as documents, tests, attempts, grading, notifications, chat history, and learning results continue to be read/written through SQLite. The existing import script copies their snapshot to PostgreSQL, but the app does not yet use PostgreSQL as their runtime store.
+
+Do **not** describe or treat this as a full-app PostgreSQL migration. Moving the remaining business tables requires a separate repository-wide data access conversion, schema review, and functional tests.
 
 ## Files
 
-- `server/scripts/preview-k6-users.js`: read-only preview for accounts matching explicit email/name patterns.
-- `server/scripts/cleanup-k6-users.js`: dry-run by default; requires `--apply` and a reviewed user-id allow-list to delete test users from both SQLite databases.
-- `postgres-preflight.sql`: checks that the PostgreSQL connection works and prints current schema/table inventory.
-- `README.md`: operator workflow.
+- \`server/inspect-postgres-cutover.js\`: read-only report of SQLite integrity, row counts, and likely user-owned data.
+- \`server/migrate-sqlite-to-postgres.js\`: dry run by default; copies schema/data from both SQLite files only when \`--apply\` and the exact target name are provided.
+- \`server/check-postgres-auth.js\`: read-only PostgreSQL check for auth tables, counts, and duplicate email addresses.
+- \`server/scripts/preview-k6-users.js\` and \`server/scripts/cleanup-k6-users.js\`: guarded test-data review/cleanup tools.
+- \`server/scripts/cleanup-personal-history.js\`: dry-run-first, explicitly confirmed cleanup helper.
 
-## Cleanup preview
+## Before importing
 
-Run in PowerShell from `D:\\MAIHOC\\maihoc-learning-web\\server` after taking a backup:
+Run PowerShell from \`D:\\MAIHOC\\maihoc-learning-web\\server\`.
 
-```powershell
-node .\\scripts\\preview-k6-users.js --db .\\data\\maihoc.sqlite --email-regex '(?i)(k6|loadtest|load-test|grafana|vu[0-9]+|testuser[0-9]+)'
-```
+1. Stop the local server and create verified backups of both \`data\\maihoc.sqlite\` and \`data\\learning-results.sqlite\`.
+2. Set \`DATABASE_URL\` privately in \`server/.env\` for local commands, or use the connection string provided in the Render environment. Never commit or paste the real value into logs/issues.
+3. Use a **new/empty PostgreSQL database**. The importer refuses to work if schema \`public\` already contains tables.
+4. The importer currently requires exactly one source account: \`users.id=1\` and \`role='admin'\`; it also requires the imported \`learning_results\` table to contain only \`user_id=1\`. Never delete real accounts just to satisfy this guard.
+5. Run the read-only review and confirm ownership/counts before importing:
 
-Review the full candidate list. If the test emails use a different pattern, adjust the regex and inspect each candidate. The preview never deletes data.
+   \`\`\`powershell
+   npm run inspect:postgres-cutover
+   node .\\migrate-sqlite-to-postgres.js
+   \`\`\`
 
-## Cleanup (dry-run first)
+6. Confirm that the dry-run \`target.database_name\` is the intended Render database and that counts match the inspected sources.
 
-```powershell
-node .\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14
-```
+## Apply the import
 
-This reports rows that would be removed. The user IDs above are examples only; replace them with **reviewed IDs from your own preview**. It does not apply changes unless `--apply` is supplied.
+Only during an agreed cutover window, after the code PR has been reviewed and the web service's writes have been paused, run:
 
-After reviewing the dry-run output and verifying backups:
+\`\`\`powershell
+node .\\migrate-sqlite-to-postgres.js --apply --confirm-target "EXACT_DATABASE_NAME_FROM_DRY_RUN"
+\`\`\`
 
-```powershell
-node ..\\scripts\\cleanup-k6-users.js --main-db .\\data\\maihoc.sqlite --results-db .\\data\\learning-results.sqlite --user-ids 12,13,14 --apply
-```
+Replace the placeholder with the exact \`target.database_name\` shown in the dry-run output. This is a data-changing operation. The importer creates tables/indexes, copies rows from both SQLite sources in one PostgreSQL transaction, adds checks/foreign keys, resets identity sequences, and verifies row counts. It never drops or overwrites existing public tables. A non-empty public schema causes it to stop; do not manually drop tables to bypass that safeguard.
 
-The script verifies that:
-- at least one admin remains;
-- no admin ID is in the deletion allow-list;
-- each target ID exists;
-- both SQLite changes commit as individual transactions (two separate database files cannot share one SQLite transaction).
+Then run the read-only preflight:
 
-Run first on copies. If one database transaction fails after the other has committed, restore both backup files and rerun after fixing the problem.
+\`\`\`powershell
+npm run check:postgres-auth
+\`\`\`
 
-## PostgreSQL connection preflight
+The check must pass without missing required auth tables or duplicate email addresses. Compare row counts with the dry-run report; verify the admin row with a query that does not expose password hashes:
 
-After setting `DATABASE_URL` locally (do not commit it), run:
+\`\`\`sql
+SELECT id, name, email, role, admin_level FROM users ORDER BY id;
+SELECT COUNT(*) AS users FROM users;
+SELECT COUNT(*) AS sessions FROM sessions;
+SELECT COUNT(*) AS presence_rows FROM user_presence;
+\`\`\`
 
-```powershell
-node --env-file=.env .\\check-postgres.js
-```
+## Enable PostgreSQL for auth/account runtime
 
-To inspect PostgreSQL without changing data, connect with your provider's SQL console and run `postgres-preflight.sql`. A successful connection does not mean the application has been migrated.
+First, review and merge the pull request that contains the staged auth cutover. In Render's **web service Environment** settings, set:
 
-## Required remaining application work
+- \`DATABASE_URL\`: use the correct connection string supplied by Render. Do not put it in Git.
+- \`MAIHOC_AUTH_BACKEND=postgres\`: enables the staged PostgreSQL-backed authentication/account code.
 
-The current code uses SQLite APIs (`db.prepare`, `db.exec`, `db.pragma`, and synchronous transactions) throughout `auth.js`, `server.js`, `chat.js`, `tests-module`, and other modules. A correct PostgreSQL migration needs a repository-wide data-access layer or a carefully staged conversion, with schema/type changes, parameter/SQL compatibility changes, transaction handling, ID generation, and integration tests. Do not point production traffic at PostgreSQL until that work is complete and data counts/content checks pass.
+Keep \`MAIHOC_AUTH_BACKEND=sqlite\` locally unless you specifically want to test the PostgreSQL backend and have a migrated test database. Merely setting \`DATABASE_URL\` does not switch the app; the default backend is deliberately SQLite.
+
+After deploy, check Render logs for the auth-ready message and run a smoke test:
+
+1. Register a dedicated test account, then confirm that it appears in PostgreSQL \`users\`.
+2. Log in and confirm the active \`sessions\` count increases. Reload the page and verify \`/api/auth/me\`.
+3. Log out and confirm the associated session is removed from PostgreSQL.
+4. Verify forgot-password/email verification in the test account and confirm OTP records are stored in PostgreSQL.
+5. Confirm admin user listing and Socket.IO chat authentication still work.
+6. Verify the existing learning content, tests, submissions, and grading APIs: these still use SQLite and should not be assumed migrated to PostgreSQL.
+
+Do not publish SQL output containing password hashes, session token hashes, OTP hashes, or connection secrets.
+
+## Rollback
+
+If the auth cutover fails, set \`MAIHOC_AUTH_BACKEND=sqlite\` in Render and redeploy the compatible code. The account/session compatibility mirror is maintained during normal auth operations, but pending OTP codes are PostgreSQL-only; after rollback, users should request a new verification code. Keep both SQLite backups and do not delete PostgreSQL tables while diagnosing the issue.
+
+## Remaining work after this staged cutover
+
+A complete PostgreSQL migration still needs to move the remaining SQLite-owned application data access: documents/uploads metadata, tests/submissions, grading and attempts, notifications, learning progress/results, chat conversations/messages, and other modules. That work requires async data-access APIs, PostgreSQL-compatible SQL/types and transactions, row-count/content verification, and integration tests before those runtime tables can safely switch.
