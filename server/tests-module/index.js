@@ -281,6 +281,9 @@ export function installTestsModule({
   notifyUser,
   notifyAdmins
 }) {
+  const isSubordinateAdmin = (req) =>
+    req?.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+
   async function ensureTables() {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS tests (
@@ -332,6 +335,19 @@ export function installTestsModule({
       CREATE INDEX IF NOT EXISTS test_submissions_test_user_idx ON test_submissions(test_id, user_id, id DESC);
       CREATE INDEX IF NOT EXISTS test_submissions_status_idx ON test_submissions(grading_status, submitted_at DESC);
     `);
+    // Backfill legacy tests from their document uploader when the explicit creator was not recorded.
+    // Built-in samples have no uploader and remain unassigned; students still see all tests.
+    await db.prepare(`
+      UPDATE tests
+      SET created_by = (
+        SELECT d.uploaded_by FROM documents d WHERE d.id = tests.document_id
+      )
+      WHERE created_by IS NULL
+        AND EXISTS (
+          SELECT 1 FROM documents d
+          WHERE d.id = tests.document_id AND d.uploaded_by IS NOT NULL
+        )
+    `).run();
   }
 
   async function seedInitialSampleTests() {
@@ -624,6 +640,14 @@ export function installTestsModule({
   app.post("/api/admin/documents/:id/solution/manual", requireSameOrigin, requireAdmin, async (req, res) => {
     try {
       const id = String(req.params.id);
+      if (isSubordinateAdmin(req)) {
+        const ownedDocument = await db
+          .prepare("SELECT id FROM documents WHERE id = ? AND uploaded_by = ?")
+          .get(id, req.user.id);
+        if (!ownedDocument) {
+          return res.status(404).json({ error: "Không tìm thấy tài liệu hoặc bạn không có quyền quản lý tài liệu này." });
+        }
+      }
       const payload = await initManualSolutionForDocument(id);
       return res.json({
         ok: true,
@@ -1041,6 +1065,7 @@ export function installTestsModule({
 
   app.get("/api/tests", async (req, res) => {
     try {
+      const subordinateAdmin = isSubordinateAdmin(req);
       const rows = await db
         .prepare(`
           SELECT t.*,
@@ -1053,9 +1078,10 @@ export function installTestsModule({
           JOIN documents d ON d.id = t.document_id
           LEFT JOIN exam_solutions es ON es.document_id = t.id
           LEFT JOIN answer_keys ak ON ak.document_id = t.id
+          ${subordinateAdmin ? "WHERE t.created_by = ?" : ""}
           ORDER BY t.open_at DESC, t.created_at DESC
         `)
-        .all();
+        .all(...(subordinateAdmin ? [req.user.id] : []));
 
       const userSubmissionsByTest = new Map();
       if (req.user?.id) {
@@ -1435,10 +1461,13 @@ export function installTestsModule({
 
   app.delete("/api/admin/tests/:id", requireSameOrigin, requireAdmin, async (req, res) => {
     const id = String(req.params.id);
+    const testRow = await db.prepare("SELECT id, title, created_by FROM tests WHERE id = ?").get(id);
+    if (!testRow) return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
+    if (isSubordinateAdmin(req) && Number(testRow.created_by) !== Number(req.user.id)) {
+      return res.status(404).json({ error: "Không tìm thấy bài kiểm tra hoặc bạn không có quyền xóa bài này." });
+    }
     const doc = await db.prepare("SELECT id, filename, r2_key FROM documents WHERE id = ?").get(id);
-    const testRow = await db.prepare("SELECT id, title FROM tests WHERE id = ?").get(id);
     const answerKey = await db.prepare("SELECT r2_key FROM answer_keys WHERE document_id = ?").get(id);
-    if (!doc && !testRow) return res.status(404).json({ error: "Không tìm thấy bài kiểm tra cần xóa." });
 
     const delTx = db.transaction(async () => {
       await db.prepare("DELETE FROM tests WHERE id = ?").run(id);
@@ -1680,11 +1709,28 @@ export function installTestsModule({
           `Đã nộp ${testRow.title} (Đang chờ chấm)`,
           `Bài làm "${testRow.title}" của bạn đã được ghi nhận và đang chờ giảng viên chấm điểm.`
         );
-        await notifyAdmins(
-          "test_submission_pending",
-          "Có bài kiểm tra mới chờ chấm",
-          `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`,
-          "admin"
+        const submissionNotice =
+          `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`;
+        // Notify the instructor who owns this test and the top-level admin only.
+        // Other subordinate admins must not receive metadata about another instructor's test.
+        const rootAdmins = await db
+          .prepare("SELECT id FROM users WHERE role = 'admin' AND admin_level >= 2")
+          .all();
+        const notificationRecipients = new Set([
+          ...(testRow.created_by ? [Number(testRow.created_by)] : []),
+          ...rootAdmins.map((admin) => Number(admin.id))
+        ]);
+        await Promise.all(
+          [...notificationRecipients]
+            .filter((userId) => Number.isSafeInteger(userId) && userId > 0)
+            .map((userId) =>
+              notifyUser(
+                userId,
+                "test_submission_pending",
+                "Có bài kiểm tra mới chờ chấm",
+                submissionNotice
+              )
+            )
         );
       }
 
@@ -1696,6 +1742,7 @@ export function installTestsModule({
 
   app.get("/api/test-submissions/:id", requireAuth, async (req, res) => {
     const id = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const row =
       req.user.role === "admin"
         ? await db
@@ -1703,9 +1750,10 @@ export function installTestsModule({
               SELECT ts.*, u.name AS userName, u.email AS userEmail
               FROM test_submissions ts
               JOIN users u ON u.id = ts.user_id
-              WHERE ts.id = ?
+              JOIN tests t ON t.id = ts.test_id
+              WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
             `)
-            .get(id)
+            .get(...(subordinateAdmin ? [id, req.user.id] : [id]))
         : await db
             .prepare(`
               SELECT ts.*, u.name AS userName, u.email AS userEmail
@@ -1768,6 +1816,7 @@ export function installTestsModule({
 
   app.get("/api/admin/pending-test-submissions", requireAdmin, async (req, res) => {
     const statusFilter = String(req.query.status || "all");
+    const subordinateAdmin = isSubordinateAdmin(req);
     const rows = await db
       .prepare(`
         SELECT ts.id, ts.test_id AS testId, ts.user_id AS userId,
@@ -1781,13 +1830,15 @@ export function installTestsModule({
                g.name AS gradedByName
         FROM test_submissions ts
         JOIN users u ON u.id = ts.user_id
+        JOIN tests t ON t.id = ts.test_id
         LEFT JOIN users g ON g.id = ts.graded_by
+        ${subordinateAdmin ? "WHERE t.created_by = ?" : ""}
         ORDER BY
           CASE ts.grading_status WHEN 'pending_grade' THEN 0 ELSE 1 END,
           ts.submitted_at DESC
         LIMIT 300
       `)
-      .all();
+      .all(...(subordinateAdmin ? [req.user.id] : []));
 
     const filtered =
       statusFilter === "pending_grade"
@@ -1806,6 +1857,7 @@ export function installTestsModule({
 
   app.get("/api/admin/test-submissions/:id/grading-context", requireAdmin, async (req, res) => {
     const submissionId = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const sub = await db
       .prepare(`
         SELECT ts.*, u.name AS userName, u.email AS userEmail,
@@ -1821,9 +1873,9 @@ export function installTestsModule({
         JOIN documents d ON d.id = t.document_id
         LEFT JOIN answer_keys ak ON ak.document_id = t.id
         LEFT JOIN exam_solutions es ON es.document_id = t.id
-        WHERE ts.id = ?
+        WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
       `)
-      .get(submissionId);
+      .get(...(subordinateAdmin ? [submissionId, req.user.id] : [submissionId]));
 
     if (!sub) {
       return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
@@ -1972,14 +2024,16 @@ export function installTestsModule({
 
   app.post("/api/admin/test-submissions/:id/grade", requireSameOrigin, requireAdmin, async (req, res) => {
     const submissionId = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const sub = await db
       .prepare(`
         SELECT ts.*, u.name AS userName, u.email AS userEmail
         FROM test_submissions ts
         JOIN users u ON u.id = ts.user_id
-        WHERE ts.id = ?
+        JOIN tests t ON t.id = ts.test_id
+        WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
       `)
-      .get(submissionId);
+      .get(...(subordinateAdmin ? [submissionId, req.user.id] : [submissionId]));
 
     if (!sub) {
       return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
@@ -2369,6 +2423,11 @@ export function installTestsModule({
         testId: String(req.query.testId || "all"),
         gradingStatus: String(req.query.gradingStatus || "all")
       };
+      if (isSubordinateAdmin(req)) {
+        const ownedTests = await db.prepare("SELECT id FROM tests WHERE created_by = ?").all(req.user.id);
+        filters.allowedTestIds = ownedTests.map((test) => String(test.id));
+        filters.createdById = req.user.id;
+      }
       const exported = await buildTeacherScoresSheetExport(db, filters, format);
       res.setHeader("Content-Type", exported.contentType);
       res.setHeader(

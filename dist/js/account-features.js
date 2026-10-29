@@ -394,8 +394,8 @@ document.addEventListener("submit", async event => {
     const confirmPassword = String(values.get("confirmPassword") || "");
 
     if (["forgot_password", "change_password"].includes(verifyPurpose)) {
-      if (password.length < 10) {
-        resetMessage("reset-password-error", "Mật khẩu mới cần ít nhất 10 ký tự.", true);
+      if (password.length < 8) {
+        resetMessage("reset-password-error", "Mật khẩu mới cần ít nhất 8 ký tự.", true);
         return;
       }
       if (password !== confirmPassword) {
@@ -500,8 +500,8 @@ document.addEventListener("submit", async event => {
     const fd = new FormData(changePasswordForm);
     const password = String(fd.get("password") || "");
     const confirmPassword = String(fd.get("confirmPassword") || "");
-    if (password.length < 10) {
-      if (errNode) { errNode.textContent = "Mật khẩu mới cần có ít nhất 10 ký tự."; errNode.hidden = false; }
+    if (password.length < 8) {
+      if (errNode) { errNode.textContent = "Mật khẩu mới cần có ít nhất 8 ký tự."; errNode.hidden = false; }
       return;
     }
     if (password !== confirmPassword) {
@@ -820,13 +820,25 @@ function addAdminReviewPanel() {
   $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();loadAdminProgress();
   window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
 }
+function documentCategoryLabel(category) {
+  return ({
+    theory: "Lý thuyết",
+    practice: "Đề ôn tập",
+    exam: "Đề thi thử",
+    exercise: "Bài tập",
+    test: "Bài kiểm tra",
+    answer: "Đáp án",
+    lesson: "Bài học",
+    document: "Tài liệu"
+  })[String(category || "").trim().toLowerCase()] || "Tài liệu khác";
+}
 async function loadApprovedDocuments(){
   const box=$("#approved-documents");if(!box)return;
   try{
     const data=await request("/api/documents");
     const documents=Array.isArray(data)?data:[];
     if(!documents.length){box.innerHTML='<p class="muted">Chưa có tài liệu đã duyệt.</p>';return;}
-    box.innerHTML='<div class="admin-table-wrap admin-approved-documents-scroll" role="region" aria-label="Danh sách tài liệu đã duyệt" tabindex="0"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Danh mục</th><th>Dung lượng</th><th>Thao tác</th></tr></thead><tbody>'+documents.map(d=>'<tr><td><strong>'+esc(d.title)+'</strong><br><span class="muted tiny">'+esc(d.originalName||d.filename)+'</span></td><td>'+esc(d.subject)+' / '+esc(d.grade)+' / '+esc(d.category)+'</td><td>'+Math.ceil((Number(d.size)||0)/1024)+' KB</td><td><button class="button secondary small" data-delete-document="'+esc(d.id)+'">Xóa</button></td></tr>').join('')+'</tbody></table></div>';
+    box.innerHTML='<div class="admin-table-wrap admin-approved-documents-scroll" role="region" aria-label="Danh sách tài liệu đã duyệt" tabindex="0"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Danh mục</th><th>Dung lượng</th><th>Thao tác</th></tr></thead><tbody>'+documents.map(d=>'<tr><td><strong>'+esc(d.title)+'</strong><br><span class="muted tiny">'+esc(d.originalName||d.filename)+'</span></td><td>'+esc(d.subject)+' / Lớp '+esc(d.grade)+' / '+esc(documentCategoryLabel(d.category))+'</td><td>'+Math.ceil((Number(d.size)||0)/1024)+' KB</td><td><button class="button secondary small" data-delete-document="'+esc(d.id)+'">Xóa</button></td></tr>').join('')+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+esc(error.message)+'</p>';}
 }
 async function loadAnswerKeySections(){
@@ -1078,7 +1090,8 @@ async function loadAdminProgress(){
    const body=document.createElement("tbody");
    rows.forEach(p=>{
      const tr=document.createElement("tr");
-     [p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,p.status,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{
+     const statusLabel = p.status === "completed" ? "Đã hoàn thành" : "Chưa hoàn thành";
+     [p.userName+" ("+p.userEmail+")",p.itemType+" · "+(p.itemTitle||p.itemId),p.subject+" · "+p.grade,statusLabel,Number(p.progressPercent)+"%",p.updatedAt].forEach(value=>{
        const td=document.createElement("td");td.textContent=String(value??"");tr.append(td);
      });
      const actionCell=document.createElement("td");
