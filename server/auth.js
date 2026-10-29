@@ -380,6 +380,17 @@ async function initializePostgresAuth() {
   const usersResult = await postgresPool.query(
     "SELECT id,name,email,password_hash,role,admin_level,created_at FROM users ORDER BY id"
   );
+  const localIds = db.prepare("SELECT id FROM users ORDER BY id").all().map((row) => Number(row.id));
+  const postgresIds = new Set(usersResult.rows.map((row) => Number(row.id)));
+  const sqliteOnlyIds = localIds.filter((id) => !postgresIds.has(id));
+  if (sqliteOnlyIds.length) {
+    throw new Error(
+      "PostgreSQL auth startup blocked: SQLite contains account IDs missing from PostgreSQL (" +
+      sqliteOnlyIds.slice(0, 20).join(", ") +
+      "). Reconcile the account snapshot before enabling MAIHOC_AUTH_BACKEND=postgres."
+    );
+  }
+
   const sessionsResult = await postgresPool.query(
     "SELECT token_hash,user_id,expires_at,created_at FROM sessions WHERE expires_at > $1",
     [Date.now()]
