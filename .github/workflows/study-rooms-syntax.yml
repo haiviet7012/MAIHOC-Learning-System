@@ -33,3 +33,4 @@ jobs:
           node --input-type=module --check < dist/js/app.js
           node --input-type=module --check < dist/js/account-features.js
           node --input-type=module --check < study-rooms/client.js
+          node --input-type=module --check < study-rooms/client.js
