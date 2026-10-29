@@ -1,4 +1,7 @@
-const STUN_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const FALLBACK_ICE_SERVERS = [
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.l.google.com:19302" }
+];
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const EMOTES = ["👍", "❤️", "👏", "😂", "🎉", "🔥"];
 
@@ -45,6 +48,7 @@ export function mountStudyRooms(container, user) {
   const peers = new Map();
   let processingPoll = false;
   let sendBusy = false;
+  let iceServersPromise = null;
 
   const setExpandedRoomMode = active => {
     container.classList.toggle("study-room-fullscreen", Boolean(active));
@@ -756,13 +760,34 @@ export function mountStudyRooms(container, user) {
     syncRemoteVideoTiles();
   }
 
-  function ensurePeer(member, isOfferer = false) {
+  async function getIceServers() {
+    if (!iceServersPromise) {
+      iceServersPromise = api("/api/study-rooms/ice-servers")
+        .then(data => Array.isArray(data.iceServers) && data.iceServers.length
+          ? data.iceServers
+          : FALLBACK_ICE_SERVERS)
+        .catch(error => {
+          console.warn("[Study Rooms] Could not load TURN credentials; using STUN fallback:", error.message);
+          return FALLBACK_ICE_SERVERS;
+        });
+    }
+    return iceServersPromise;
+  }
+
+  async function ensurePeer(member, isOfferer = false) {
     const targetId = typeof member === "string" ? member : member?.participantId;
     if (!targetId || targetId === participant?.participantId) return null;
     if (peers.has(targetId)) return peers.get(targetId);
 
-    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
-    const entry = { pc, stream: new MediaStream(), isStealthPeer: Boolean(member?.isStealthPeer) };
+    const iceServers = await getIceServers();
+    if (peers.has(targetId)) return peers.get(targetId);
+    const pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 4 });
+    const entry = {
+      pc,
+      stream: new MediaStream(),
+      isStealthPeer: Boolean(member?.isStealthPeer),
+      pendingIceCandidates: []
+    };
     peers.set(targetId, entry);
 
     if (!participant?.isAdminObserver) {
@@ -795,7 +820,11 @@ export function mountStudyRooms(container, user) {
         sendEvent("signal-ice", { candidate: event.candidate }, targetId).catch(() => {});
       }
     };
+    pc.oniceconnectionstatechange = () => {
+      console.info("[Study Rooms] ICE state:", targetId, pc.iceConnectionState);
+    };
     pc.onconnectionstatechange = () => {
+      console.info("[Study Rooms] Peer connection state:", targetId, pc.connectionState);
       if (["failed", "closed"].includes(pc.connectionState)) {
         closePeer(targetId);
       }
@@ -840,7 +869,7 @@ export function mountStudyRooms(container, user) {
       const shouldOffer = participant?.isAdminObserver
         ? true
         : participant.participantId.localeCompare(member.participantId) < 0;
-      const entry = ensurePeer(member, shouldOffer);
+      const entry = await ensurePeer(member, shouldOffer);
       if (entry && shouldOffer && entry.pc.signalingState === "stable" && entry.pc.remoteDescription === null) {
         try {
           const offer = await entry.pc.createOffer();
@@ -898,10 +927,15 @@ export function mountStudyRooms(container, user) {
         const fromId = event.fromParticipantId;
         if (!fromId || !event.payload?.description) continue;
         const knownMember = members.find(member => member.participantId === fromId);
-        const peer = ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
+        const peer = await ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
         if (!peer) continue;
         try {
           await peer.pc.setRemoteDescription(event.payload.description);
+          while (peer.pendingIceCandidates.length) {
+            const candidate = peer.pendingIceCandidates.shift();
+            try { await peer.pc.addIceCandidate(candidate); }
+            catch (error) { console.warn("[Study Rooms] Queued ICE candidate rejected:", error.message); }
+          }
           if (!participant?.isAdminObserver) {
             for (const kind of ["audio", "video"]) {
               const track = localStream?.getTracks().find(item => item.kind === kind) || null;
@@ -929,17 +963,29 @@ export function mountStudyRooms(container, user) {
         if (peer && event.payload?.description) {
           try {
             await peer.pc.setRemoteDescription(event.payload.description);
+            while (peer.pendingIceCandidates.length) {
+              const candidate = peer.pendingIceCandidates.shift();
+              try { await peer.pc.addIceCandidate(candidate); }
+              catch (candidateError) { console.warn("[Study Rooms] Queued ICE candidate rejected:", candidateError.message); }
+            }
           } catch (error) {
             console.warn("Could not apply WebRTC answer:", error.message);
           }
         }
       } else if (event.type === "signal-ice") {
-        const peer = peers.get(event.fromParticipantId);
-        if (peer && event.payload?.candidate) {
-          try {
-            await peer.pc.addIceCandidate(event.payload.candidate);
-          } catch (error) {
-            console.warn("Could not add ICE candidate:", error.message);
+        const fromId = event.fromParticipantId;
+        if (!fromId || !event.payload?.candidate) continue;
+        const knownMember = members.find(member => member.participantId === fromId);
+        const peer = await ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
+        if (peer) {
+          if (!peer.pc.remoteDescription) {
+            peer.pendingIceCandidates.push(event.payload.candidate);
+          } else {
+            try {
+              await peer.pc.addIceCandidate(event.payload.candidate);
+            } catch (error) {
+              console.warn("[Study Rooms] Could not add ICE candidate:", error.message);
+            }
           }
         }
       } else if (event.type === "room-closed") {
