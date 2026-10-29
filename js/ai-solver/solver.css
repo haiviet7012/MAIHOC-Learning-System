@@ -35,7 +35,41 @@
 .universal-ai-empty h2,.universal-ai-loading h2 { margin:0 0 8px; font-size:17px; color:var(--text); }
 .universal-ai-empty p,.universal-ai-loading p { max-width:360px; margin:0; font-size:13px; }
 .universal-ai-loading { display:grid; place-content:center; justify-items:center; min-height:420px; text-align:center; }
-.universal-ai-spinner { width:32px; height:32px; border-width:3px; border-top-color:var(--accent); margin-bottom:16px; }
+.universal-ai-loader-logo {
+  position:relative;
+  display:grid;
+  place-items:center;
+  width:104px;
+  height:104px;
+  margin:0 0 16px;
+}
+.universal-ai-loader-ring {
+  position:absolute;
+  inset:0;
+  border:3px solid color-mix(in srgb,var(--accent) 16%,transparent);
+  border-top-color:var(--accent);
+  border-right-color:var(--primary);
+  border-radius:50%;
+  animation:universal-ai-ring-spin 1.15s linear infinite;
+}
+.universal-ai-loading-logo {
+  display:block;
+  width:78px;
+  height:78px;
+  object-fit:contain;
+  border-radius:50%;
+  animation:universal-ai-logo-pulse 1.8s ease-in-out infinite;
+}
+@keyframes universal-ai-ring-spin {
+  to { transform:rotate(360deg); }
+}
+@keyframes universal-ai-logo-pulse {
+  0%,100% { transform:scale(.96); opacity:.88; }
+  50% { transform:scale(1); opacity:1; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .universal-ai-loader-ring,.universal-ai-loading-logo { animation:none; }
+}
 .universal-ai-error { margin:16px 0; padding:12px 14px; border:1px solid color-mix(in srgb,var(--danger) 55%,var(--border)); background:color-mix(in srgb,var(--danger) 8%,var(--surface)); color:var(--danger); overflow-wrap:anywhere; font-size:13px; }
 .universal-ai-answer { color:var(--text); min-width:0; }
 .universal-ai-answer-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
