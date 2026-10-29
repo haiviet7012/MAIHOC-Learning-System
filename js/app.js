@@ -153,7 +153,7 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
     return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá ngay Khoa học tự nhiên và Toán học.</p><div class="hero-actions"><button class="button primary" data-action="open-natural-sciences" data-name="Hóa học">🌿 Khoa học tự nhiên →</button><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
+    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá các môn học theo lộ trình của bạn.</p><div class="hero-actions"><button class="button primary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
 <div class="grid four">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
@@ -171,12 +171,13 @@ function subjectPickerPage() {
 }
 function subjectPage() {
     const isChemistry = state.subject === "Hóa học";
+    const isPhysics = state.subject === "Vật lý" || state.subject === "Vật lí";
     const naturalScienceTools = isChemistry ? `
       <section class="section-head natural-science-heading" style="margin-top:0;">
         <div>
-          <p class="eyebrow">KHOA HỌC TỰ NHIÊN</p>
+          <p class="eyebrow">HÓA HỌC</p>
           <h2>Công cụ học tập</h2>
-          <p>Các công cụ tra cứu, giải bài tập và khám phá kiến thức Hóa học – Vật lý.</p>
+          <p>Bảng tuần hoàn tương tác IUPAC và Trợ lý AI giải bài tập Hóa học từng bước.</p>
         </div>
         <span class="pill natural-science-feature">✨ CÔNG CỤ HỌC TẬP</span>
       </section>
@@ -195,6 +196,23 @@ function subjectPage() {
           <p>Nhập đề, tải ảnh hoặc PDF; AI phân tích dữ kiện, cân bằng phương trình và hướng dẫn giải theo từng bước.</p>
           <p class="natural-science-card-link">Bắt đầu giải bài →</p>
         </article>
+      </div>
+      <section class="section-head">
+        <div>
+          <h2>Khu vực học tập &amp; Luyện thi</h2>
+          <p>Hệ thống lý thuyết, luyện đề và phòng thi mô phỏng.</p>
+        </div>
+      </section>
+    ` : isPhysics ? `
+      <section class="section-head natural-science-heading" style="margin-top:0;">
+        <div>
+          <p class="eyebrow">VẬT LÝ</p>
+          <h2>Công cụ học tập</h2>
+          <p>Không gian tra cứu công thức và phòng thí nghiệm mô phỏng Vật lý.</p>
+        </div>
+        <span class="pill natural-science-feature">✨ CÔNG CỤ HỌC TẬP</span>
+      </section>
+      <div class="grid two natural-science-grid" style="margin-bottom:28px;">
         <article class="card clickable resource-card natural-science-card" data-action="coming-natural-tool" data-tool="physics-formulas" role="button" tabindex="0">
           <div class="card-icon">⚡</div>
           <span class="pill">VẬT LÝ · TRA CỨU</span>
@@ -218,7 +236,13 @@ function subjectPage() {
       </section>
     ` : "";
 
-    return `${pageHeading(`Môn ${state.subject}`, isChemistry ? "Khám phá công cụ chuyên sâu, tài liệu lý thuyết và phòng thi mô phỏng." : "Chọn một khu vực học tập để tiếp tục.")}
+    const pageSubtitle = isChemistry
+      ? "Khám phá Bảng tuần hoàn tương tác, Trợ lý AI và phòng thi mô phỏng."
+      : isPhysics
+        ? "Khám phá công cụ Vật lý, tài liệu lý thuyết và phòng thi mô phỏng."
+        : "Chọn một khu vực học tập để tiếp tục.";
+
+    return `${pageHeading(`Môn ${state.subject}`, pageSubtitle)}
 ${naturalScienceTools}
 <div class="grid four">
 ${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
@@ -1077,10 +1101,6 @@ document.addEventListener("click", async (e) => {
         if (a === "browse-subjects") {
             $("#subject-menu").classList.remove("open");
             go("subject-picker");
-            return;
-        }
-        if (a === "open-natural-sciences") {
-            subjectClick("Hóa học");
             return;
         }
         if (a === "open-math" || a === "open-subject") {
