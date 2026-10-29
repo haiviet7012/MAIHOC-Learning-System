@@ -36,7 +36,8 @@ import {
 
   db, publicUser, registerUser, authenticateUser, createSession, destroySession,
 
-  loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword
+  loadCurrentUser, requireAuth, requireAdmin, requireSuperAdmin, requireSameOrigin, createInitialAdmin, hashPassword,
+  isPostgresAuthEnabled, syncPostgresUserFromSqlite, deletePostgresUser, deletePostgresSessionsForUser
 
 } from "./auth.js";
 
@@ -357,7 +358,7 @@ app.post("/api/auth/register",requireSameOrigin,async(req,res)=>{
 
     const user=await registerUser(req.body||{});
 
-    createSession(user.id,res);
+    await createSession(user.id,res);
 
     notifyUser(user.id,"account_created","Tạo tài khoản thành công","Chào mừng bạn đến với MAI HỌC.");
 
@@ -387,7 +388,7 @@ app.post("/api/auth/login",requireSameOrigin,loginRateLimit,async(req,res)=>{
 
     loginAttempts.delete(`${req.ip}:${String(req.body?.email||"").trim().toLowerCase()}`);
 
-    createSession(user.id,res);
+    await createSession(user.id,res);
 
     res.json({user});
 
@@ -403,11 +404,14 @@ app.post("/api/auth/login",requireSameOrigin,loginRateLimit,async(req,res)=>{
 
 
 
-app.post("/api/auth/logout",requireSameOrigin,(req,res)=>{
+app.post("/api/auth/logout",requireSameOrigin,async(req,res,next)=>{
 
-  destroySession(req,res);
-
-  res.status(204).end();
+  try {
+    await destroySession(req,res);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
 
 });
 
@@ -630,7 +634,9 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
     });
     const passwordHash = await hashPassword(password);
     db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, user.id);
+    await syncPostgresUserFromSqlite(user.id);
     db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
+    await deletePostgresSessionsForUser(user.id);
     notifyUser(user.id, "password_reset", "Mật khẩu đã được đặt lại", "Mật khẩu tài khoản MAI HỌC của bạn vừa được cập nhật thông qua mã xác minh Gmail.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu thành công. Hãy đăng nhập lại bằng mật khẩu mới." });
   } catch (error) {
@@ -719,6 +725,7 @@ app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUse
       targetEmail: newEmail
     });
     db.prepare("UPDATE users SET email=? WHERE id=?").run(newEmail, req.user.id);
+    await syncPostgresUserFromSqlite(req.user.id);
     const updated = db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(req.user.id);
     notifyUser(req.user.id, "email_changed", "Đã thay đổi địa chỉ Email", `Email tài khoản của bạn đã được chuyển thành ${newEmail}.`);
     return res.json({
@@ -747,6 +754,7 @@ app.post("/api/account/change-password", requireSameOrigin, requireAuth, require
     });
     const passwordHash = await hashPassword(password);
     db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(passwordHash, req.user.id);
+    await syncPostgresUserFromSqlite(req.user.id);
     notifyUser(req.user.id, "password_changed", "Đã đổi mật khẩu", "Mật khẩu tài khoản của bạn đã được cập nhật thành công.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu tài khoản thành công." });
   } catch (error) {
@@ -831,8 +839,12 @@ app.get("/api/presence/online", (req, res) => {
 
 // Admin information is never trusted from client-supplied role fields.
 
-function deleteAccountPermanently(id){
+async function deleteAccountPermanently(id){
   const pendingFiles=db.prepare("SELECT filename FROM document_submissions WHERE user_id=?").all(id);
+  const existing=db.prepare("SELECT id FROM users WHERE id=?").get(id);
+  if(!existing)return false;
+  // PostgreSQL is canonical when AUTH_STORAGE=postgres; SQLite retains a compatibility mirror.
+  if(isPostgresAuthEnabled) await deletePostgresUser(id);
   const result=db.prepare("DELETE FROM users WHERE id=?").run(id);
   if(!result.changes)return false;
   try{deleteLearningResultsByUserId(id);}catch{}
@@ -869,6 +881,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
       return updated;
     });
     const updated=promote();
+    await syncPostgresUserFromSqlite(updated.id);
     return res.json({ok:true,action:"promoted",user:publicUser(updated),message:"Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."});
   }
 
@@ -885,6 +898,7 @@ app.post("/api/admin/admins",requireSameOrigin,requireSuperAdmin,async(req,res)=
     throw error;
   }
   const created=db.prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?").get(result.lastInsertRowid);
+  await syncPostgresUserFromSqlite(created.id);
   notifyAdmins("admin_created","Đã tạo Admin cấp dưới",`Tài khoản ${name} (${email}) đã được tạo mới.`,"admin");
   res.status(201).json({ok:true,action:"created",user:publicUser(created),message:"Đã tạo tài khoản Admin cấp dưới mới."});
 });
@@ -899,7 +913,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)
   if(Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa tài khoản Admin cao nhất."});
   if(Number(req.user.adminLevel)>=2){
     await deleteAiSolutionHistoryForUser(id);
-    if(!deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
+    if(!await deleteAccountPermanently(id))return res.status(404).json({error:"Tài khoản không còn tồn tại."});
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'").run(req.user.id,id);
     return res.json({ok:true,deletedId:id,deleted:true,total:db.prepare("SELECT COUNT(*) AS count FROM users").get().count});
   }
@@ -930,7 +944,7 @@ app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,req
     if(target&&Number(target.admin_level)>=2)return res.status(403).json({error:"Không thể xóa Admin cao nhất."});
     if(target) {
       await deleteAiSolutionHistoryForUser(target.id);
-      deleteAccountPermanently(target.id);
+      await deleteAccountPermanently(target.id);
     }
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
     if(review.requested_by)notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
