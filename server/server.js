@@ -369,7 +369,7 @@ app.post("/api/auth/register",requireSameOrigin,async(req,res)=>{
 
     await createSession(user.id,res);
 
-    notifyUser(user.id,"account_created","Tạo tài khoản thành công","Chào mừng bạn đến với MAI HỌC.");
+    await notifyUser(user.id,"account_created","Tạo tài khoản thành công","Chào mừng bạn đến với MAI HỌC.");
 
     res.status(201).json({user});
 
@@ -709,7 +709,7 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
     const passwordHash = await hashPassword(password);
     await updateUserAccount(user.id, { passwordHash });
     await revokeUserSessions(user.id);
-    notifyUser(user.id, "password_reset", "Mật khẩu đã được đặt lại", "Mật khẩu tài khoản MAI HỌC của bạn vừa được cập nhật thông qua mã xác minh Gmail.");
+    await notifyUser(user.id, "password_reset", "Mật khẩu đã được đặt lại", "Mật khẩu tài khoản MAI HỌC của bạn vừa được cập nhật thông qua mã xác minh Gmail.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu thành công. Hãy đăng nhập lại bằng mật khẩu mới." });
   } catch (error) {
     const status = Number(error.status) || 400;
@@ -798,7 +798,7 @@ app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUse
     });
     const updated = await updateUserAccount(req.user.id, { email: newEmail });
     if (!updated) return res.status(404).json({ error: "Tài khoản không tồn tại." });
-    notifyUser(req.user.id, "email_changed", "Đã thay đổi địa chỉ Email", `Email tài khoản của bạn đã được chuyển thành ${newEmail}.`);
+    await notifyUser(req.user.id, "email_changed", "Đã thay đổi địa chỉ Email", `Email tài khoản của bạn đã được chuyển thành ${newEmail}.`);
     return res.json({
       ok: true,
       user: publicUser(updated),
@@ -825,7 +825,7 @@ app.post("/api/account/change-password", requireSameOrigin, requireAuth, require
     });
     const passwordHash = await hashPassword(password);
     await updateUserAccount(req.user.id, { passwordHash });
-    notifyUser(req.user.id, "password_changed", "Đã đổi mật khẩu", "Mật khẩu tài khoản của bạn đã được cập nhật thành công.");
+    await notifyUser(req.user.id, "password_changed", "Đã đổi mật khẩu", "Mật khẩu tài khoản của bạn đã được cập nhật thành công.");
     return res.json({ ok: true, message: "Đã đổi mật khẩu tài khoản thành công." });
   } catch (error) {
     const status = Number(error.status) || 400;
@@ -1018,7 +1018,7 @@ app.delete("/api/admin/users/:id",requireSameOrigin,requireAdmin,async (req,res)
   const request=db.prepare(`INSERT INTO account_deletion_requests(target_user_id,target_name,target_email,target_role,requested_by,requested_by_name)
     VALUES(?,?,?,?,?,?)`).run(target.id,target.name,target.email,target.role,req.user.id,req.user.name);
   const superAdmins=db.prepare("SELECT id FROM users WHERE role='admin' AND admin_level>=2").all();
-  for(const admin of superAdmins)notifyUser(admin.id,"account_deletion_request","Yêu cầu xóa tài khoản",`${req.user.name} đề nghị xóa ${target.role==="admin"?"Admin cấp dưới":"User"}: ${target.name} (${target.email}). Cần bạn chấp thuận.`,"admin");
+  for(const admin of superAdmins) await notifyUser(admin.id,"account_deletion_request","Yêu cầu xóa tài khoản",`${req.user.name} đề nghị xóa ${target.role==="admin"?"Admin cấp dưới":"User"}: ${target.name} (${target.email}). Cần bạn chấp thuận.`,"admin");
   res.status(202).json({ok:true,deleted:false,requestId:request.lastInsertRowid,message:"Yêu cầu đã gửi Admin cao nhất. Tài khoản chưa bị xóa."});
 });
 
@@ -1043,11 +1043,11 @@ app.post("/api/admin/account-deletion-requests/:id/review",requireSameOrigin,req
       await deleteAccountPermanently(target.id);
     }
     db.prepare("UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
-    if(review.requested_by)notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
+    if(review.requested_by) await notifyUser(review.requested_by,"account_deletion_approved","Yêu cầu xóa đã được duyệt",`Yêu cầu xóa tài khoản ${review.target_name} đã được chấp thuận và thực hiện.`,"admin");
     return res.json({ok:true,status:"approved",deleted:Boolean(target)});
   }
   db.prepare("UPDATE account_deletion_requests SET status='rejected',reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'").run(req.user.id,requestId);
-  if(review.requested_by)notifyUser(review.requested_by,"account_deletion_rejected","Yêu cầu xóa bị từ chối",`Yêu cầu xóa tài khoản ${review.target_name} đã bị từ chối. Tài khoản vẫn được giữ nguyên.`,"admin");
+  if(review.requested_by) await notifyUser(review.requested_by,"account_deletion_rejected","Yêu cầu xóa bị từ chối",`Yêu cầu xóa tài khoản ${review.target_name} đã bị từ chối. Tài khoản vẫn được giữ nguyên.`,"admin");
   res.json({ok:true,status:"rejected",deleted:false});
 });
 
