@@ -448,7 +448,7 @@ async function sendVerificationCodeEmail({ toEmail, userName, code, purposeLabel
   console.log(`[MAI HỌC OTP] Mã xác minh (${purposeLabel}) cho ${toEmail}: ${code} (hiệu lực 10 phút)`);
   if (userId) {
     try {
-      notifyUser(
+      await notifyUser(
         userId,
         "verification_code",
         `Mã xác minh ${purposeLabel}: ${code}`,
