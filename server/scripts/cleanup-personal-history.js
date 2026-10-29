@@ -48,6 +48,7 @@ function countWhere(db, table, where, params = []) {
 }
 
 export function assertSingleAdmin(db, userId) {
+  if (Number(userId) !== 1) throw new Error("Chỉ hỗ trợ dọn lịch sử của admin ID 1.");
   if (!tableExists(db, "users")) throw new Error("Không tìm thấy bảng users.");
   const users = db.prepare("SELECT id, role FROM users ORDER BY id").all();
   if (users.length !== 1 || Number(users[0].id) !== Number(userId) || users[0].role !== "admin") {
@@ -286,7 +287,10 @@ async function main() {
     mainDb.pragma("foreign_keys = ON");
     resultsDb.pragma("foreign_keys = ON");
 
-    const report = buildPersonalHistoryReport(mainDb, resultsDb, userId);
+    const report = {
+      ...buildPersonalHistoryReport(mainDb, resultsDb, userId),
+      mode: apply ? "APPLY PREVIEW" : "DRY RUN"
+    };
     console.log(JSON.stringify(report, null, 2));
     const unhealthy = report.health.mainIntegrity !== "ok" ||
       report.health.resultsIntegrity !== "ok" ||
