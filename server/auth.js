@@ -671,19 +671,20 @@ export async function loadCurrentUser(req, res, next) {
       let session;
       if (authUsesPostgres) {
         const result = await postgresPool.query(
-          "SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at " +
+          "SELECT u.id,u.name,u.email,u.password_hash,u.role,u.admin_level,u.created_at,s.expires_at " +
           "FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1",
           [tokenHash]
         );
         session = result.rows[0] || null;
       } else {
         session = db.prepare(
-          "SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at " +
+          "SELECT u.id,u.name,u.email,u.password_hash,u.role,u.admin_level,u.created_at,s.expires_at " +
           "FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
         ).get(tokenHash);
       }
 
       if (session && Number(session.expires_at) > Date.now()) {
+        if (authUsesPostgres) mirrorUserRow(session);
         req.user = publicUser(session);
         req.sessionTokenHash = tokenHash;
 
