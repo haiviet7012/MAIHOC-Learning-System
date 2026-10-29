@@ -61,15 +61,13 @@ export async function saveAiSolutionHistory({ userId, subject, mode, source, tit
   }
 }
 
-export function listAiSolutionHistory(userId, limit = 200) {
-  const safeLimit = Math.max(1, Math.min(500, Math.floor(Number(limit) || 200)));
+export function listAiSolutionHistory(userId) {
   return db.prepare(`
     SELECT id, subject, mode, source, title, model_used AS modelUsed, created_at AS createdAt
     FROM ai_solution_history
     WHERE user_id=?
     ORDER BY created_at DESC, id DESC
-    LIMIT ?
-  `).all(Number(userId), safeLimit);
+  `).all(Number(userId));
 }
 
 export async function getAiSolutionHistory(userId, historyId) {
