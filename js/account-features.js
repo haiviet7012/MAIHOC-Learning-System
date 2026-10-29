@@ -399,8 +399,8 @@ document.addEventListener("submit", async event => {
     const confirmPassword = String(values.get("confirmPassword") || "");
 
     if (["forgot_password", "change_password"].includes(verifyPurpose)) {
-      if (password.length < 10) {
-        resetMessage("reset-password-error", "Mật khẩu mới cần ít nhất 10 ký tự.", true);
+      if (password.length < 8) {
+        resetMessage("reset-password-error", "Mật khẩu mới cần ít nhất 8 ký tự.", true);
         return;
       }
       if (password !== confirmPassword) {
@@ -505,8 +505,8 @@ document.addEventListener("submit", async event => {
     const fd = new FormData(changePasswordForm);
     const password = String(fd.get("password") || "");
     const confirmPassword = String(fd.get("confirmPassword") || "");
-    if (password.length < 10) {
-      if (errNode) { errNode.textContent = "Mật khẩu mới cần có ít nhất 10 ký tự."; errNode.hidden = false; }
+    if (password.length < 8) {
+      if (errNode) { errNode.textContent = "Mật khẩu mới cần có ít nhất 8 ký tự."; errNode.hidden = false; }
       return;
     }
     if (password !== confirmPassword) {
