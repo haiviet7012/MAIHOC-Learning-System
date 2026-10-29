@@ -2699,10 +2699,15 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     if (!Number.isInteger(id) || !["approved", "rejected"].includes(decision)) {
       return res.status(400).json({ error: "Invalid review decision." });
     }
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const sub = await db
-      .prepare("SELECT * FROM document_submissions WHERE id=? AND status='pending'")
-      .get(id);
-    if (!sub) return res.status(404).json({ error: "Pending document was not found." });
+      .prepare(
+        "SELECT s.* FROM document_submissions s JOIN users u ON u.id=s.user_id " +
+        "WHERE s.id=? AND s.status='pending' " +
+        (isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : "")
+      )
+      .get(...(isSubordinateAdmin ? [id, req.user.id] : [id]));
+    if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
     const bytes = await getDocumentBuffer(sub, "r2_key", "file_data");
     if (decision === "approved" && !bytes) {
       return res.status(410).json({ error: "The stored document file is missing." });
