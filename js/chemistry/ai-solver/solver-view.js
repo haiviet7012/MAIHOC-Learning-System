@@ -216,6 +216,10 @@ export function initChemistrySolver(container, { initialPrompt = "" } = {}) {
         if (!res.ok) throw new Error(data.error || "Không thể giải bài lúc này.");
 
         resultBody.innerHTML = renderSolutionHtml(data.solution);
+        if (window.MathJax?.typesetPromise) {
+          try { await window.MathJax.typesetPromise([resultBody]); }
+          catch (mathError) { console.warn("MathJax could not typeset Chemistry solution:", mathError); }
+        }
       } catch (err) {
         if (err.name === "AbortError") {
           resultBody.innerHTML = `<p class="muted" style="color:#94a3b8;padding:20px;">Đã hủy yêu cầu giải bài.</p>`;
