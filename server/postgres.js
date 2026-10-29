@@ -908,7 +908,219 @@ export async function initPostgresSchema(targetDb = db) {
       "ALTER TABLE users ALTER COLUMN created_at SET DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))",
       // Recover historical timestamps only when a matching account event exists.
       // If an old account has no recoverable event, leave the date blank rather than inventing one.
-      "UPDATE users SET created_at = (SELECT MIN(n.created_at) FROM notifications n WHERE (n.user_id = users.id AND n.type = 'account_created') OR (n.type IN ('admin_created', 'admin_promoted') AND LOWER(COALESCE(n.message, '')) LIKE '%' || LOWER(users.email) || '%')) WHERE created_at IS NULL OR BTRIM(created_at) = '' OR (created_at !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' AND created_at !~ '^[0-9]{10,13}
+      "UPDATE users SET created_at = (SELECT MIN(n.created_at) FROM notifications n WHERE (n.user_id = users.id AND n.type = 'account_created') OR (n.type IN ('admin_created', 'admin_promoted') AND LOWER(COALESCE(n.message, '')) LIKE '%' || LOWER(users.email) || '%')) WHERE (created_at IS NULL OR BTRIM(created_at) = '' OR (created_at !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' AND created_at !~ '^[0-9]{10,13}
+      "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_r2_key TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE answer_keys ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE documents ALTER COLUMN file_data DROP NOT NULL",
+      "ALTER TABLE answer_keys ALTER COLUMN file_data DROP NOT NULL"
+    ];
+    for (const stmt of backwardCompatibleColumns) {
+      try {
+        await targetDb.exec(stmt);
+      } catch {
+        // Ignore if column constraint already matches
+      }
+    }
+
+    // Sync PostgreSQL identity sequences so post-migration inserts never collide with imported IDs
+    for (const table of IDENTITY_TABLES) {
+      try {
+        await targetDb.query(
+          `SELECT setval(
+            pg_get_serial_sequence($1, 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM "${table}"), 1), 1),
+            (SELECT COUNT(*) > 0 FROM "${table}")
+          )`,
+          [`public.${table}`]
+        );
+      } catch {
+        // Ignore if table has no sequence in custom test harness
+      }
+    }
+  };
+
+  if (targetDb === db) {
+    schemaInitPromise = runInit().catch((err) => {
+      schemaInitPromise = null;
+      throw err;
+    });
+    return schemaInitPromise;
+  }
+  return runInit();
+}
+)",
+      "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_r2_key TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE answer_keys ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE documents ALTER COLUMN file_data DROP NOT NULL",
+      "ALTER TABLE answer_keys ALTER COLUMN file_data DROP NOT NULL"
+    ];
+    for (const stmt of backwardCompatibleColumns) {
+      try {
+        await targetDb.exec(stmt);
+      } catch {
+        // Ignore if column constraint already matches
+      }
+    }
+
+    // Sync PostgreSQL identity sequences so post-migration inserts never collide with imported IDs
+    for (const table of IDENTITY_TABLES) {
+      try {
+        await targetDb.query(
+          `SELECT setval(
+            pg_get_serial_sequence($1, 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM "${table}"), 1), 1),
+            (SELECT COUNT(*) > 0 FROM "${table}")
+          )`,
+          [`public.${table}`]
+        );
+      } catch {
+        // Ignore if table has no sequence in custom test harness
+      }
+    }
+  };
+
+  if (targetDb === db) {
+    schemaInitPromise = runInit().catch((err) => {
+      schemaInitPromise = null;
+      throw err;
+    });
+    return schemaInitPromise;
+  }
+  return runInit();
+}
+) AND EXISTS (SELECT 1 FROM notifications n WHERE (n.user_id = users.id AND n.type = 'account_created') OR (n.type IN ('admin_created', 'admin_promoted') AND LOWER(COALESCE(n.message, '')) LIKE '%' || LOWER(users.email) || '%'))",
+      "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_r2_key TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE answer_keys ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE documents ALTER COLUMN file_data DROP NOT NULL",
+      "ALTER TABLE answer_keys ALTER COLUMN file_data DROP NOT NULL"
+    ];
+    for (const stmt of backwardCompatibleColumns) {
+      try {
+        await targetDb.exec(stmt);
+      } catch {
+        // Ignore if column constraint already matches
+      }
+    }
+
+    // Sync PostgreSQL identity sequences so post-migration inserts never collide with imported IDs
+    for (const table of IDENTITY_TABLES) {
+      try {
+        await targetDb.query(
+          `SELECT setval(
+            pg_get_serial_sequence($1, 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM "${table}"), 1), 1),
+            (SELECT COUNT(*) > 0 FROM "${table}")
+          )`,
+          [`public.${table}`]
+        );
+      } catch {
+        // Ignore if table has no sequence in custom test harness
+      }
+    }
+  };
+
+  if (targetDb === db) {
+    schemaInitPromise = runInit().catch((err) => {
+      schemaInitPromise = null;
+      throw err;
+    });
+    return schemaInitPromise;
+  }
+  return runInit();
+}
+)",
+      "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS answer_key_r2_key TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_data BYTEA",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_original_name TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_content_type TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS answer_key_question_ids TEXT",
+      "ALTER TABLE documents ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE answer_keys ADD COLUMN IF NOT EXISTS r2_key TEXT",
+      "ALTER TABLE documents ALTER COLUMN file_data DROP NOT NULL",
+      "ALTER TABLE answer_keys ALTER COLUMN file_data DROP NOT NULL"
+    ];
+    for (const stmt of backwardCompatibleColumns) {
+      try {
+        await targetDb.exec(stmt);
+      } catch {
+        // Ignore if column constraint already matches
+      }
+    }
+
+    // Sync PostgreSQL identity sequences so post-migration inserts never collide with imported IDs
+    for (const table of IDENTITY_TABLES) {
+      try {
+        await targetDb.query(
+          `SELECT setval(
+            pg_get_serial_sequence($1, 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM "${table}"), 1), 1),
+            (SELECT COUNT(*) > 0 FROM "${table}")
+          )`,
+          [`public.${table}`]
+        );
+      } catch {
+        // Ignore if table has no sequence in custom test harness
+      }
+    }
+  };
+
+  if (targetDb === db) {
+    schemaInitPromise = runInit().catch((err) => {
+      schemaInitPromise = null;
+      throw err;
+    });
+    return schemaInitPromise;
+  }
+  return runInit();
+}
+)) AND EXISTS (SELECT 1 FROM notifications n WHERE (n.user_id = users.id AND n.type = 'account_created') OR (n.type IN ('admin_created', 'admin_promoted') AND LOWER(COALESCE(n.message, '')) LIKE '%' || LOWER(users.email) || '%'))",
       "ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS item_title TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS file_data BYTEA",
       "ALTER TABLE document_submissions ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'application/octet-stream'",
