@@ -2552,10 +2552,11 @@ app.post(
       if (![".pdf", ".txt", ".json", ".csv", ".docx"].includes(path.extname(req.file.originalname).toLowerCase())) {
         return res.status(400).json({ error: "Invalid answer key format." });
       }
+      const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
       const doc = await db
-        .prepare("SELECT id,category,subject FROM documents WHERE id=?")
-        .get(String(req.params.id));
-      if (!doc) return res.status(404).json({ error: "Question document was not found." });
+        .prepare("SELECT id,category,subject FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : ""))
+        .get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
+      if (!doc) return res.status(404).json({ error: "Không tìm thấy đề hoặc bạn không có quyền quản lý tài liệu này." });
       if (!["practice", "exam", "test"].includes(doc.category)) {
         return res.status(400).json({ error: "Theory documents do not need an answer key." });
       }
