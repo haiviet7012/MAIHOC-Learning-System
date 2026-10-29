@@ -47,7 +47,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
                 <input class="universal-ai-pdf" type="file" accept="application/pdf,.pdf" hidden>
                 <span class="universal-ai-upload-icon">📄</span>
                 <strong>Chọn tệp PDF</strong>
-                <span class="solver-help">Tối đa 8 MB, 80 trang</span>
+                <span class="solver-help">Tối đa 2 MB, 80 trang</span>
                 <span class="universal-ai-file-name" data-ai-pdf-name>Chưa chọn tệp</span>
               </label>
             </div>
