@@ -153,7 +153,7 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
     return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá ngay Khoa học tự nhiên và Toán học.</p><div class="hero-actions"><button class="button primary" data-action="open-subject" data-name="Hóa học">🌿 Khoa học tự nhiên →</button><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
+    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá ngay Khoa học tự nhiên và Toán học.</p><div class="hero-actions"><button class="button primary" data-action="open-natural-sciences" data-name="Hóa học">🌿 Khoa học tự nhiên →</button><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
 <div class="grid four">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
@@ -1062,6 +1062,10 @@ document.addEventListener("click", async (e) => {
         if (a === "browse-subjects") {
             $("#subject-menu").classList.remove("open");
             go("subject-picker");
+            return;
+        }
+        if (a === "open-natural-sciences") {
+            subjectClick("Hóa học");
             return;
         }
         if (a === "open-math" || a === "open-subject") {
