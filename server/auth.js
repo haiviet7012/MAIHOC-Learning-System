@@ -503,32 +503,37 @@ export async function deleteUserAccount(id) {
   const userId = Number(id);
   if (!Number.isSafeInteger(userId) || userId < 1) return false;
 
-  db.exec("BEGIN IMMEDIATE");
-  let pgClient = null;
-  let pgTransaction = false;
+  if (!authUsesPostgres) {
+    return Boolean(db.prepare("DELETE FROM users WHERE id=?").run(userId).changes);
+  }
+
+  const client = await postgresPool.connect();
+  let transaction = false;
   try {
-    const localResult = db.prepare("DELETE FROM users WHERE id=?").run(userId);
-    if (!localResult.changes) {
-      db.exec("ROLLBACK");
+    await client.query("BEGIN");
+    transaction = true;
+    const deleted = await client.query("DELETE FROM users WHERE id=$1 RETURNING id", [userId]);
+    if (!deleted.rowCount) {
+      await client.query("ROLLBACK");
+      transaction = false;
       return false;
     }
-    if (authUsesPostgres) {
-      pgClient = await postgresPool.connect();
-      await pgClient.query("BEGIN");
-      pgTransaction = true;
-      const deleted = await pgClient.query("DELETE FROM users WHERE id=$1 RETURNING id", [userId]);
-      if (!deleted.rowCount) throw new Error("Không tìm thấy tài khoản trong PostgreSQL.");
-      await pgClient.query("COMMIT");
-      pgTransaction = false;
+
+    // Keep the SQLite compatibility mirror aligned. Its transaction is synchronous;
+    // never hold a SQLite write lock across an awaited network/database operation.
+    const localDeleted = db.transaction(() => db.prepare("DELETE FROM users WHERE id=?").run(userId))();
+    if (!localDeleted.changes) {
+      throw new Error("Không tìm thấy tài khoản trong SQLite mirror.");
     }
-    db.exec("COMMIT");
+
+    await client.query("COMMIT");
+    transaction = false;
     return true;
   } catch (error) {
-    if (pgTransaction && pgClient) await pgClient.query("ROLLBACK").catch(() => {});
-    try { db.exec("ROLLBACK"); } catch {}
+    if (transaction) await client.query("ROLLBACK").catch(() => {});
     throw error;
   } finally {
-    pgClient?.release();
+    client.release();
   }
 }
 
