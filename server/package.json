@@ -17,6 +17,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "maihoc-learning-system": "file:..",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.1",
     "pdfjs-dist": "6.4.299",

@@ -235,7 +235,9 @@ export async function solveExamDocument({
   if(selectedProvider==="gemini"){
     contentParts.push({ text: prompt });
     const client = new GoogleGenerativeAI(apiKey);
-    const tryModels = [modelName || "gemini-2.5-flash"];
+    const tryModels = [modelName || "gemini-3.6-flash"];
+    if (!tryModels.includes("gemini-3.6-flash")) tryModels.push("gemini-3.6-flash");
+    if (!tryModels.includes("gemini-3.8-flash")) tryModels.push("gemini-3.8-flash");
     if (!tryModels.includes("gemini-2.5-flash")) tryModels.push("gemini-2.5-flash");
     if (!tryModels.includes("gemini-2.0-flash")) tryModels.push("gemini-2.0-flash");
 

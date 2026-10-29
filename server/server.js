@@ -27,6 +27,7 @@ import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engin
 import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import { upsertLearningResult, deleteLearningResultsByUserId, deleteLearningResultsByItemId } from "./tests-module/results-db.js";
+import { chemistryRouter } from "./chemistry/routes.js";
 
 
 import {
@@ -1660,6 +1661,8 @@ app.post("/api/ai/difficulty",async(req,res)=>{
 });
 
 
+
+app.use("/api/chemistry", chemistryRouter);
 
 testsModule = installTestsModule({
   app,
