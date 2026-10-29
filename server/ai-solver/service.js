@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
+const AUTO_SUBJECT = "Tự nhận diện";
+const SUBJECT_NAMES = new Set(["Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học", "Đề thi THPT quốc gia", "IELTS"]);
+
 const SUBJECT_GUIDANCE = {
   "Toán": "Giải toán chính xác; nêu công thức, lập luận và kiểm tra kết quả.",
   "Tiếng Anh": "Giải thích ngữ pháp, từ vựng và lý do chọn đáp án bằng tiếng Việt; minh họa câu tiếng Anh khi cần.",
@@ -73,8 +76,15 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
 
   const instruction = [
     "Bạn là trợ lý học tập MAI HỌC, giải bài tập phổ thông chính xác, rõ ràng và trung thực.",
-    `MÔN HỌC: ${subject}`,
-    `HƯỚNG DẪN CHUYÊN MÔN: ${SUBJECT_GUIDANCE[subject]}`,
+    subject === AUTO_SUBJECT
+      ? "MÔN HỌC: TỰ NHẬN DIỆN. Trước khi giải, hãy suy luận môn học dựa trên đề bài văn bản, hình ảnh hoặc PDF; không hỏi người dùng chọn môn. Hỗ trợ cả Toán, Tiếng Anh, Vật lý, Hóa học, Ngữ văn, Sinh học, đề thi tổng hợp, IELTS và môn học khác. Nếu là đề liên môn, xác định môn chính và giải các phần liên quan."
+      : `MÔN HỌC: ${subject}`,
+    subject === AUTO_SUBJECT
+      ? "HƯỚNG DẪN: Xác định chính xác môn và chủ đề từ dữ kiện/ký hiệu trong đề. Áp dụng kiến thức chuyên môn tương ứng, giải bằng tiếng Việt (trừ khi đề/ngữ cảnh yêu cầu ngôn ngữ khác), và nêu rõ nếu nội dung không đủ để nhận diện."
+      : `HƯỚNG DẪN CHUYÊN MÔN: ${SUBJECT_GUIDANCE[subject]}`,
+    ...(subject === AUTO_SUBJECT ? [
+      "ĐỊNH DẠNG METADATA: Dòng đầu tiên bắt buộc là [[MAIHOC_SUBJECT: tên môn]], trong đó tên môn phải là một trong: Toán, Tiếng Anh, Vật lý, Hóa học, Ngữ văn, Sinh học, Đề thi THPT quốc gia, IELTS. Dòng này là metadata máy đọc; không lặp lại trong phần lời giải."
+    ] : []),
     `CHẾ ĐỘ: ${mode === "quick" ? "GIẢI NHANH: nêu phương pháp cốt lõi và đáp án, giữ các bước thiết yếu để kiểm chứng." : "GIẢI CHI TIẾT: phân tích dữ kiện, giải từng bước, giải thích tại sao dùng phương pháp đó và kiểm tra kết quả."}`,
     "Quy tắc: Không bịa dữ kiện. Nếu ảnh/PDF mờ hoặc thiếu nội dung, nói rõ phần không đọc được. Nếu đề có nhiều câu, giữ số thứ tự và giải từng câu. Dùng Markdown dễ đọc. MỌI biểu thức toán học, phân số, số mũ/chỉ số, vector, đơn vị có ký hiệu, phương trình hóa học và công thức vật lý phải viết bằng LaTeX; dùng \\( ... \\) cho công thức trong dòng và \\[ ... \\] cho công thức riêng dòng. Hóa học dùng \\mathrm{H_2O}, \\rightarrow, \\ce{} chỉ khi MathJax mhchem được bật (ưu tiên công thức chỉ số thông thường nếu không). Tránh dùng Unicode ký hiệu làm thay thế công thức như x², H₂O, ->, <=. Với câu trắc nghiệm phải ghi đáp án và giải thích ngắn. Không thêm lời chào dài dòng.",
     image ? "Đọc cả nội dung trong ảnh đính kèm." : "",
@@ -83,8 +93,12 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
   ].filter(Boolean).join("\n\n");
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const preferred = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  const models = [...new Set([preferred, "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"])];
+  const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
+  const preferred = configuredModel || "gemini-3.6-flash";
+  // When the operator pins a model in Render, use that exact model instead of silently switching.
+  const models = configuredModel
+    ? [preferred]
+    : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"];
   let lastError;
   for (const modelName of models) {
     try {
@@ -102,10 +116,17 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
       }
       parts.push({ text: instruction });
       const result = await model.generateContent({ contents: [{ role: "user", parts }] });
+      const rawAnswer = result.response.text();
+      const subjectMarker = rawAnswer.match(/^\\s*\\[\\[MAIHOC_SUBJECT:\\s*([^\\]\\r\\n]{1,80})\\]\\]\\s*/i);
+      const markedSubject = subjectMarker?.[1]?.trim();
+      const answer = subjectMarker ? rawAnswer.slice(subjectMarker[0].length).trimStart() : rawAnswer;
+      const detectedSubject = markedSubject && SUBJECT_NAMES.has(markedSubject)
+        ? markedSubject
+        : subject;
       return {
-        answer: result.response.text(),
+        answer,
         modelUsed: modelName,
-        subject,
+        subject: detectedSubject,
         mode,
         solvedAt: new Date().toISOString(),
         source: file ? "pdf" : image ? "image" : "text"
