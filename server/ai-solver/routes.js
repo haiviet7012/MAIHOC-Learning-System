@@ -138,7 +138,7 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
           ? `PDF · ${input.file.name}`
           : input.prompt
             ? input.prompt.replace(/\s+/g, " ").trim().slice(0, 180)
-            : `Bài tập ${input.subject} từ ảnh`;
+            : `Bài tập ${solution.subject || input.subject} từ ảnh`;
         const saved = await saveAiSolutionHistory({
           userId: req.user.id,
           subject: solution.subject || input.subject,
