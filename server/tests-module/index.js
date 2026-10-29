@@ -1712,6 +1712,7 @@ export function installTestsModule({
 
   app.get("/api/test-submissions/:id", requireAuth, async (req, res) => {
     const id = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const row =
       req.user.role === "admin"
         ? await db
@@ -1719,9 +1720,10 @@ export function installTestsModule({
               SELECT ts.*, u.name AS userName, u.email AS userEmail
               FROM test_submissions ts
               JOIN users u ON u.id = ts.user_id
-              WHERE ts.id = ?
+              JOIN tests t ON t.id = ts.test_id
+              WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
             `)
-            .get(id)
+            .get(...(subordinateAdmin ? [id, req.user.id] : [id]))
         : await db
             .prepare(`
               SELECT ts.*, u.name AS userName, u.email AS userEmail
@@ -1784,6 +1786,7 @@ export function installTestsModule({
 
   app.get("/api/admin/pending-test-submissions", requireAdmin, async (req, res) => {
     const statusFilter = String(req.query.status || "all");
+    const subordinateAdmin = isSubordinateAdmin(req);
     const rows = await db
       .prepare(`
         SELECT ts.id, ts.test_id AS testId, ts.user_id AS userId,
@@ -1797,13 +1800,15 @@ export function installTestsModule({
                g.name AS gradedByName
         FROM test_submissions ts
         JOIN users u ON u.id = ts.user_id
+        JOIN tests t ON t.id = ts.test_id
         LEFT JOIN users g ON g.id = ts.graded_by
+        ${subordinateAdmin ? "WHERE t.created_by = ?" : ""}
         ORDER BY
           CASE ts.grading_status WHEN 'pending_grade' THEN 0 ELSE 1 END,
           ts.submitted_at DESC
         LIMIT 300
       `)
-      .all();
+      .all(...(subordinateAdmin ? [req.user.id] : []));
 
     const filtered =
       statusFilter === "pending_grade"
@@ -1822,6 +1827,7 @@ export function installTestsModule({
 
   app.get("/api/admin/test-submissions/:id/grading-context", requireAdmin, async (req, res) => {
     const submissionId = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const sub = await db
       .prepare(`
         SELECT ts.*, u.name AS userName, u.email AS userEmail,
@@ -1837,9 +1843,9 @@ export function installTestsModule({
         JOIN documents d ON d.id = t.document_id
         LEFT JOIN answer_keys ak ON ak.document_id = t.id
         LEFT JOIN exam_solutions es ON es.document_id = t.id
-        WHERE ts.id = ?
+        WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
       `)
-      .get(submissionId);
+      .get(...(subordinateAdmin ? [submissionId, req.user.id] : [submissionId]));
 
     if (!sub) {
       return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
@@ -1988,14 +1994,16 @@ export function installTestsModule({
 
   app.post("/api/admin/test-submissions/:id/grade", requireSameOrigin, requireAdmin, async (req, res) => {
     const submissionId = Number(req.params.id);
+    const subordinateAdmin = isSubordinateAdmin(req);
     const sub = await db
       .prepare(`
         SELECT ts.*, u.name AS userName, u.email AS userEmail
         FROM test_submissions ts
         JOIN users u ON u.id = ts.user_id
-        WHERE ts.id = ?
+        JOIN tests t ON t.id = ts.test_id
+        WHERE ts.id = ? ${subordinateAdmin ? "AND t.created_by = ?" : ""}
       `)
-      .get(submissionId);
+      .get(...(subordinateAdmin ? [submissionId, req.user.id] : [submissionId]));
 
     if (!sub) {
       return res.status(404).json({ error: "Không tìm thấy bài nộp cần chấm." });
