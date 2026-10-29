@@ -315,8 +315,18 @@ export function mountStudyRooms(container, user) {
       }
       await refreshMembersAndConnect();
     } catch (error) {
-      setExpandedRoomMode(false);
-      showError(error.message);
+      // A WebRTC/media setup failure can happen after the server has accepted the join.
+      // Always release tracks and leave the backend room so no camera/mic stays active.
+      if (currentRoom && participantToken) {
+        await leaveRoom(true);
+      } else {
+        await stopLocalMedia();
+        currentRoom = null;
+        participant = null;
+        participantToken = null;
+        setExpandedRoomMode(false);
+      }
+      showError(error.message || "Không thể vào phòng học.");
     }
   }
 
@@ -1029,33 +1039,43 @@ export function mountStudyRooms(container, user) {
   }
 
   async function stopLocalMedia() {
-    if (localStream) {
-      for (const track of localStream.getTracks()) {
-        try {
-          track.enabled = false;
-          track.stop();
-        } catch {}
-      }
-    }
+    // Snapshot then clear the reference first, making repeated cleanup calls safe.
+    const stream = localStream;
     localStream = null;
     cameraOn = false;
     micOn = false;
     handRaised = false;
-    for (const video of container.querySelectorAll("video")) {
-      try {
-        video.pause();
-        video.srcObject = null;
-      } catch {}
-    }
-    for (const [id, peer] of peers.entries()) {
-      try {
-        for (const sender of peer.pc.getSenders()) {
-          try { sender.track?.stop(); } catch {}
+
+    const tracks = new Set([
+      ...(stream?.getTracks() || []),
+      ...[...peers.values()].flatMap(peer => {
+        try {
+          return peer.pc.getSenders().map(sender => sender.track).filter(Boolean);
+        } catch {
+          return [];
         }
-        peer.pc.close();
+      })
+    ]);
+    for (const track of tracks) {
+      try {
+        track.enabled = false;
+        track.stop();
       } catch {}
-      peers.delete(id);
     }
+
+    // Detach local and remote media elements so camera/mic devices and remote playback
+    // cannot remain referenced by a tile after the user leaves the room.
+    for (const mediaElement of container.querySelectorAll("video, audio")) {
+      try {
+        mediaElement.pause();
+        mediaElement.srcObject = null;
+      } catch {}
+    }
+    for (const peer of peers.values()) {
+      try { peer.pc.close(); } catch {}
+    }
+    peers.clear();
+    updateMediaButtons();
   }
 
   async function leaveRoom(notify = true) {
@@ -1335,14 +1355,18 @@ export function mountStudyRooms(container, user) {
     if (!currentRoom && !disposed && !document.hidden) void loadRooms();
   }, 5000);
 
+  let pageHideHandled = false;
   const onPageHide = () => {
+    if (pageHideHandled) return;
+    pageHideHandled = true;
     const oldRoom = currentRoom;
     const oldToken = participantToken;
-    for (const track of localStream?.getTracks() || []) {
-      try {
-        track.enabled = false;
-        track.stop();
-      } catch {}
+    // pagehide also fires when navigating away from the app, including BFCache navigation.
+    // Stop all local/sender tracks immediately; do not wait for the network leave request.
+    void stopLocalMedia();
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
     }
     if (oldRoom && oldToken) {
       try {
