@@ -54,7 +54,7 @@ export function validateUniversalSolveRequest(body) {
       return { valid: false, error: "Chỉ hỗ trợ tệp PDF." };
     }
     if (!data || data.length > MAX_FILE_BASE64_LENGTH) {
-      return { valid: false, error: "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 8 MB." };
+      return { valid: false, error: "PDF quá lớn. Vui lòng chọn tệp nhỏ hơn 2 MB." };
     }
     validatedPdf = { mimeType: "application/pdf", name, data };
   }
