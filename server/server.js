@@ -159,7 +159,7 @@ function isSubjectEnabled(subject) {
   }
 }
 function normalizeSubjectName(value) {
-  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
 }
 function assessmentConfigFor(subject,category){
   try{
