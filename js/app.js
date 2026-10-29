@@ -18,10 +18,19 @@ import {
     wireTestsEvents,
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
+import { mountChemistryModule } from "./chemistry/index.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
 let activeStudyRoomsCleanup = null;
+let activeChemistryCleanup = null;
+function stopChemistryIfActive() {
+    if (activeChemistryCleanup) {
+        const cleanup = activeChemistryCleanup;
+        activeChemistryCleanup = null;
+        try { cleanup(); } catch {}
+    }
+}
 function stopStudyRoomsIfActive() {
     if (activeStudyRoomsCleanup) {
         const cleanup = activeStudyRoomsCleanup;
@@ -135,7 +144,7 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
     return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — bắt đầu với môn Toán.</p><div class="hero-actions"><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
+    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá ngay Phân hệ Hóa học và Toán học.</p><div class="hero-actions"><button class="button primary" data-action="open-subject" data-name="Hóa học">⚗️ Phân hệ Hóa học mới →</button><button class="button secondary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
 <section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
 <div class="grid four">
  <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
@@ -152,7 +161,42 @@ function subjectPickerPage() {
     return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">MÔN HỌC THEO CẤU HÌNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
 function subjectPage() {
-    return `${pageHeading(`Môn ${state.subject}`, "Chọn một khu vực học tập để tiếp tục.")}<div class="grid four">
+    const isChemistry = state.subject === "Hóa học";
+    const chemistryTools = isChemistry ? `
+      <section class="section-head" style="margin-top:0;">
+        <div>
+          <h2>Công cụ học tập Hóa học chuyên sâu</h2>
+          <p>Tra cứu 118 nguyên tố IUPAC và trợ lý AI giải bài tập dành riêng cho môn Hóa.</p>
+        </div>
+        <span class="pill" style="background:linear-gradient(135deg,rgba(56,189,248,0.2),rgba(14,165,233,0.1));color:var(--accent);font-weight:700;">✨ TÍNH NĂNG MỚI</span>
+      </section>
+      <div class="grid two" style="margin-bottom:28px;">
+        <article class="card clickable resource-card" data-route="chemistry" data-chemistry-tab="periodic-table" style="background:linear-gradient(145deg,var(--surface),var(--surface-2));border-color:var(--accent);">
+          <div class="card-icon" style="background:rgba(56,189,248,0.15);color:var(--accent);font-size:24px;">📊</div>
+          <span class="pill">TRA CỨU 118 NGUYÊN TỐ</span>
+          <h3>Bảng tuần hoàn tương tác</h3>
+          <p>Bố cục chuẩn IUPAC 18 cột, lọc phân lớp s/p/d/f, cấu hình electron, độ âm điện và ứng dụng thực tế.</p>
+          <p style="margin-top:18px;color:var(--primary);font-weight:700;">Mở Bảng tuần hoàn →</p>
+        </article>
+        <article class="card clickable resource-card" data-route="chemistry" data-chemistry-tab="ai-solver" style="background:linear-gradient(145deg,var(--surface),var(--surface-2));border-color:var(--accent);">
+          <div class="card-icon" style="background:rgba(56,189,248,0.15);color:var(--accent);font-size:24px;">⚗️</div>
+          <span class="pill">TRỢ LÝ GIẢI BÀI TẬP</span>
+          <h3>AI Giải bài tập Hóa học</h3>
+          <p>Nhập đề hoặc dán ảnh đề thi, AI phân tích dữ kiện, cân bằng phương trình và giải chi tiết từng bước có đơn vị.</p>
+          <p style="margin-top:18px;color:var(--primary);font-weight:700;">Bắt đầu giải bài →</p>
+        </article>
+      </div>
+      <section class="section-head">
+        <div>
+          <h2>Khu vực học tập &amp; Luyện thi</h2>
+          <p>Hệ thống lý thuyết, luyện đề và phòng thi mô phỏng.</p>
+        </div>
+      </section>
+    ` : "";
+
+    return `${pageHeading(`Môn ${state.subject}`, isChemistry ? "Khám phá công cụ chuyên sâu, tài liệu lý thuyết và phòng thi mô phỏng." : "Chọn một khu vực học tập để tiếp tục.")}
+${chemistryTools}
+<div class="grid four">
 ${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
 }
 function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
@@ -554,6 +598,7 @@ function render() {
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
     stopStudyRoomsIfActive();
+    stopChemistryIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
     const onlineDashboard = $("#online-dashboard");
@@ -567,6 +612,7 @@ function render() {
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
+    view.classList.toggle("chemistry-workspace", state.route === "chemistry" || (state.route === "subject" && state.subject === "Hóa học"));
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
@@ -574,6 +620,14 @@ function render() {
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === "home")
         view.innerHTML = homePage();
+    else if (state.route === "chemistry") {
+        view.innerHTML = "";
+        activeChemistryCleanup = mountChemistryModule(view, {
+            subView: state.chemistryTab || "periodic-table",
+            initialElement: state.chemistryElement || null,
+            onNavigate: (r, p) => go(r, p)
+        });
+    }
     else if (state.route === "subject")
         view.innerHTML = subjectPage();
     else if (state.route === "subject-picker")
@@ -950,6 +1004,12 @@ document.addEventListener("click", async (e) => {
     if (routeBtn) {
         e.preventDefault();
         const r = routeBtn.dataset.route;
+        const chemTab = routeBtn.dataset.chemistryTab;
+        if (r === "chemistry" && chemTab) {
+            $("#subject-menu")?.classList.remove("open");
+            go("chemistry", { chemistryTab: chemTab, subject: "Hóa học" });
+            return;
+        }
         $("#subject-menu")?.classList.remove("open");
         go(r);
         return;
