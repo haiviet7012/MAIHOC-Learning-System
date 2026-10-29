@@ -19,11 +19,20 @@ import {
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js";
+import { mountUniversalAiSolver } from "./ai-solver/index.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
 let activeStudyRoomsCleanup = null;
 let activeChemistryCleanup = null;
+let activeUniversalAiCleanup = null;
+function stopUniversalAiIfActive() {
+    if (activeUniversalAiCleanup) {
+        const cleanup = activeUniversalAiCleanup;
+        activeUniversalAiCleanup = null;
+        try { cleanup(); } catch {}
+    }
+}
 function stopChemistryIfActive() {
     if (activeChemistryCleanup) {
         const cleanup = activeChemistryCleanup;
@@ -599,6 +608,7 @@ function render() {
     }
     stopStudyRoomsIfActive();
     stopChemistryIfActive();
+    stopUniversalAiIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
     const onlineDashboard = $("#online-dashboard");
@@ -613,6 +623,7 @@ function render() {
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
     view.classList.toggle("chemistry-workspace", state.route === "chemistry" || (state.route === "subject" && state.subject === "Hóa học"));
+    view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
@@ -627,6 +638,10 @@ function render() {
             initialElement: state.chemistryElement || null,
             onNavigate: (r, p) => go(r, p)
         });
+    }
+    else if (state.route === "ai-solver") {
+        view.innerHTML = "";
+        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(r, p) });
     }
     else if (state.route === "subject")
         view.innerHTML = subjectPage();
@@ -1005,6 +1020,11 @@ document.addEventListener("click", async (e) => {
         e.preventDefault();
         const r = routeBtn.dataset.route;
         const chemTab = routeBtn.dataset.chemistryTab;
+        if (r === "ai-solver") {
+            $("#subject-menu")?.classList.remove("open");
+            go("ai-solver");
+            return;
+        }
         if (r === "chemistry" && chemTab) {
             $("#subject-menu")?.classList.remove("open");
             go("chemistry", { chemistryTab: chemTab, subject: "Hóa học" });

@@ -149,3 +149,49 @@
   color: #34d399;
 }
 
+
+
+/* Theme-aware colors for the chemistry solver; inherit the MAI HỌC light/dark palette. */
+.chemistry-workspace .solver-panel,
+.chemistry-workspace .solution-panel {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+.chemistry-workspace .solver-panel h3 { color: var(--accent); }
+.chemistry-workspace .solver-textarea {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+.chemistry-workspace .solver-textarea::placeholder { color: var(--muted); }
+.chemistry-workspace .solver-dropzone {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.chemistry-workspace .solver-dropzone:hover { border-color: var(--accent); }
+.chemistry-workspace .solver-sample-btn {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--primary);
+}
+.chemistry-workspace .solver-sample-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+.chemistry-workspace .solution-section {
+  background: var(--surface-2);
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+.chemistry-workspace .solution-section h4 { color: var(--primary); }
+.chemistry-workspace .solution-section p,
+.chemistry-workspace .solution-section li { color: var(--text); }
+.chemistry-workspace .solution-final-box {
+  background: color-mix(in srgb, #10b981 12%, var(--surface));
+  border-color: #10b981;
+}
+.chemistry-workspace .solution-final-box strong { color: #059669; }
+:root.dark .chemistry-workspace .solution-final-box strong { color: #6ee7b7; }
