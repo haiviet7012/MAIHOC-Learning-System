@@ -708,7 +708,7 @@ app.post("/api/account/send-code", requireSameOrigin, requireAuth, requireUserOn
   }
 });
 
-app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, (req, res) => {
+app.post("/api/account/change-email", requireSameOrigin, requireAuth, requireUserOnlyAccountCenter, async (req, res) => {
   try {
     const newEmail = String(req.body?.newEmail || "").trim().toLowerCase();
     const code = String(req.body?.code || "").trim();
