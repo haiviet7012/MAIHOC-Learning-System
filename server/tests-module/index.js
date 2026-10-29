@@ -281,6 +281,9 @@ export function installTestsModule({
   notifyUser,
   notifyAdmins
 }) {
+  const isSubordinateAdmin = (req) =>
+    req?.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+
   async function ensureTables() {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS tests (
