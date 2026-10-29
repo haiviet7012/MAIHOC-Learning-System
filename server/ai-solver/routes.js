@@ -70,8 +70,7 @@ async function persistTemporaryUpload(file, fieldName) {
 universalAiRouter.get("/history", (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: "Vui lòng đăng nhập để xem lịch sử giải bài AI." });
   try {
-    const limit = Math.max(1, Math.min(500, Number.parseInt(req.query.limit, 10) || 200));
-    return res.json({ items: listAiSolutionHistory(req.user.id, limit) });
+    return res.json({ items: listAiSolutionHistory(req.user.id) });
   } catch (error) {
     console.error("[AI history] Could not load list:", error.message || error);
     return res.status(500).json({ error: "Không tải được lịch sử giải bài AI." });
