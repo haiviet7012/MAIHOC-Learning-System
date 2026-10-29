@@ -2633,7 +2633,10 @@ app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (r
 
 app.get("/api/documents/:id/file", async (req, res, next) => {
   try {
-    const doc = await db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);
+    const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+    const doc = await db.prepare(
+      "SELECT * FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
+    ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
     if (!doc) return res.sendStatus(404);
     const bytes = await getDocumentBuffer(doc);
     if (!bytes) return res.status(410).json({ error: "File tài liệu không còn trong R2 hoặc kho cũ." });
