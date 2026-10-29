@@ -29,6 +29,22 @@ Run its unit tests with:
 
     npm run test:postgres-cutover-report
 
+## Optional personal-history cleanup before cutover
+
+The current source may still have personal activity from admin-led tests even if user accounts other than admin ID 1 have already been removed. If the agreed cutover policy is to clear this activity, first preview it from the `server` directory:
+
+    npm run cleanup:personal-history
+
+The preview requires `users` to contain exactly the one admin account (ID 1), checks integrity and foreign-key health, and shows the affected personal/activity rows plus preserved shared-data counts. It does not modify either database.
+
+Only after reviewing the preview and confirming verified backups are available, apply the explicitly reviewed admin-history cleanup:
+
+    npm run cleanup:personal-history -- --apply --confirm-user-id 1
+
+The script makes SQLite-API backups of both database files before applying. It removes user-specific activity (sessions, presence, progress, exam attempts, learning results, personal chat participation/messages, notifications, and submissions) for the confirmed ID. It does not delete the admin account or shared content tables such as documents, tests, answer keys, exam solutions, and exam-solution review/audit records. The global chat room itself is kept.
+
+SQLite cannot atomically commit across the two database files. If the script reports an apply failure after it starts deleting data, stop and restore **both** SQLite files from the printed pre-cleanup backups before retrying. Do not run this cleanup if those histories should be retained.
+
 ## Dry run
 
 From PowerShell in D:\MAIHOC\maihoc-learning-web\server, run:
