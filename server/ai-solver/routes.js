@@ -80,7 +80,7 @@ universalAiRouter.get("/history", (req, res) => {
 
 universalAiRouter.get("/history/:id", async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: "Vui lòng đăng nhập để mở lời giải." });
-  if (!/^\\d+$/.test(String(req.params.id || ""))) return res.status(400).json({ error: "Mã lịch sử không hợp lệ." });
+  if (!/^\d+$/.test(String(req.params.id || ""))) return res.status(400).json({ error: "Mã lịch sử không hợp lệ." });
   try {
     const record = await getAiSolutionHistory(req.user.id, req.params.id);
     if (!record) return res.status(404).json({ error: "Không tìm thấy lời giải trong tài khoản này." });
@@ -138,7 +138,7 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
         const title = input.file
           ? `PDF · ${input.file.name}`
           : input.prompt
-            ? input.prompt.replace(/\\s+/g, " ").trim().slice(0, 180)
+          ? input.prompt.replace(/\s+/g, " ").trim().slice(0, 180)
             : `Bài tập ${input.subject} từ ảnh`;
         const saved = await saveAiSolutionHistory({
           userId: req.user.id,
