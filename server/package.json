@@ -14,7 +14,8 @@
     "inspect:postgres-cutover": "node ./inspect-postgres-cutover.js",
     "test:postgres-cutover-report": "node --test ./tests/postgres-cutover-report.test.js",
     "cleanup:personal-history": "node ./scripts/cleanup-personal-history.js",
-    "test:personal-history-cleanup": "node --test ./tests/personal-history-cleanup.test.js"
+    "test:personal-history-cleanup": "node --test ./tests/personal-history-cleanup.test.js",
+    "test:syntax": "node --check auth.js && node --check server.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1159.0",
