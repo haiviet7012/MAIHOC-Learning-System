@@ -457,9 +457,10 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
   const closeRoomHandler = async (req, res) => {
     const room = rooms.get(String(req.params.roomId || "").toUpperCase());
     if (!room) return res.json({ ok: true });
-    const isAdmin = isUserAdmin(req.user);
-    if (!isAdmin && room.creatorId !== req.user.id) {
-      return fail(res, 403, "Chỉ người tạo phòng hoặc Admin mới có thể đóng phòng.");
+    // Only the room creator may close the room. Admin observers and other participants
+    // can leave the room, but they must not be able to terminate someone else's room.
+    if (Number(room.creatorId) !== Number(req.user.id)) {
+      return fail(res, 403, "Chỉ chủ phòng mới có quyền đóng phòng. Thành viên khác có thể rời phòng.");
     }
     addEvent(room, "room-closed", { message: "Phòng học đã được đóng." }, null);
     rooms.delete(room.id);
