@@ -281,7 +281,7 @@ app.use((req,res,next)=>{
 
 });
 
-app.use(express.json({limit:"4mb"}));
+app.use(express.json({limit:"30mb"}));
 
 app.use(loadCurrentUser);
 
