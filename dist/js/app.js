@@ -488,11 +488,11 @@ function accountCenterPage() {
           <form id="account-change-password-form" class="account-form">
             <label>
               Mật khẩu mới
-              <input name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 10 ký tự">
+              <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 8 ký tự">
             </label>
             <label>
               Nhập lại mật khẩu mới
-              <input name="confirmPassword" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
+              <input name="confirmPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
             </label>
             <p class="auth-error" id="account-password-error" hidden></p>
             <div class="account-form-actions">
@@ -563,7 +563,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     }).join("");
     let extra = "";
     if(payload.isSuperAdmin){
-      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Admin</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
+      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Admin cấp dưới</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Admin.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Admin</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
     container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
