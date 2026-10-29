@@ -169,6 +169,63 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
   const auth = requireAuth || requireUser;
   const sameOrigin = requireSameOrigin || ((_req, _res, next) => next());
 
+  // Cloudflare Realtime TURN credentials are short-lived and must be generated server-side.
+  const turnKeyId = String(process.env.CLOUDFLARE_TURN_KEY_ID || "").trim();
+  const turnApiToken = String(process.env.CLOUDFLARE_API_TOKEN || "").trim();
+  let cachedIceServers = null;
+  let cachedIceServersExpiresAt = 0;
+
+  async function createCloudflareIceServers() {
+    if (!turnKeyId || !turnApiToken) return null;
+    if (cachedIceServers && Date.now() < cachedIceServersExpiresAt) return cachedIceServers;
+
+    const endpoint = `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(turnKeyId)}/credentials/generate-ice-servers`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${turnApiToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ ttl: 86400 }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("[Study Rooms] Cloudflare TURN credential generation failed:", response.status, payload?.errors || payload?.error || "");
+      throw new Error("Không thể lấy TURN credentials từ Cloudflare.");
+    }
+    if (!Array.isArray(payload.iceServers) || payload.iceServers.length === 0) {
+      throw new Error("Cloudflare không trả về danh sách ICE servers hợp lệ.");
+    }
+    cachedIceServers = payload.iceServers;
+    cachedIceServersExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
+    return cachedIceServers;
+  }
+
+  app.get("/api/study-rooms/ice-servers", sameOrigin, auth, async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const iceServers = await createCloudflareIceServers();
+      if (iceServers) return res.json({ iceServers, turnEnabled: true });
+      return res.json({
+        turnEnabled: false,
+        iceServers: [
+          { urls: "stun:stun.cloudflare.com:3478" },
+          { urls: "stun:stun.l.google.com:19302" }
+        ]
+      });
+    } catch (error) {
+      console.warn("[Study Rooms] TURN unavailable; falling back to STUN:", error.message);
+      return res.json({
+        turnEnabled: false,
+        iceServers: [
+          { urls: "stun:stun.cloudflare.com:3478" },
+          { urls: "stun:stun.l.google.com:19302" }
+        ]
+      });
+    }
+  });
+
   app.get("/api/study-rooms", sameOrigin, auth, async (req, res) => {
     pruneRooms();
     const isAdmin = isUserAdmin(req.user);
