@@ -486,26 +486,23 @@ function renderResultDetail(item) {
     const isCorrect = Boolean(item.correct);
     const status = isCorrect ? "Đúng" : "Chưa đúng";
     const points = `${item.earnedPoints ?? 0}/${item.totalPoints ?? 0}`;
-    const answerRows = Array.isArray(item.statements) && item.statements.length
-        ? item.statements.map(statement => `
-            <div class="grade-detail-answer-line">
-                <strong>Mệnh đề ${escapeHTML(statement.statement ?? "")}</strong>
-                <span><b>Bạn chọn:</b> ${escapeHTML(formatResultAnswer(statement.userAnswer))}</span>
-                <span><b>Đáp án đúng:</b> ${escapeHTML(formatResultAnswer(statement.expectedAnswer, "Chưa có đáp án chuẩn"))}</span>
-            </div>`).join("")
-        : `
-            <div class="grade-detail-answer-line">
-                <span><b>Bạn chọn:</b> ${escapeHTML(formatResultAnswer(item.userAnswer))}</span>
-                <span><b>Đáp án đúng:</b> ${escapeHTML(formatResultAnswer(item.expectedAnswer, "Chưa có đáp án chuẩn"))}</span>
-            </div>`;
+    const studentAnswer = Array.isArray(item.statements) && item.statements.length
+        ? item.statements.map(statement =>
+            `<div class="result-answer-subitem"><strong>${escapeHTML(statement.statement ?? "")}:</strong> ${escapeHTML(formatResultAnswer(statement.userAnswer))}</div>`
+          ).join("")
+        : escapeHTML(formatResultAnswer(item.userAnswer));
+    const correctAnswer = Array.isArray(item.statements) && item.statements.length
+        ? item.statements.map(statement =>
+            `<div class="result-answer-subitem"><strong>${escapeHTML(statement.statement ?? "")}:</strong> ${escapeHTML(formatResultAnswer(statement.expectedAnswer, "Chưa có đáp án chuẩn"))}</div>`
+          ).join("")
+        : escapeHTML(formatResultAnswer(item.expectedAnswer, "Chưa có đáp án chuẩn"));
     return `
-        <article class="grade-detail">
-            <div class="grade-detail-head">
-                <span>Câu ${question}</span>
-                <strong class="${isCorrect ? "is-correct" : "is-wrong"}">${status} · ${escapeHTML(points)}</strong>
-            </div>
-            <div class="grade-detail-answers">${answerRows}</div>
-        </article>`;
+        <tr>
+            <td><strong>Câu ${question}</strong></td>
+            <td>${studentAnswer}</td>
+            <td>${correctAnswer}</td>
+            <td><strong class="${isCorrect ? "is-correct" : "is-wrong"}">${status} · ${escapeHTML(points)}</strong></td>
+        </tr>`;
 }
 
 function resultPage() {
@@ -520,7 +517,7 @@ function resultPage() {
     const owner = saved?.userName ? `<p class="muted tiny">Bài làm của ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` · ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
     const isPendingGrade = result?.gradingStatus === "pending_grade" || (d?.category === "test" && !result?.graded);
     const details = result?.graded
-        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details">${rows.map(renderResultDetail).join("")}</div>`
+        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details-table-wrap"><table class="grade-details-table"><thead><tr><th>Câu</th><th>Học sinh chọn</th><th>Đáp án đúng</th><th>Kết quả / điểm</th></tr></thead><tbody>${rows.map(renderResultDetail).join("")}</tbody></table></div>`
         : isPendingGrade
           ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giảng viên chấm điểm.")}</p>`
           : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
