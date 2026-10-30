@@ -20,9 +20,11 @@ import {
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
-import { mountSchoolPage, wireSchoolEvents } from "./school-system.js";
+import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js";
 const view = $("#view");
-const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
+const progressTabParams = new URLSearchParams(window.location.search);
+const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "student-progress";
+const state = { route: standaloneStudentProgress ? "student-progress" : "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
 let activeStudyRoomsCleanup = null;
 let activeChemistryCleanup = null;
@@ -885,6 +887,10 @@ function render() {
         mountSchoolPage(view, currentUser);
     else if (state.route === "school-class")
         mountSchoolPage(view, currentUser, state.classCode || "");
+    else if (state.route === "student-progress")
+        mountStudentProgressPage(view, progressTabParams.get("classCode") || "", progressTabParams.get("studentId") || "");
+    else if (state.route === "student-progress")
+        mountStudentProgressPage(view, progressTabParams.get("classCode") || "", progressTabParams.get("studentId") || "");
     else if (state.route === "study-rooms") {
         view.innerHTML = "";
         activeStudyRoomsCleanup = mountStudyRooms(view, currentUser);
