@@ -260,7 +260,7 @@ export function installSchoolSystemRoutes(app, deps) {
           SELECT id,status,created_at AS createdAt
           FROM school_class_leave_requests
           WHERE student_id=? AND class_code=?
-          ORDER BY created_at DESC LIMIT 1
+          ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 1
         `).get(user.id, classCode)
       : null;
     return {
@@ -482,6 +482,9 @@ export function installSchoolSystemRoutes(app, deps) {
   app.post("/api/school/join-class", requireSameOrigin, requireAuth, async (req, res) => {
     if (isSuperAdminUser(req.user) || isTeacherUser(req.user)) {
       return res.status(403).json({ error: "Chức năng tham gia lớp chỉ dành cho tài khoản Học sinh." });
+    }
+    if (String(req.user.accountType || req.user.account_type || "").toLowerCase() !== "school") {
+      return res.status(403).json({ error: "Chỉ tài khoản Học sinh của trường mới được tham gia lớp. Hãy tạo tài khoản trường trước." });
     }
     const classCode = String(req.body?.classCode || "").trim().toUpperCase();
     if (!isClassCode(classCode)) {
