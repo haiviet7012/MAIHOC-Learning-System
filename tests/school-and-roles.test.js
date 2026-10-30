@@ -87,6 +87,8 @@ test("Homeroom teacher can add student by email and Student can join class via /
     [13, { id: 13, name: "hai viet 1", email: "hainguyenviet231@gmail.com", role: "user", admin_level: 0, account_type: "school" }]
   ]);
   const classMembers = []; // { user_id, class_code, created_at }
+  const joinLocks = []; // permanent one-time class selection by user
+  const leaveRequests = []; // { id, class_code, student_id, status, created_at }
   const assignments = [
     { id: "a1", teacher_id: 14, class_code: "10A1", subject: "Chủ nhiệm", assignment_type: "homeroom" },
     { id: "a2", teacher_id: 14, class_code: "10A1", subject: "Toán", assignment_type: "subject" },
@@ -124,6 +126,23 @@ test("Homeroom teacher can add student by email and Student can join class via /
           }
           if (s.includes("FROM school_class_members WHERE user_id=? AND class_code=?")) {
             return classMembers.find(m => m.user_id === Number(args[0]) && m.class_code === args[1]);
+          }
+          if (s.includes("FROM school_class_join_locks WHERE user_id=?")) {
+            return joinLocks.find(lock => lock.user_id === Number(args[0]));
+          }
+          if (s.includes("FROM school_class_members WHERE user_id=? LIMIT 1")) {
+            return classMembers.find(m => m.user_id === Number(args[0]));
+          }
+          if (s.includes("FROM school_class_leave_requests WHERE student_id=? AND class_code=? AND status='pending'")) {
+            return leaveRequests.find(row => row.student_id === Number(args[0]) && row.class_code === args[1] && row.status === "pending");
+          }
+          if (s.includes("FROM school_class_leave_requests WHERE student_id=? AND class_code=?")) {
+            return leaveRequests.filter(row => row.student_id === Number(args[0]) && row.class_code === args[1])
+              .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+          }
+          if (s.includes("FROM school_class_leave_requests WHERE id=? AND class_code=? AND status='pending'")) {
+            const row = leaveRequests.find(item => item.id === args[0] && item.class_code === args[1] && item.status === "pending");
+            return row ? { id: row.id, studentId: row.student_id } : undefined;
           }
           return undefined;
         },
@@ -167,6 +186,15 @@ test("Homeroom teacher can add student by email and Student can join class via /
             const uid = Number(args[0]);
             return classMembers.filter(m => m.user_id === uid).map(m => ({ classCode: m.class_code }));
           }
+          if (s.includes("FROM school_class_leave_requests r JOIN users u ON u.id=r.student_id")) {
+            return leaveRequests.filter(row => row.class_code === args[0] && row.status === "pending").map(row => {
+              const student = users.get(row.student_id);
+              return {
+                id: row.id, classCode: row.class_code, createdAt: row.created_at,
+                studentId: row.student_id, studentName: student?.name, studentEmail: student?.email
+              };
+            });
+          }
           return [];
         },
         async run(...args) {
@@ -175,12 +203,31 @@ test("Homeroom teacher can add student by email and Student can join class via /
             if (u) u.account_type = "school";
             return { changes: 1 };
           }
-          if (s.startsWith("DELETE FROM school_class_members WHERE user_id=?")) {
+          if (s.startsWith("INSERT INTO school_class_join_locks(user_id,class_code)")) {
             const uid = Number(args[0]);
-            for (let i = classMembers.length - 1; i >= 0; i--) {
-              if (classMembers[i].user_id === uid) classMembers.splice(i, 1);
+            if (!joinLocks.some(lock => lock.user_id === uid)) {
+              joinLocks.push({ user_id: uid, class_code: args[1], joined_at: "2026-10-30" });
             }
             return { changes: 1 };
+          }
+          if (s.startsWith("INSERT INTO school_class_leave_requests(id,class_code,student_id)")) {
+            leaveRequests.push({
+              id: args[0], class_code: args[1], student_id: Number(args[2]),
+              status: "pending", created_at: String(leaveRequests.length + 1).padStart(2, "0")
+            });
+            return { changes: 1 };
+          }
+          if (s.startsWith("UPDATE school_class_leave_requests SET status=?")) {
+            const row = leaveRequests.find(item => item.id === args[2] && item.status === "pending");
+            if (row) row.status = args[0];
+            return { changes: row ? 1 : 0 };
+          }
+          if (s.startsWith("DELETE FROM school_class_members WHERE user_id=? AND class_code=?")) {
+            const uid = Number(args[0]);
+            const code = args[1];
+            const index = classMembers.findIndex(member => member.user_id === uid && member.class_code === code);
+            if (index >= 0) classMembers.splice(index, 1);
+            return { changes: index >= 0 ? 1 : 0 };
           }
           if (s.startsWith("INSERT INTO school_class_members(user_id,class_code)")) {
             classMembers.push({ user_id: Number(args[0]), class_code: args[1], created_at: "2026-10-30" });
@@ -253,6 +300,57 @@ test("Homeroom teacher can add student by email and Student can join class via /
   assert.equal(joinRes.data.user.classCode, "10A1");
   assert.equal(joinRes.data.user.accountType, "school");
 
+  const secondJoinAttempt = await callRoute("POST /api/school/join-class", {
+    user: student1User,
+    body: { classCode: "10A2" }
+  });
+  assert.equal(secondJoinAttempt.status, 409, "A student must not join a second class.");
+
+  // Student requests to leave; the membership stays until their homeroom teacher approves.
+  const leaveRequestRes = await callRoute("POST /api/school/classes/:classCode/leave-requests", {
+    user: student1User,
+    params: { classCode: "10A1" }
+  });
+  assert.equal(leaveRequestRes.status, 201);
+  assert.equal(classMembers.some(m => m.user_id === 13 && m.class_code === "10A1"), true);
+
+  const teacherClassDetail = await callRoute("GET /api/school/classes/:classCode", {
+    user: homeroomUser,
+    params: { classCode: "10A1" }
+  });
+  assert.equal(teacherClassDetail.status, 200);
+  assert.equal(teacherClassDetail.data.leaveRequests.length, 1);
+  assert.equal(teacherClassDetail.data.leaveRequests[0].studentId, 13);
+
+  const rejectLeave = await callRoute("POST /api/school/classes/:classCode/leave-requests/:requestId/review", {
+    user: homeroomUser,
+    params: { classCode: "10A1", requestId: leaveRequestRes.data.id },
+    body: { decision: "reject" }
+  });
+  assert.equal(rejectLeave.status, 200);
+  assert.equal(classMembers.some(m => m.user_id === 13 && m.class_code === "10A1"), true);
+
+  const retryLeave = await callRoute("POST /api/school/classes/:classCode/leave-requests", {
+    user: student1User,
+    params: { classCode: "10A1" }
+  });
+  assert.equal(retryLeave.status, 201);
+
+  const approveLeave = await callRoute("POST /api/school/classes/:classCode/leave-requests/:requestId/review", {
+    user: homeroomUser,
+    params: { classCode: "10A1", requestId: retryLeave.data.id },
+    body: { decision: "approve" }
+  });
+  assert.equal(approveLeave.status, 200);
+  assert.equal(classMembers.some(m => m.user_id === 13 && m.class_code === "10A1"), false);
+  assert.equal(joinLocks.some(lock => lock.user_id === 13 && lock.class_code === "10A1"), true);
+
+  const joinAfterApprovedLeave = await callRoute("POST /api/school/join-class", {
+    user: student1User,
+    body: { classCode: "10A2" }
+  });
+  assert.equal(joinAfterApprovedLeave.status, 409, "Leaving a class must not reset the one-time join lock.");
+
   // Homeroom teacher opens "Lớp của bạn" tab (GET /api/school/classes) and sees both students!
   const classesTabRes = await callRoute("GET /api/school/classes", {
     user: homeroomUser
@@ -266,22 +364,20 @@ test("Homeroom teacher can add student by email and Student can join class via /
   ]);
 });
 
-test("UI files contain required homeroom add-student button, student join-class button, and omit teacher header banner", () => {
+test("UI moves class joining into My Classes and adds student leave approval controls", () => {
   const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
   const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
   const appJs = fs.readFileSync(path.join(rootDir, "js/app.js"), "utf8");
   const schoolJs = fs.readFileSync(path.join(rootDir, "js/school-system.js"), "utf8");
 
-  // Image 2: Student "Tham gia lớp" button & dialog in index.html
-  assert.match(indexHtml, /id="join-class-open"/);
-  assert.match(indexHtml, /Tham gia lớp/);
-  assert.match(indexHtml, /id="join-class-dialog"/);
-
-  // Image 1: Homeroom teacher "Thêm học sinh" button by student email in js/school-system.js
-  assert.match(schoolJs, /homeroom-add-student-form/);
-  assert.match(schoolJs, /Thêm học sinh/);
-
-  // Image 3: Teacher center no longer renders the GIẢNG VIÊN / Khu vực dành cho giáo viên / Quản lý nội dung học tập banner
+  assert.doesNotMatch(indexHtml, /id="join-class-open"/);
+  assert.doesNotMatch(indexHtml, /id="join-class-dialog"/);
+  assert.doesNotMatch(indexHtml, /register-school-class-field/);
+  assert.doesNotMatch(appJs, /ensureStudentJoinClassNavButton/);
+  assert.match(schoolJs, /student-join-class-inline-form/);
+  assert.match(schoolJs, /Bạn chưa tham gia lớp nào/);
+  assert.match(schoolJs, /data-school-request-leave/);
+  assert.match(schoolJs, /data-school-review-leave-request/);
   assert.doesNotMatch(appJs, /<span class="pill">GIẢNG VIÊN<\/span>/);
   assert.doesNotMatch(appJs, /Quản lý nội dung học tập/);
 });
