@@ -35,7 +35,7 @@ export async function initSchoolSystemDatabase(db) {
     );
 
     INSERT INTO school_class_join_locks(user_id,class_code,joined_at)
-    SELECT user_id,class_code,created_at FROM school_class_members
+    SELECT user_id,class_code,created_at FROM school_class_members WHERE TRUE
     ON CONFLICT(user_id) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS school_class_leave_requests (
