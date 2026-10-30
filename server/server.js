@@ -44,6 +44,7 @@ import {
   hashPassword,
   initAuthDatabase
 } from "./auth.js";
+import { initSchoolSystemDatabase, installSchoolSystemRoutes, saveTeacherAssignments } from "./school-system.js";
 
 const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__earlyDir, ".env"), override: true });
