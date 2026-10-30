@@ -1127,7 +1127,7 @@ async function deleteAccountPermanently(id) {
 
 app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
-    .prepare("SELECT id,name,email,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT 500")
+    .prepare("SELECT id,name,email,role,admin_level,created_at,(SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class FROM users ORDER BY id DESC LIMIT 500")
     .all();
   const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
   const total = Number(totalRow?.count || 0);
@@ -1136,6 +1136,7 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     const createdAt = user.created_at ?? user.createdAt ?? null;
     return {
       ...publicAccount,
+      homeroomClass: user.homeroom_class || null,
       createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
     };
   });
