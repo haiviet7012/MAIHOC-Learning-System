@@ -715,7 +715,7 @@ function formatAdminCreatedAt(value) {
     });
 }
 
-function adminPage() { if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return `${pageHeading("Khu vực giảng viên", "Quản lý tài liệu và bài kiểm tra; quyền quản lý tài khoản chỉ dành cho Admin cao nhất.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Quản lý nội dung học tập</h2><p class="muted" style="margin:0">Bạn không có quyền xem danh sách tài khoản hoặc cấp quyền giảng viên.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+function adminPage() { if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return `${pageHeading("Khu vực giảng viên", "Quản lý tài liệu và bài kiểm tra; quyền quản lý tài khoản chỉ dành cho Admin cao nhất.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Quản lý nội dung học tập</h2></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() { if (state.route !== "admin")
     return; if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin" });
@@ -737,26 +737,29 @@ async function loadAdminUsers() { if (state.route !== "admin")
       const schoolClasses = ["10A","11B","12C"].flatMap(prefix => Array.from({length:9},(_,i)=>prefix+(i+1)));
       const classOptions = schoolClasses.map(code => '<option value="'+code+'">'+code+'</option>').join("");
       const subjectOptions = ["Toán","Tiếng Anh","Vật lý","Hóa học","Ngữ văn","Sinh học","IELTS"].map(subject => '<option value="'+subject+'">'+subject+'</option>').join("");
-      extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm giáo viên</h2><p class="muted">Chỉ Admin cao nhất được cấp quyền giáo viên. Có thể chọn nhiều môn và nhiều lớp.</p><form id="create-subadmin-form" class="admin-form-grid">
-        <label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
-        <label>Họ và tên <span class="muted tiny">(bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label>
-        <label>Mật khẩu tạm thời <span class="muted tiny">(bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
-        <label>Bộ môn giảng dạy (có thể chọn nhiều)
-          <select name="subjects" multiple required size="5">${subjectOptions}</select>
-        </label>
-        <label>Loại giáo viên
-          <select name="teacherKind" id="teacher-kind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select>
-        </label>
-        <label id="homeroom-class-field" hidden>Lớp chủ nhiệm
-          <select name="homeroomClass"><option value="">Chọn lớp chủ nhiệm</option>${classOptions}</select>
-        </label>
-        <label>Các lớp đang giảng dạy (có thể chọn nhiều)
-          <select name="teachingClasses" multiple required size="6">${classOptions}</select>
-        </label>
-        <button class="button primary" type="submit">Cấp quyền / Tạo giáo viên</button>
-      </form><p class="muted tiny">Nếu email đã có tài khoản học sinh, hệ thống giữ nguyên mật khẩu và lịch sử học tập, đồng thời chuyển tài khoản thành giáo viên của trường.</p></section>
+      const subjectNames = ["Toán","Tiếng Anh","Vật lý","Hóa học","Ngữ văn","Sinh học","IELTS"];
+      const subjectCheckboxes = subjectNames.map(subject => '<label class="teacher-check-option"><input type="checkbox" name="subjects" value="'+subject+'"><span>'+subject+'</span></label>').join("");
+      const classCheckboxes = schoolClasses.map(code => '<label class="teacher-check-option"><input type="checkbox" name="teachingClasses" value="'+code+'"><span>'+code+'</span></label>').join("");
+      extra = `<section class="admin-submissions teacher-create-section" style="margin-top:20px">
+        <div class="teacher-create-toggle-row">
+          <div><h2>Quản lý giáo viên</h2><p class="muted tiny">Tạo tài khoản mới hoặc phân công giáo viên hiện có.</p></div>
+          <button class="button primary" type="button" id="teacher-create-toggle" aria-expanded="false">＋ Tạo giáo viên</button>
+        </div>
+        <div id="teacher-create-panel" hidden>
+          <form id="create-subadmin-form" class="admin-form-grid teacher-create-form">
+            <label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+            <label>Họ và tên <span class="muted tiny">(bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label>
+            <label>Mật khẩu tạm thời <span class="muted tiny">(bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
+            <fieldset class="teacher-check-group"><legend>Bộ môn giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-check-grid">${subjectCheckboxes}</div></fieldset>
+            <label>Loại giáo viên<select name="teacherKind" id="teacher-kind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select></label>
+            <label id="homeroom-class-field" hidden>Lớp chủ nhiệm<select name="homeroomClass"><option value="">Chọn lớp chủ nhiệm</option>${classOptions}</select></label>
+            <fieldset class="teacher-check-group" id="teaching-classes-group"><legend>Các lớp đang giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-class-grid">${classCheckboxes}</div></fieldset>
+            <button class="button primary" type="submit">Cấp quyền / Tạo giáo viên</button>
+          </form>
+          <p class="muted tiny">Nếu email đã có tài khoản, hệ thống giữ nguyên mật khẩu và lịch sử học tập, đồng thời chuyển tài khoản thành giáo viên của trường.</p>
+        </div>
+      </section>
       <section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
-    }
     container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
 }
@@ -1694,15 +1697,25 @@ async function loadAccountDeletionRequests(){
     box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giảng viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
+document.addEventListener("click", e => {
+  const toggle = e.target.closest("#teacher-create-toggle");
+  if (!toggle) return;
+  const panel = document.getElementById("teacher-create-panel");
+  if (!panel) return;
+  const expanded = toggle.getAttribute("aria-expanded") === "true";
+  panel.hidden = expanded;
+  toggle.setAttribute("aria-expanded", String(!expanded));
+  toggle.textContent = expanded ? "＋ Tạo giáo viên" : "− Đóng biểu mẫu";
+});
 document.addEventListener("change", e => {
   if (e.target.id !== "teacher-kind") return;
   const field = document.getElementById("homeroom-class-field");
   const select = field?.querySelector("select");
   const isHomeroom = e.target.value === "homeroom";
   if (field) field.hidden = !isHomeroom;  
-  const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
+  const teachingClassesGroup = document.getElementById("teaching-classes-group");
   if (select) select.required = isHomeroom;
-  if (teachingClasses) teachingClasses.required = !isHomeroom;
+  if (teachingClassesGroup) teachingClassesGroup.hidden = isHomeroom;
 });
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;
@@ -1711,8 +1724,8 @@ document.addEventListener("submit",async e=>{
   try{
     const formData=new FormData(form);
     const body=Object.fromEntries(formData.entries());
-    body.subjects=formData.getAll("subjects");
-    body.teachingClasses=formData.getAll("teachingClasses");
+    body.subjects=[...form.querySelectorAll('input[name="subjects"]:checked')].map(input=>input.value);
+    body.teachingClasses=[...form.querySelectorAll('input[name="teachingClasses"]:checked')].map(input=>input.value);
     const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"Không tạo/cấp quyền được Giảng viên.");
