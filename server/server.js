@@ -974,7 +974,7 @@ app.post(
       );
       return res.json({
         ok: true,
-        user: publicUser(updated),
+        user: { ...publicUser(updated), teacherProfile: savedTeacherProfile },
         message: `Đã cập nhật Email thành ${newEmail}.`
       });
     } catch (error) {
@@ -1155,6 +1155,12 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   const email = String(req.body?.email || "").trim().toLowerCase();
   const name = String(req.body?.name || "").trim();
   const password = String(req.body?.password || "");
+  const teacherProfile = {
+    subjects: Array.isArray(req.body?.subjects) ? req.body.subjects : [],
+    teacherKind: String(req.body?.teacherKind || "subject"),
+    homeroomClass: String(req.body?.homeroomClass || ""),
+    teachingClasses: Array.isArray(req.body?.teachingClasses) ? req.body.teachingClasses : []
+  };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({ error: "Email không hợp lệ." });
   }
@@ -1171,7 +1177,7 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
     }
     const promote = db.transaction(async () => {
       await db
-        .prepare("UPDATE users SET role='admin',admin_level=1 WHERE id=? AND admin_level<2")
+        .prepare("UPDATE users SET role='admin',admin_level=1,account_type='school' WHERE id=? AND admin_level<2")
         .run(existing.id);
       const updated = await db
         .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
@@ -1185,6 +1191,7 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
       return updated;
     });
     const updated = await promote();
+    const savedTeacherProfile = await saveTeacherAssignments(db, updated.id, teacherProfile);
     return res.json({
       ok: true,
       action: "promoted",
@@ -1206,7 +1213,7 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   let result;
   try {
     result = await db
-      .prepare("INSERT INTO users(name,email,password_hash,role,admin_level) VALUES(?,?,?,'admin',1)")
+      .prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'admin',1,'school')")
       .run(name, email, passwordHash);
   } catch (error) {
     if (String(error.code || "").includes("CONSTRAINT") || error.pgCode === "23505") {
@@ -1219,17 +1226,18 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   const created = await db
     .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
     .get(result.lastInsertRowid);
+  const savedTeacherProfile = await saveTeacherAssignments(db, created.id, teacherProfile);
   await notifyAdmins(
     "admin_created",
-    "Đã tạo Admin cấp dưới",
+    "Đã tạo tài khoản giáo viên",
     `Tài khoản ${name} (${email}) đã được tạo mới.`,
     "admin"
   );
   res.status(201).json({
     ok: true,
     action: "created",
-    user: publicUser(created),
-    message: "Đã tạo tài khoản Admin cấp dưới mới."
+    user: { ...publicUser(created), teacherProfile: savedTeacherProfile },
+    message: "Đã tạo tài khoản giáo viên mới."
   });
 });
 
