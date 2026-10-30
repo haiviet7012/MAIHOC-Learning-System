@@ -900,6 +900,7 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
   const classText = identity.classCode ? ` · Lớp: ${identity.classCode}` : "";
   const shortName = identity.name.length > 12 ? identity.name.slice(0, 12).trim() : identity.name;
 
+  // Each student worksheet gets a separate identity row before the result table.
   const studentNameRow = [{ value: `HỌC SINH: ${identity.name}`, style: 1 }];
   const studentNameScoreRow = [{ value: `HỌC SINH: ${identity.name}`, style: 1 }];
   const studentRowsWithName = [studentNameRow, ...combinedRows];
@@ -913,7 +914,7 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
         name: `${shortName} -> Kết quả học tập`,
         title: `HỌC SINH: ${identity.name.toUpperCase()} -> BẢNG KẾT QUẢ HỌC TẬP`,
         subtitle: `Họ và tên học sinh: ${identity.name}${classText} · Tài khoản: ${identity.email} · Ngày xuất: ${exportDateStr}`,
-        headers: [`HỌC SINH: ${identity.name}`, ...headers.slice(1)],
+        headers,
         rows: studentRowsWithName,
         sectionColumnIndex: 2
       },
@@ -921,7 +922,7 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
         name: `${shortName} -> Bảng điểm`,
         title: `HỌC SINH: ${identity.name.toUpperCase()} -> BẢNG ĐIỂM KIỂM TRA & THI`,
         subtitle: `Họ và tên học sinh: ${identity.name}${classText} · Tài khoản: ${identity.email} · Ngày xuất: ${exportDateStr}`,
-        headers: [`HỌC SINH: ${identity.name}`, ...scoreHeaders.slice(1)],
+        headers: scoreHeaders,
         rows: scoreRowsWithName,
         sectionColumnIndex: 2
       }
