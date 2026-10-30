@@ -20,7 +20,7 @@ import {
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
-import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js";
+import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");
 const progressTabParams = new URLSearchParams(window.location.search);
 const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "student-progress";
@@ -1579,31 +1579,9 @@ function ensureTestsNavButton() {
         }
     }
 }
-function ensureStudentJoinClassNavButton() {
-    const userActions = $("#user-actions");
-    if (!userActions) return;
-    let joinBtn = $("#join-class-open");
-    if (!joinBtn) {
-        joinBtn = document.createElement("button");
-        joinBtn.type = "button";
-        joinBtn.className = "icon-button";
-        joinBtn.id = "join-class-open";
-        joinBtn.setAttribute("data-open-join-class", "");
-        joinBtn.title = "Tham gia lớp học";
-        joinBtn.setAttribute("aria-label", "Tham gia lớp");
-        joinBtn.hidden = true;
-        joinBtn.innerHTML = `🏫 <span class="button-label">Tham gia lớp</span>`;
-        const testsBtn = $("#tests-open");
-        if (testsBtn && testsBtn.parentElement === userActions) {
-            userActions.insertBefore(joinBtn, testsBtn);
-        } else {
-            userActions.append(joinBtn);
-        }
-    }
-}
+
 function applyAuthUI() {
     ensureTestsNavButton();
-    ensureStudentJoinClassNavButton();
     window.maihocCurrentUser = currentUser;
     window.__maihocCurrentUser = currentUser;
     const signedIn = Boolean(currentUser);
@@ -1633,14 +1611,6 @@ function applyAuthUI() {
     if ($("#school-classes-open")) {
         const canOpenSchoolClasses = isSuperAdmin || isTeacherAccount || (isStudentAccount && (currentUser?.accountType === "school" || Boolean(currentUser?.classCode)));
         $("#school-classes-open").hidden = !signedIn || !canOpenSchoolClasses;
-    }
-    if ($("#join-class-open")) {
-        $("#join-class-open").hidden = !signedIn || !isStudentAccount;
-    }
-    if ($("#register-school-class-field")) {
-        const schoolChoice = document.querySelector('#register-form [name="accountType"]:checked')?.value === "school";
-        $("#register-school-class-field").hidden = !schoolChoice;
-        $("#register-school-class-field").querySelector("select").required = schoolChoice;
     }
     if ($("#upload-school-class-field")) {
         const schoolStudent = isStudentAccount && (currentUser?.accountType === "school" || Boolean(currentUser?.classCode));
@@ -1692,15 +1662,6 @@ async function postJson(url, body) {
 }
 $("#login-open").addEventListener("click", () => { $("#login-error").hidden = true; openDialog("login-dialog"); });
 $("#register-open").addEventListener("click", () => { $("#register-error").hidden = true; openDialog("register-dialog"); });
-document.querySelectorAll('#register-form [name="accountType"]').forEach(input => {
-    input.addEventListener("change", () => {
-        const field = $("#register-school-class-field");
-        const select = field?.querySelector("select");
-        const isSchool = input.checked && input.value === "school";
-        if (field) field.hidden = !isSchool;
-        if (select) select.required = isSchool;
-    });
-});
 $("#switch-to-register").addEventListener("click", () => { closeDialog("login-dialog"); openDialog("register-dialog"); });
 $("#switch-to-login").addEventListener("click", () => { closeDialog("register-dialog"); openDialog("login-dialog"); });
 $("#login-form").addEventListener("submit", async (event) => {
@@ -1753,12 +1714,6 @@ $("#register-form").addEventListener("submit", async (event) => {
         window.dispatchEvent(new Event("maihoc-auth-changed"));
         closeDialog("register-dialog");
         form.reset();
-        const regSchoolField = $("#register-school-class-field");
-        if (regSchoolField) {
-            regSchoolField.hidden = true;
-            const regSelect = regSchoolField.querySelector("select");
-            if (regSelect) regSelect.required = false;
-        }
         toast("Tạo tài khoản thành công.", "success");
         go("home");
     }
