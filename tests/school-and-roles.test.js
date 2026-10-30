@@ -371,6 +371,7 @@ test("UI moves class joining into My Classes and adds student leave approval con
   assert.doesNotMatch(indexHtml, /id="join-class-dialog"/);
   assert.doesNotMatch(indexHtml, /register-school-class-field/);
   assert.doesNotMatch(appJs, /ensureStudentJoinClassNavButton/);
+  assert.doesNotMatch(appJs, /register-school-class-field/);
   assert.match(schoolJs, /student-join-class-inline-form/);
   assert.match(schoolJs, /Bạn chưa tham gia lớp nào/);
   assert.match(schoolJs, /data-school-request-leave/);
