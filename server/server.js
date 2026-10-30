@@ -2780,8 +2780,9 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
     .prepare(`
       SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
         s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
-        u.name AS userName,u.email AS userEmail,r.class_code AS classCode
+        u.name AS userName,u.email AS userEmail,r.class_code AS classCode,r.class_code AS classCode
       FROM document_submissions s JOIN users u ON u.id=s.user_id
+      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
       LEFT JOIN school_document_reviews r ON r.submission_id=s.id
       WHERE s.status='pending'
         ${isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : ""}
