@@ -204,16 +204,10 @@ export async function registerUser({ name, email, password, accountType, classCo
     const result = await db
       .prepare("INSERT INTO users (name,email,password_hash,role,account_type) VALUES (?,?,?,'user',?)")
       .run(safeName, safeEmail, passwordHash, normalizedAccountType);
-    if (normalizedAccountType === "school" && hasValidClass) {
-      await db
-        .prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)")
-        .run(result.lastInsertRowid, normalizedClassCode);
-    }
     const created = await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid);
     return publicUser({
       ...created,
       account_type: normalizedAccountType,
-      student_class: hasValidClass ? normalizedClassCode : null
     });
   } catch (error) {
     if (String(error.code).includes("CONSTRAINT") || error.pgCode === "23505" || error.code === "23505") {

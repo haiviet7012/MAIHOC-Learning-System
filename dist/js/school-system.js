@@ -85,7 +85,6 @@ function renderHomeroomAddStudentSection(classCode) {
         '<h3>Quản lý học sinh ' + classLabel(classCode) + '</h3>' +
         '<p class="muted tiny">Thêm trực tiếp học sinh vào lớp bằng email tài khoản học sinh, hoặc học sinh tự đăng nhập và bấm “Tham gia lớp” vào ' + classLabel(classCode) + '.</p>' +
       '</div>' +
-      '<button type="button" class="button primary" data-toggle-homeroom-add-form="' + esc(classCode) + '">＋ Thêm học sinh</button>' +
     '</div>' +
     '<form id="homeroom-add-student-form" class="school-inline-form homeroom-add-student-form" data-homeroom-class="' + esc(classCode) + '">' +
       '<h4>Thêm học sinh vào ' + classLabel(classCode) + ' bằng Email</h4>' +
@@ -100,79 +99,38 @@ function renderHomeroomAddStudentSection(classCode) {
   '</section>';
 }
 
-function renderStudentJoinClassInline(availableClasses = [], currentClassCode = "") {
+function renderStudentJoinClassInline(availableClasses = []) {
   const list = availableClasses.length
     ? availableClasses
     : DEFAULT_SCHOOL_CLASSES.map(code => ({ classCode: code, studentCount: 0, homeroomTeacher: null }));
   const options = list.map(item => {
     const gvcn = item.homeroomTeacher ? ` — GVCN: ${item.homeroomTeacher}` : "";
     const count = ` (${Number(item.studentCount || 0)} học sinh)`;
-    const selected = String(item.classCode).toUpperCase() === String(currentClassCode || "").toUpperCase() ? " selected" : "";
-    return `<option value="${esc(item.classCode)}"${selected}>Lớp ${esc(item.classCode)}${esc(gvcn)}${esc(count)}</option>`;
+    return `<option value="${esc(item.classCode)}">Lớp ${esc(item.classCode)}${esc(gvcn)}${esc(count)}</option>`;
   }).join("");
 
-  return '<form id="student-join-class-inline-form" class="school-inline-form">' +
-    '<h3>' + (currentClassCode ? 'Đổi lớp / Tham gia lớp học khác' : 'Tham gia lớp học của bạn') + '</h3>' +
-    '<p class="muted tiny">Chọn đúng lớp của giáo viên chủ nhiệm để tham gia vào lớp và nhận bài kiểm tra, tài liệu của lớp.</p>' +
-    '<div class="homeroom-add-input-row">' +
-      '<label style="flex:1;margin:0">Chọn lớp học' +
-        '<select name="classCode" required><option value="">-- Chọn lớp của bạn (10A1 – 12C9) --</option>' + options + '</select>' +
-      '</label>' +
-      '<button class="button primary" type="submit">🏫 Tham gia lớp</button>' +
-    '</div>' +
-  '</form>';
+  return '<section class="school-inline-form school-join-class-panel">' +
+    '<p class="eyebrow">HỌC SINH TRƯỜNG</p>' +
+    '<h2>Bạn chưa tham gia lớp nào</h2>' +
+    '<p class="muted tiny">Chọn lớp của bạn để tham gia. Mỗi tài khoản chỉ được chọn lớp một lần; hãy kiểm tra kỹ trước khi xác nhận.</p>' +
+    '<form id="student-join-class-inline-form">' +
+      '<div class="homeroom-add-input-row">' +
+        '<label style="flex:1;margin:0">Chọn lớp học' +
+          '<select name="classCode" required><option value="">-- Chọn lớp của bạn (10A1 – 12C9) --</option>' + options + '</select>' +
+        '</label>' +
+        '<button class="button primary" type="submit">🏫 Tham gia lớp</button>' +
+      '</div>' +
+    '</form>' +
+  '</section>';
 }
 
-export async function openJoinClassDialog(user = window.maihocCurrentUser) {
-  const dialog = document.getElementById("join-class-dialog");
-  if (!dialog) return;
-  const select = dialog.querySelector('select[name="classCode"]');
-  const currentInfo = dialog.querySelector("[data-join-class-current]");
-  const errNode = dialog.querySelector("#join-class-error");
-  if (errNode) {
-    errNode.hidden = true;
-    errNode.textContent = "";
-  }
-  if (currentInfo) {
-    if (user?.classCode) {
-      currentInfo.hidden = false;
-      currentInfo.innerHTML = `Lớp hiện tại của bạn: <strong>Lớp ${esc(user.classCode)}</strong>`;
-    } else {
-      currentInfo.hidden = false;
-      currentInfo.textContent = "Bạn chưa tham gia lớp học nào. Hãy chọn lớp bên dưới để vào lớp.";
-    }
-  }
-  if (select) {
-    select.innerHTML = '<option value="">Đang tải danh sách lớp…</option>';
-  }
-  if (!dialog.open) dialog.showModal();
-
-  try {
-    const data = await request("/api/school/classes");
-    const list = Array.isArray(data.availableClasses) && data.availableClasses.length
-      ? data.availableClasses
-      : DEFAULT_SCHOOL_CLASSES.map(code => ({ classCode: code, studentCount: 0, homeroomTeacher: null }));
-    const activeClass = data.currentClassCode || user?.classCode || "";
-    if (currentInfo && activeClass) {
-      const found = list.find(c => c.classCode === activeClass);
-      const gv = found?.homeroomTeacher ? ` · GVCN: ${esc(found.homeroomTeacher)}` : "";
-      currentInfo.innerHTML = `Lớp hiện tại của bạn: <strong>Lớp ${esc(activeClass)}</strong>${gv}`;
-    }
-    if (select) {
-      select.innerHTML = '<option value="">-- Chọn lớp học (10A1 – 12C9) --</option>' +
-        list.map(item => {
-          const gvcn = item.homeroomTeacher ? ` — GVCN: ${item.homeroomTeacher}` : "";
-          const count = ` (${Number(item.studentCount || 0)} học sinh)`;
-          const selected = item.classCode === activeClass ? " selected" : "";
-          return `<option value="${esc(item.classCode)}"${selected}>Lớp ${esc(item.classCode)}${esc(gvcn)}${esc(count)}</option>`;
-        }).join("");
-    }
-  } catch {
-    if (select) {
-      select.innerHTML = '<option value="">-- Chọn lớp học (10A1 – 12C9) --</option>' +
-        DEFAULT_SCHOOL_CLASSES.map(code => `<option value="${esc(code)}">Lớp ${esc(code)}</option>`).join("");
-    }
-  }
+function renderStudentJoinLockedNotice(classCode = "") {
+  return '<section class="school-inline-form school-join-class-panel">' +
+    '<h2>Bạn đã sử dụng lượt tham gia lớp</h2>' +
+    '<p class="muted">Tài khoản này đã từng tham gia ' + (classCode ? classLabel(classCode) : 'một lớp') +
+    '. Sau khi giáo viên duyệt rời lớp, hệ thống vẫn lưu lịch sử và không cho phép đăng ký lớp khác.</p>' +
+    '<p class="muted tiny">Nếu có nhầm lẫn, hãy liên hệ Quản trị viên MAI HỌC để được hỗ trợ.</p>' +
+  '</section>';
 }
 
 export async function mountSchoolPage(view, user, classCode = "") {
@@ -208,39 +166,22 @@ export async function mountSchoolPage(view, user, classCode = "") {
     // Danh sách thành viên chỉ xuất hiện sau khi mở thẻ lớp được phân công.
     const homeroomRosterBlock = "";
     
-    // Phần hiển thị cho Học sinh khi mở "Lớp của bạn"
+    // Học sinh chỉ chọn lớp tại đây khi chưa từng tham gia lớp nào.
     let studentClassBlock = "";
-    if (isStudent) {
-      if (data.studentClassDetail && data.studentClassDetail.classCode) {
-        const sd = data.studentClassDetail;
-        const sCode = sd.classCode;
-        studentClassBlock =
-          '<section class="school-roster-section">' +
-            '<div class="school-section-heading">' +
-              '<h2>Giáo viên phụ trách ' + classLabel(sCode) + '</h2>' +
-              '<button type="button" class="button secondary small" data-open-join-class>🏫 Đổi lớp khác</button>' +
-            '</div>' +
-            '<div class="school-roster-list">' + renderTeacherCards(sd.teachers || []) + '</div>' +
-          '</section>' +
-          '<section class="school-roster-section">' +
-            '<div class="school-section-heading"><h2>Thành viên ' + classLabel(sCode) + '</h2><span class="pill">' + (sd.students || []).length + ' học sinh</span></div>' +
-            '<div class="school-roster-list">' + renderStudentCards(sd.students || [], sCode, { canViewProgress: false, canRemoveStudent: false }) + '</div>' +
-          '</section>';
-      } else {
-        studentClassBlock = renderStudentJoinClassInline(availableClasses, "");
-      }
+    if (isStudent && classes.length === 0) {
+      studentClassBlock = data.hasJoinedClass
+        ? renderStudentJoinLockedNotice(data.joinedClassCode || "")
+        : renderStudentJoinClassInline(availableClasses);
     }
 
     const adminTools = data.allClasses ? await renderAdminTools() : "";
     const teacherNotice = isTeacher ? renderTeacherMessageForm() : "";
 
     const emptyClassesHtml = isStudent
-      ? '<div class="empty-state"><h3>Bạn chưa tham gia lớp học nào</h3><p>Hãy chọn lớp của giáo viên chủ nhiệm bên dưới (hoặc nhấn nút “🏫 Tham gia lớp” trên thanh công cụ) để vào lớp.</p><button type="button" class="button primary" data-open-join-class>🏫 Tham gia lớp ngay</button></div>'
+      ? ''
       : '<div class="empty-state"><h3>Chưa có lớp được phân công</h3><p>Liên hệ Quản trị viên MAI HỌC để cập nhật lớp phụ trách của tài khoản.</p></div>';
 
-    const headerActions = isStudent
-      ? '<button type="button" class="button primary" data-open-join-class>🏫 Tham gia lớp</button>'
-      : '';
+    const headerActions = '';
 
 
     view.innerHTML = '<section class="school-page">' +
@@ -263,6 +204,42 @@ export async function mountSchoolPage(view, user, classCode = "") {
   }
 }
 
+function renderStudentLeaveClassSection(classCode, leaveRequest) {
+  if (leaveRequest?.status === "pending") {
+    return '<section class="school-leave-class-section school-inline-form">' +
+      '<h3>Yêu cầu rời lớp đã được gửi</h3>' +
+      '<p class="muted">Giáo viên chủ nhiệm đang xem xét yêu cầu của bạn. Bạn vẫn là thành viên lớp cho đến khi được duyệt.</p>' +
+      '<span class="pill">Đang chờ duyệt</span>' +
+    '</section>';
+  }
+  const rejectedMessage = leaveRequest?.status === "rejected"
+    ? '<p class="auth-error" role="status">Yêu cầu trước đó chưa được chấp thuận. Bạn vẫn ở trong lớp và có thể gửi lại yêu cầu khi cần.</p>'
+    : '';
+  return '<section class="school-leave-class-section school-inline-form">' +
+    '<h3>Rời khỏi lớp ' + esc(classCode) + '</h3>' +
+    '<p class="muted">Bạn cần gửi yêu cầu và chờ giáo viên chủ nhiệm duyệt. Lịch sử đã tham gia vẫn được lưu; sau khi rời lớp, bạn không thể tự đăng ký lớp khác.</p>' +
+    rejectedMessage +
+    '<button class="button secondary" type="button" data-school-request-leave="' + esc(classCode) + '">Gửi yêu cầu rời lớp</button>' +
+  '</section>';
+}
+
+function renderTeacherLeaveRequests(requests = [], classCode = "") {
+  if (!requests.length) return "";
+  return '<section class="school-roster-section school-leave-requests">' +
+    '<h2>Yêu cầu rời lớp cần duyệt</h2>' +
+    '<div class="school-roster-list">' +
+      requests.map(item => '<article class="school-person-card school-leave-request-card">' +
+        '<span class="school-person-avatar">HS</span>' +
+        '<span class="school-person-info"><strong>' + esc(item.studentName) + '</strong><small>' + esc(item.studentEmail) + ' · Gửi lúc ' + esc(item.createdAt || "—") + '</small></span>' +
+        '<div class="school-person-actions">' +
+          '<button type="button" class="button primary small" data-school-review-leave-request="' + esc(item.id) + '" data-school-class="' + esc(classCode) + '" data-decision="approve">Duyệt rời lớp</button>' +
+          '<button type="button" class="button secondary small" data-school-review-leave-request="' + esc(item.id) + '" data-school-class="' + esc(classCode) + '" data-decision="reject">Từ chối</button>' +
+        '</div>' +
+      '</article>').join("") +
+    '</div>' +
+  '</section>';
+}
+
 async function renderClass(view, user, classCode) {
   const data = await request("/api/school/classes/" + encodeURIComponent(classCode));
   const teachers = data.teachers || [];
@@ -271,6 +248,7 @@ async function renderClass(view, user, classCode) {
   const isTeacher = isUserTeacher(user);
   const canViewProgress = isTeacher || isSuper;
   const canManageMembers = Boolean(data.canManageMembers);
+  const isStudent = Boolean(user && !isUserTeacher(user) && !isUserSuperAdmin(user));
 
   const teacherCards = renderTeacherCards(teachers);
   const studentCards = renderStudentCards(students, classCode, {
@@ -279,6 +257,8 @@ async function renderClass(view, user, classCode) {
   });
 
   const addStudentBlock = canManageMembers ? renderHomeroomAddStudentSection(classCode) : "";
+  const teacherLeaveRequests = canManageMembers ? renderTeacherLeaveRequests(data.leaveRequests || [], classCode) : "";
+  const studentLeaveSection = isStudent ? renderStudentLeaveClassSection(classCode, data.leaveRequest) : "";
 
   view.innerHTML = '<section class="school-page" data-school-class-current="' + esc(classCode) + '">' +
     '<div class="school-page-toolbar">' +
@@ -291,8 +271,10 @@ async function renderClass(view, user, classCode) {
     '<header class="school-page-header"><div><p class="eyebrow">DANH SÁCH LỚP</p><h1>' + classLabel(classCode) + '</h1><p>' + students.length + ' học sinh · ' + teachers.length + ' giáo viên</p></div></header>' +
     addStudentBlock +
     '<section class="school-roster-section"><h2>Giáo viên phụ trách</h2><div class="school-roster-list">' + teacherCards + '</div></section>' +
+    teacherLeaveRequests +
     '<section class="school-roster-section"><div class="school-section-heading"><h2>Thành viên lớp</h2><span class="pill">' + students.length + ' học sinh</span></div><div class="school-roster-list">' + studentCards + '</div></section>' +
     '<div id="school-student-progress-panel"></div>' +
+    studentLeaveSection +
     '</section>';
 }
 
@@ -360,29 +342,49 @@ export function wireSchoolEvents(onNavigate) {
       return;
     }
 
-    const openJoinBtn = event.target.closest("[data-open-join-class]");
-    if (openJoinBtn) {
-      event.preventDefault();
-      await openJoinClassDialog(window.maihocCurrentUser || window.__maihocCurrentUser);
-      return;
-    }
-
-    const toggleAddBtn = event.target.closest("[data-toggle-homeroom-add-form]");
-    if (toggleAddBtn) {
-      event.preventDefault();
-      const form = document.getElementById("homeroom-add-student-form");
-      if (form) {
-        form.scrollIntoView({ behavior: "smooth", block: "center" });
-        const emailInput = form.querySelector('input[name="email"]');
-        emailInput?.focus();
-      }
-      return;
-    }
-
     if (event.target.closest("[data-school-refresh]")) {
       event.preventDefault();
       await mountSchoolPage(document.getElementById("view"), window.maihocCurrentUser || window.__maihocCurrentUser || {}, "");
       showSchoolToast("Đã làm mới dữ liệu lớp học.");
+      return;
+    }
+
+    const leaveRequestBtn = event.target.closest("[data-school-request-leave]");
+    if (leaveRequestBtn) {
+      event.preventDefault();
+      const classCode = leaveRequestBtn.dataset.schoolRequestLeave;
+      if (!confirm(`Gửi yêu cầu rời Lớp ${classCode}? Bạn vẫn ở trong lớp cho đến khi giáo viên chủ nhiệm duyệt.`)) return;
+      leaveRequestBtn.disabled = true;
+      try {
+        const result = await request("/api/school/classes/" + encodeURIComponent(classCode) + "/leave-requests", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({})
+        });
+        showSchoolToast(result.message || "Đã gửi yêu cầu rời lớp.", "success");
+        await mountSchoolPage(document.getElementById("view"), window.maihocCurrentUser || window.__maihocCurrentUser || {}, classCode);
+      } catch (error) {
+        showSchoolToast(error.message || "Không gửi được yêu cầu rời lớp.", "error");
+        leaveRequestBtn.disabled = false;
+      }
+      return;
+    }
+
+    const reviewLeaveBtn = event.target.closest("[data-school-review-leave-request]");
+    if (reviewLeaveBtn) {
+      event.preventDefault();
+      const decision = reviewLeaveBtn.dataset.decision;
+      const classCode = reviewLeaveBtn.dataset.schoolClass;
+      if (decision === "approve" && !confirm("Duyệt yêu cầu sẽ xóa học sinh khỏi danh sách lớp. Lịch sử tham gia vẫn được giữ và học sinh không thể tự tham gia lớp khác. Tiếp tục?")) return;
+      reviewLeaveBtn.disabled = true;
+      try {
+        await request("/api/school/classes/" + encodeURIComponent(classCode) + "/leave-requests/" + encodeURIComponent(reviewLeaveBtn.dataset.schoolReviewLeaveRequest) + "/review", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision })
+        });
+        showSchoolToast(decision === "approve" ? "Đã duyệt học sinh rời lớp." : "Đã từ chối yêu cầu rời lớp.", "success");
+        await mountSchoolPage(document.getElementById("view"), window.maihocCurrentUser || window.__maihocCurrentUser || {}, classCode);
+      } catch (error) {
+        showSchoolToast(error.message || "Không xử lý được yêu cầu rời lớp.", "error");
+        reviewLeaveBtn.disabled = false;
+      }
       return;
     }
 

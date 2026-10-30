@@ -2024,3 +2024,16 @@ body.test-open #online-dashboard-launcher {
   .school-progress-summary-stats { grid-template-columns:1fr; }
   .school-progress-page .school-page-toolbar { align-items:flex-start; flex-direction:column; }
 }
+
+
+/* Student one-time class choice and teacher-reviewed leave request */
+.school-join-class-panel { max-width: 760px; }
+.school-join-class-panel h2 { margin: 0; font-size: 20px; }
+.school-join-class-panel .eyebrow { margin: 0; }
+.school-leave-class-section { margin-top: 24px; border-top: 1px solid var(--border); }
+.school-leave-class-section h3 { margin: 0; font-size: 16px; }
+.school-leave-requests { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.school-leave-request-card { align-items: center; }
+@media(max-width:620px) {
+  .school-leave-request-card { align-items: flex-start; }
+}
