@@ -58,6 +58,7 @@ export function publicUser(user) {
     email: user.email,
     role: user.role,
     adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
+    accountType: String(user.account_type ?? user.accountType ?? "external"),
     createdAt
   };
 }
@@ -92,10 +93,15 @@ export async function verifyPassword(password, stored) {
   }
 }
 
-export async function registerUser({ name, email, password }) {
+export async function registerUser({ name, email, password, accountType, classCode }) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim().toLowerCase();
   const secret = String(password || "");
+  const normalizedAccountType = accountType === "school" ? "school" : "external";
+  const normalizedClassCode = String(classCode || "").trim().toUpperCase();
+  if (normalizedAccountType === "school" && !/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode)) {
+    throw new Error("Học sinh của trường cần chọn lớp hợp lệ (10A1–12C9).");
+  }
   if (safeName.length < 2 || safeName.length > 80) {
     throw new Error("Tên cần có từ 2 đến 80 ký tự.");
   }
@@ -108,8 +114,11 @@ export async function registerUser({ name, email, password }) {
   const passwordHash = await hashPassword(secret);
   try {
     const result = await db
-      .prepare("INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,'user')")
-      .run(safeName, safeEmail, passwordHash);
+      .prepare("INSERT INTO users (name,email,password_hash,role,account_type) VALUES (?,?,?,'user',?)")
+      .run(safeName, safeEmail, passwordHash, normalizedAccountType);
+    if (normalizedAccountType === "school") {
+      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(result.lastInsertRowid, normalizedClassCode);
+    }
     return publicUser(await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid));
   } catch (error) {
     if (String(error.code).includes("CONSTRAINT") || error.pgCode === "23505" || error.code === "23505") {
