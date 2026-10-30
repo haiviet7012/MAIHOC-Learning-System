@@ -2091,6 +2091,30 @@ app.post(
       if (!file) return res.status(400).json({ error: "No document was received." });
       const b = req.body || {},
         cat = String(b.category || "");
+      const schoolClassCode = String(b.classCode || "").trim().toUpperCase();
+      const isSchoolStudent = req.user?.role !== "admin" && req.user?.accountType === "school";
+      let schoolHomeroom = null;
+      if (isSchoolStudent) {
+        if (!/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(schoolClassCode)) {
+          return res.status(400).json({ error: "Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu." });
+        }
+        const member = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(req.user.id, schoolClassCode);
+        if (!member) return res.status(403).json({ error: "Bạn không thuộc lớp đã chọn." });
+        schoolHomeroom = await db.prepare("SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' LIMIT 1").get(schoolClassCode);
+        if (!schoolHomeroom) return res.status(409).json({ error: "Lớp chưa có giáo viên chủ nhiệm để duyệt tài liệu." });
+      }
+      const schoolClassCode = String(b.classCode || "").trim().toUpperCase();
+      const isSchoolStudent = req.user?.role !== "admin" && req.user?.accountType === "school";
+      let schoolHomeroom = null;
+      if (isSchoolStudent) {
+        if (!/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(schoolClassCode)) {
+          return res.status(400).json({ error: "Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu." });
+        }
+        const member = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(req.user.id, schoolClassCode);
+        if (!member) return res.status(403).json({ error: "Bạn không thuộc lớp đã chọn." });
+        schoolHomeroom = await db.prepare("SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' LIMIT 1").get(schoolClassCode);
+        if (!schoolHomeroom) return res.status(409).json({ error: "Lớp chưa có giáo viên chủ nhiệm để duyệt tài liệu." });
+      }
       if (!new Set(["theory", "practice", "exam", "exercise", "answer"]).has(cat)) {
         return res.status(400).json({ error: "Choose a valid document category." });
       }
@@ -2256,12 +2280,17 @@ app.post(
           answer ? answer.mimetype || contentTypeFor(answer.originalname) : null,
           norm ? JSON.stringify(Object.keys(norm.answers)) : null
         );
-      await notifyAdmins(
-        "document_pending",
-        "Có tài liệu mới chờ duyệt",
-        `${req.user.name} đã gửi tài liệu ${title}.`,
-        "admin"
-      );
+      if (isSchoolStudent) {
+        await db.prepare("INSERT INTO school_document_reviews(submission_id,class_code) VALUES(?,?)").run(out.lastInsertRowid, schoolClassCode);
+        await notifyUser(schoolHomeroom.teacher_id, "document_pending", "Tài liệu học sinh chờ duyệt", `${req.user.name} · Lớp ${schoolClassCode} gửi tài liệu ${title}.`, "/");
+      } else {
+        await notifyAdmins(
+          "document_pending",
+          "Có tài liệu mới chờ duyệt",
+          `${req.user.name} đã gửi tài liệu ${title}.`,
+          "admin"
+        );
+      }
       await notifyUser(
         req.user.id,
         "document_submitted",
@@ -2751,13 +2780,19 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
     .prepare(`
       SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
         s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
-        u.name AS userName,u.email AS userEmail
+        u.name AS userName,u.email AS userEmail,r.class_code AS classCode,r.class_code AS classCode
       FROM document_submissions s JOIN users u ON u.id=s.user_id
+      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
+      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
       WHERE s.status='pending'
         ${isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : ""}
+        AND (r.submission_id IS NULL OR ? >= 2 OR EXISTS (
+          SELECT 1 FROM school_teacher_assignments a
+          WHERE a.teacher_id=? AND a.class_code=r.class_code AND a.assignment_type='homeroom'
+        ))
       ORDER BY s.id ASC
     `)
-    .all(...(isSubordinateAdmin ? [req.user.id] : []));
+    .all(...(isSubordinateAdmin ? [req.user.id, Number(req.user.adminLevel), req.user.id] : [Number(req.user.adminLevel), req.user.id]));
   res.json({ submissions: rows });
 });
 
@@ -2772,12 +2807,19 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const sub = await db
       .prepare(
-        "SELECT s.* FROM document_submissions s JOIN users u ON u.id=s.user_id " +
+        "SELECT s.*,r.class_code AS review_class_code FROM document_submissions s JOIN users u ON u.id=s.user_id " +
+        "LEFT JOIN school_document_reviews r ON r.submission_id=s.id " +
         "WHERE s.id=? AND s.status='pending' " +
         (isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : "")
       )
       .get(...(isSubordinateAdmin ? [id, req.user.id] : [id]));
     if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
+    if (sub.review_class_code) {
+      const authorized = Number(req.user.adminLevel) >= 2 || Boolean(await db.prepare(
+        "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? AND assignment_type='homeroom' LIMIT 1"
+      ).get(req.user.id, sub.review_class_code));
+      if (!authorized) return res.status(403).json({ error: "Chỉ giáo viên chủ nhiệm của lớp học sinh mới được duyệt tài liệu này." });
+    }
     const bytes = await getDocumentBuffer(sub, "r2_key", "file_data");
     if (decision === "approved" && !bytes) {
       return res.status(410).json({ error: "The stored document file is missing." });

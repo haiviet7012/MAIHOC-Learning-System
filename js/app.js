@@ -1396,6 +1396,11 @@ $("#upload-form").addEventListener("submit", async (e) => {
     try {
         const fd = new FormData(form);
         fd.delete("answerKey");
+        const schoolStudentUpload = currentUser?.role !== "admin" && currentUser?.accountType === "school";
+        const schoolClassSelect = form.elements.classCode;
+        if (schoolStudentUpload && !String(schoolClassSelect?.value || "").trim()) {
+            throw new Error("Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu.");
+        }
         if (form.elements.category?.value === "test") {
             const response = await fetch("/api/admin/tests", {
                 method: "POST",
@@ -1562,6 +1567,7 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
+    window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     if (state.route === "study-rooms" || state.route === "account-center" || state.route === "tests") render();
 }
@@ -1694,7 +1700,11 @@ document.addEventListener("change", e => {
   const select = field?.querySelector("select");
   const isHomeroom = e.target.value === "homeroom";
   if (field) field.hidden = !isHomeroom;
+  const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
+  const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
   if (select) select.required = isHomeroom;
+  if (teachingClasses) teachingClasses.required = !isHomeroom;
+  if (teachingClasses) teachingClasses.required = !isHomeroom;
 });
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;

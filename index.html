@@ -44,10 +44,10 @@
         </div>
         <div class="inline-actions" id="user-actions" hidden>
           <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
-          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span><span class="notification-count tests-new-count" id="tests-new-count" hidden>0</span></button>
-          <button class="icon-button" id="school-classes-open" data-route="school" hidden>👥 <span class="button-label">Lớp của bạn</span></button>
-          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
+          <button class="icon-button" id="school-classes-open" data-route="school" hidden>👥 <span class="button-label">Lớp của bạn</span></button>
+          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span><span class="notification-count tests-new-count" id="tests-new-count" hidden>0</span></button>
+          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
         </div>
         <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
@@ -85,7 +85,7 @@
         <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
           <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
           <button type="button" class="online-filter-btn" data-online-filter="user">Học sinh</button>
-          <button type="button" class="online-filter-btn" data-online-filter="admin">Giảng viên</button>
+          <button type="button" class="online-filter-btn" data-online-filter="admin">Giáo viên</button>
         </div>
         <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
           <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
@@ -296,7 +296,7 @@
     <form id="create-test-form" method="dialog">
       <div class="modal-heading">
         <div>
-          <p class="eyebrow">GIẢNG VIÊN &amp; QUẢN TRỊ VIÊN</p>
+          <p class="eyebrow">GIÁO VIÊN &amp; QUẢN TRỊ VIÊN</p>
           <h2>Thêm bài kiểm tra mới</h2>
         </div>
         <button type="button" class="close-button" data-close="create-test-dialog" aria-label="Đóng">×</button>

@@ -20,6 +20,20 @@ export async function refreshTestsQueue() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     cachedTests = Array.isArray(data.tests) ? data.tests : [];
+    const badge = document.getElementById("tests-new-count");
+    if (badge) {
+      const unread = Number(data.newCount || 0);
+      const user = window.maihocCurrentUser;
+      badge.textContent = String(unread);
+      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
+    }
+    const badge = document.getElementById("tests-new-count");
+    if (badge) {
+      const unread = Number(data.newCount || 0);
+      const user = window.maihocCurrentUser;
+      badge.textContent = String(unread);
+      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
+    }
     cachedSummary = data.summary || {
       total: cachedTests.length,
       incompleteCount: cachedTests.filter(t => !t.completed).length,
@@ -56,7 +70,7 @@ function defaultDateTimeInputs() {
   return { openAt: toLocalInput(now), closeAt: toLocalInput(close) };
 }
 
-export function openCreateTestDialog() {
+export async function openCreateTestDialog() {
   const dialog = document.getElementById("create-test-dialog");
   if (!dialog) return;
   const form = dialog.querySelector("#create-test-form");
@@ -64,6 +78,26 @@ export function openCreateTestDialog() {
     const defaults = defaultDateTimeInputs();
     if (!form.elements.openAt.value) form.elements.openAt.value = defaults.openAt;
     if (!form.elements.closeAt.value) form.elements.closeAt.value = defaults.closeAt;
+    const classSelect = form.elements.classCode;
+    if (classSelect) {
+      classSelect.innerHTML = '<option value="">Đang tải danh sách lớp…</option>';
+      try {
+        const response = await fetch("/api/school/classes", { credentials: "same-origin", cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Không tải được danh sách lớp.");
+        const classes = data.classes || [];
+        classSelect.innerHTML = '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
+          classes.map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + '</option>').join("");
+        const activeUser = window.maihocCurrentUser;
+        classSelect.required = activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
+        const label = classSelect.closest("label");
+        if (label) label.hidden = !(activeUser?.role === "admin" && (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school"));
+        if (classSelect.required && !classes.length) throw new Error("Bạn chưa được phân công lớp giảng dạy.");
+      } catch (error) {
+        classSelect.innerHTML = '<option value="">Không tải được danh sách lớp</option>';
+        toast(error.message || "Không tải được danh sách lớp.", "error");
+      }
+    }
   }
   openDialog("create-test-dialog");
 }
@@ -1049,6 +1083,10 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
     }
     try {
       const fd = new FormData(createForm);
+      const activeUser = window.maihocCurrentUser;
+      if (activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school" && !fd.get("classCode")) {
+        throw new Error("Vui lòng chọn lớp nhận bài kiểm tra.");
+      }
       const response = await fetch("/api/admin/tests", {
         method: "POST",
         credentials: "same-origin",
