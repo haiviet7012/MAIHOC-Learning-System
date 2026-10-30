@@ -205,37 +205,9 @@ export async function mountSchoolPage(view, user, classCode = "") {
         '<span class="school-class-card-arrow">›</span></button>';
     }).join("");
 
-    // Phần dành riêng cho Giáo viên chủ nhiệm ngay trên tab "Lớp của bạn" (Ảnh 1)
-    let homeroomRosterBlock = "";
-    if (data.homeroomDetail && data.homeroomDetail.classCode) {
-      const hd = data.homeroomDetail;
-      const hCode = hd.classCode;
-      const hStudents = hd.students || [];
-      const hTeachers = hd.teachers || [];
-      homeroomRosterBlock =
-        renderHomeroomAddStudentSection(hCode) +
-        '<section class="school-roster-section school-homeroom-live-roster" data-school-class-current="' + esc(hCode) + '">' +
-          '<div class="school-section-heading">' +
-            '<div>' +
-              '<h2>Danh sách học sinh ' + classLabel(hCode) + ' (Lớp chủ nhiệm)</h2>' +
-              '<p class="muted tiny">Hiển thị tất cả học sinh bạn đã thêm bằng email hoặc học sinh đăng nhập và tham gia vào ' + classLabel(hCode) + '.</p>' +
-            '</div>' +
-            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-              '<span class="pill">' + hStudents.length + ' học sinh</span>' +
-              '<button type="button" class="button secondary small" data-school-refresh>↻ Làm mới</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="school-roster-list">' +
-            renderStudentCards(hStudents, hCode, { canViewProgress: true, canRemoveStudent: true }) +
-          '</div>' +
-          '<div id="school-student-progress-panel"></div>' +
-        '</section>' +
-        '<section class="school-roster-section">' +
-          '<h2>Giáo viên phụ trách ' + classLabel(hCode) + '</h2>' +
-          '<div class="school-roster-list">' + renderTeacherCards(hTeachers) + '</div>' +
-        '</section>';
-    }
-
+    // Danh sách thành viên chỉ xuất hiện sau khi mở thẻ lớp được phân công.
+    const homeroomRosterBlock = "";
+    
     // Phần hiển thị cho Học sinh khi mở "Lớp của bạn"
     let studentClassBlock = "";
     if (isStudent) {
@@ -268,9 +240,8 @@ export async function mountSchoolPage(view, user, classCode = "") {
 
     const headerActions = isStudent
       ? '<button type="button" class="button primary" data-open-join-class>🏫 Tham gia lớp</button>'
-      : data.homeroomDetail?.classCode
-        ? '<button type="button" class="button primary" data-toggle-homeroom-add-form="' + esc(data.homeroomDetail.classCode) + '">＋ Thêm học sinh</button>'
-        : '';
+      : '';
+
 
     view.innerHTML = '<section class="school-page">' +
       '<header class="school-page-header">' +
@@ -313,7 +284,6 @@ async function renderClass(view, user, classCode) {
     '<div class="school-page-toolbar">' +
       '<button class="button secondary" type="button" data-school-back>← Danh sách lớp</button>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
-        (canManageMembers ? '<button type="button" class="button primary small" data-toggle-homeroom-add-form="' + esc(classCode) + '">＋ Thêm học sinh</button>' : '') +
         '<button type="button" class="button secondary small" data-school-class-refresh="' + esc(classCode) + '">↻ Làm mới</button>' +
         '<span class="pill">' + classLabel(classCode) + '</span>' +
       '</div>' +
@@ -324,6 +294,39 @@ async function renderClass(view, user, classCode) {
     '<section class="school-roster-section"><div class="school-section-heading"><h2>Thành viên lớp</h2><span class="pill">' + students.length + ' học sinh</span></div><div class="school-roster-list">' + studentCards + '</div></section>' +
     '<div id="school-student-progress-panel"></div>' +
     '</section>';
+}
+
+async function renderStudentProgressPage(view, classCode, studentId) {
+  view.innerHTML = '<section class="school-page"><div class="empty-state"><span class="spinner"></span><p>Đang tải tiến trình học tập…</p></div></section>';
+  try {
+    if (!classCode || !/^\d+$/.test(String(studentId || ""))) throw new Error("Liên kết tiến trình không hợp lệ.");
+    const [progressData, classData] = await Promise.all([
+      request("/api/school/classes/" + encodeURIComponent(classCode) + "/students/" + encodeURIComponent(studentId) + "/progress"),
+      request("/api/school/classes/" + encodeURIComponent(classCode))
+    ]);
+    const student = (classData.students || []).find(item => Number(item.id) === Number(studentId));
+    if (!student) throw new Error("Không tìm thấy học sinh trong lớp này.");
+    const rows = progressData.progress || [];
+    const completed = rows.filter(row => ["completed", "done", "finished"].includes(String(row.status || "").toLowerCase())).length;
+    const average = rows.length ? Math.round(rows.reduce((sum, row) => sum + (Number(row.progressPercent) || 0), 0) / rows.length) : 0;
+    view.innerHTML = '<section class="school-page school-progress-page">' +
+      '<div class="school-page-toolbar"><div><p class="eyebrow">MAI HỌC · HỒ SƠ HỌC TẬP</p><h1>Tiến trình học tập</h1></div><button class="button secondary" type="button" data-progress-close>← Quay lại lớp</button></div>' +
+      '<section class="school-progress-student-summary"><div><span class="school-person-avatar">HS</span><div><h2>' + esc(student.name) + '</h2><p>' + esc(student.email || "") + ' · Lớp ' + esc(classCode) + '</p></div></div>' +
+      '<div class="school-progress-summary-stats"><article><strong>' + rows.length + '</strong><span>Hoạt động ghi nhận</span></article><article><strong>' + completed + '</strong><span>Đã hoàn thành</span></article><article><strong>' + average + '%</strong><span>Tiến độ trung bình</span></article></div></section>' +
+      '<section class="school-roster-section"><div class="school-section-heading"><h2>Chi tiết hoạt động học tập</h2><span class="pill">' + rows.length + ' bản ghi</span></div>' +
+      (rows.length
+        ? '<div class="school-progress-table school-progress-page-table"><table class="admin-table"><thead><tr><th>Nội dung</th><th>Môn học</th><th>Khối</th><th>Trạng thái</th><th>Tiến độ</th><th>Điểm</th><th>Cập nhật gần nhất</th></tr></thead><tbody>' +
+          rows.map(row => '<tr><td><strong>' + esc(row.itemTitle || row.itemType || "Hoạt động") + '</strong></td><td>' + esc(row.subject || "—") + '</td><td>' + esc(row.grade || "—") + '</td><td>' + esc(row.status || "—") + '</td><td><div class="school-progress-value"><span>' + Math.max(0, Math.min(100, Number(row.progressPercent) || 0)) + '%</span><div><i style="width:' + Math.max(0, Math.min(100, Number(row.progressPercent) || 0)) + '%"></i></div></div></td><td>' + esc(row.score ?? "—") + '</td><td>' + esc(row.updatedAt || "—") + '</td></tr>').join("") +
+          '</tbody></table></div>'
+        : '<div class="empty-state"><h3>Chưa có dữ liệu tiến trình</h3><p>Hoạt động học tập của học sinh sẽ xuất hiện tại đây khi hệ thống ghi nhận dữ liệu.</p></div>') +
+      '</section></section>';
+  } catch (error) {
+    view.innerHTML = '<section class="school-page"><div class="empty-state"><h3>Không thể tải tiến trình</h3><p>' + esc(error.message) + '</p><button class="button secondary" type="button" data-progress-close>Đóng tab</button></div></section>';
+  }
+}
+
+export async function mountStudentProgressPage(view, classCode, studentId) {
+  await renderStudentProgressPage(view, classCode, studentId);
 }
 
 function renderTeacherMessageForm() {
@@ -350,6 +353,13 @@ async function renderAdminTools() {
 
 export function wireSchoolEvents(onNavigate) {
   document.addEventListener("click", async event => {
+    if (event.target.closest("[data-progress-close]")) {
+      event.preventDefault();
+      if (window.opener) window.close();
+      else window.history.back();
+      return;
+    }
+
     const openJoinBtn = event.target.closest("[data-open-join-class]");
     if (openJoinBtn) {
       event.preventDefault();
@@ -427,20 +437,13 @@ export function wireSchoolEvents(onNavigate) {
     const progressLink = event.target.closest("[data-school-progress]");
     if (progressLink) {
       event.preventDefault();
-      const panel = document.getElementById("school-student-progress-panel");
-      if (!panel) return;
-      panel.innerHTML = '<p class="muted">Đang tải tiến trình…</p>';
-      try {
-        const data = await request("/api/school/classes/" + encodeURIComponent(progressLink.dataset.schoolClass) + "/students/" + encodeURIComponent(progressLink.dataset.schoolProgress) + "/progress");
-        const rows = data.progress || [];
-        panel.innerHTML = '<section class="school-progress-panel"><h3>Tiến trình học tập</h3>' + (rows.length
-          ? '<div class="school-progress-table"><table class="admin-table"><thead><tr><th>Nội dung</th><th>Môn</th><th>Trạng thái</th><th>Tiến trình</th><th>Điểm</th><th>Cập nhật</th></tr></thead><tbody>' +
-            rows.map(row => '<tr><td>' + esc(row.itemTitle || row.itemType) + '</td><td>' + esc(row.subject) + ' · ' + esc(row.grade) + '</td><td>' + esc(row.status) + '</td><td>' + Number(row.progressPercent || 0) + '%</td><td>' + esc(row.score ?? "—") + '</td><td>' + esc(row.updatedAt) + '</td></tr>').join("") +
-            '</tbody></table></div>' : '<p class="muted">Học sinh chưa có dữ liệu tiến trình.</p>') + '</section>';
-        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      } catch (error) {
-        panel.innerHTML = '<p class="auth-error">' + esc(error.message) + '</p>';
-      }
+      const progressUrl = new URL(window.location.href);
+      progressUrl.searchParams.set("maihoc-view", "student-progress");
+      progressUrl.searchParams.set("classCode", progressLink.dataset.schoolClass);
+      progressUrl.searchParams.set("studentId", progressLink.dataset.schoolProgress);
+      // Open synchronously inside the click gesture to avoid popup blocking.
+      const opened = window.open(progressUrl.toString(), "_blank", "noopener");
+      if (!opened) showSchoolToast("Trình duyệt đã chặn tab mới. Hãy cho phép cửa sổ bật lên của MAI HỌC.", "error");
       return;
     }
     const review = event.target.closest("[data-school-review-request]");

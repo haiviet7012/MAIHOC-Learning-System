@@ -889,6 +889,8 @@ function render() {
         mountSchoolPage(view, currentUser, state.classCode || "");
     else if (state.route === "student-progress")
         mountStudentProgressPage(view, progressTabParams.get("classCode") || "", progressTabParams.get("studentId") || "");
+    else if (state.route === "student-progress")
+        mountStudentProgressPage(view, progressTabParams.get("classCode") || "", progressTabParams.get("studentId") || "");
     else if (state.route === "study-rooms") {
         view.innerHTML = "";
         activeStudyRoomsCleanup = mountStudyRooms(view, currentUser);
