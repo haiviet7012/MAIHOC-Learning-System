@@ -351,17 +351,14 @@ test("Homeroom teacher can add student by email and Student can join class via /
   });
   assert.equal(joinAfterApprovedLeave.status, 409, "Leaving a class must not reset the one-time join lock.");
 
-  // Homeroom teacher opens "Lớp của bạn" tab (GET /api/school/classes) and sees both students!
+  // Homeroom teacher overview shows only current members after the approved leave.
   const classesTabRes = await callRoute("GET /api/school/classes", {
     user: homeroomUser
   });
   assert.equal(classesTabRes.status, 200);
   assert.equal(classesTabRes.data.homeroomClass, "10A1");
   const studentEmails = classesTabRes.data.homeroomDetail.students.map(s => s.email).sort();
-  assert.deepEqual(studentEmails, [
-    "hainguyenduc2409@gmail.com",
-    "hainguyenviet231@gmail.com"
-  ]);
+  assert.deepEqual(studentEmails, ["hainguyenduc2409@gmail.com"]);
 });
 
 test("UI moves class joining into My Classes and adds student leave approval controls", () => {
