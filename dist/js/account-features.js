@@ -518,10 +518,23 @@ document.addEventListener("submit", async event => {
 });
 
 function formatVietnameseDate(value) {
-  if (!value) return "—";
-  const normalized = String(value).includes("T") ? String(value) : String(value).replace(" ", "T") + "Z";
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (value === null || value === undefined || value === "") return "—";
+  let date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "number" || /^\\d{10,13}$/.test(String(value).trim())) {
+    const timestamp = Number(value);
+    date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  } else {
+    const raw = String(value).trim();
+    const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+    const hasTimezone = /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(normalized);
+    const utcValue = !hasTimezone && /^\\d{4}-\\d{2}-\\d{2}/.test(normalized)
+      ? (normalized.includes("T") ? normalized + "Z" : normalized + "T00:00:00Z")
+      : normalized;
+    date = new Date(utcValue);
+  }
+  if (!date || !Number.isFinite(date.getTime())) return "—";
   return date.toLocaleString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
@@ -690,6 +703,20 @@ async function loadUser() {
   }
 
 }
+function notificationDisplayContent(notification) {
+  const title = String(notification.title || "Thông báo");
+  const message = String(notification.message || "");
+  const isRawGeminiFailure = /GoogleGenerativeAI Error|generativelanguage\\.googleapis\\.com|503 Service Unavailable/i.test(title + " " + message);
+  if (!isRawGeminiFailure) return { title, message, dedupeKey: "" };
+
+  const sourceId = message.match(/^([^:\\n]{1,120}):/)?.[1]?.trim() || "";
+  return {
+    title: "AI tạm thời quá tải",
+    message: `${sourceId ? sourceId + ": " : ""}Dịch vụ Gemini đang quá tải hoặc gián đoạn tạm thời. Vui lòng thử lại sau ít phút.`,
+    dedupeKey: sourceId ? "gemini-503:" + sourceId : ""
+  };
+}
+
 async function refreshNotifications() {
   if(!activeUser)return;
   try {
@@ -697,10 +724,21 @@ async function refreshNotifications() {
     const badge=$("#notification-count");
     if(badge){badge.hidden=!(data.unread>0);badge.textContent=data.unread>99?"99+":String(data.unread);}
     const list=$("#notifications-list");
-    if(list)list.innerHTML=(data.items||[]).length?data.items.map(n=>{
-      const date=new Date(String(n.createdAt).replace(" ","T")+"Z").toLocaleString("vi-VN");
-      return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(n.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(n.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
-    }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
+    if(list) {
+      const seenTransientAlerts = new Set();
+      const items = (data.items || []).filter(notification => {
+        const display = notificationDisplayContent(notification);
+        if (!display.dedupeKey) return true;
+        if (seenTransientAlerts.has(display.dedupeKey)) return false;
+        seenTransientAlerts.add(display.dedupeKey);
+        return true;
+      });
+      list.innerHTML=items.length?items.map(n=>{
+        const display = notificationDisplayContent(n);
+        const date = formatVietnameseDate(n.createdAt);
+        return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(display.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(display.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
+      }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
+    }
   } catch(e) { console.warn("Notifications:",e.message); }
 }
 async function saveProgress(payload) {
