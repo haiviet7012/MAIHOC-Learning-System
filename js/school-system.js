@@ -85,7 +85,6 @@ function renderHomeroomAddStudentSection(classCode) {
         '<h3>Quản lý học sinh ' + classLabel(classCode) + '</h3>' +
         '<p class="muted tiny">Thêm trực tiếp học sinh vào lớp bằng email tài khoản học sinh, hoặc học sinh tự đăng nhập và bấm “Tham gia lớp” vào ' + classLabel(classCode) + '.</p>' +
       '</div>' +
-      '<button type="button" class="button primary" data-toggle-homeroom-add-form="' + esc(classCode) + '">＋ Thêm học sinh</button>' +
     '</div>' +
     '<form id="homeroom-add-student-form" class="school-inline-form homeroom-add-student-form" data-homeroom-class="' + esc(classCode) + '">' +
       '<h4>Thêm học sinh vào ' + classLabel(classCode) + ' bằng Email</h4>' +
@@ -340,18 +339,6 @@ export function wireSchoolEvents(onNavigate) {
       event.preventDefault();
       if (window.opener) window.close();
       else window.history.back();
-      return;
-    }
-
-    const toggleAddBtn = event.target.closest("[data-toggle-homeroom-add-form]");
-    if (toggleAddBtn) {
-      event.preventDefault();
-      const form = document.getElementById("homeroom-add-student-form");
-      if (form) {
-        form.scrollIntoView({ behavior: "smooth", block: "center" });
-        const emailInput = form.querySelector('input[name="email"]');
-        emailInput?.focus();
-      }
       return;
     }
 
