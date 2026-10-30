@@ -715,7 +715,7 @@ function formatAdminCreatedAt(value) {
     });
 }
 
-function adminPage() { if (currentUser?.role === "teacher") return `${pageHeading("Khu vực giáo viên", "Quản lý tài liệu, bài kiểm tra và lớp được phân công.")}<div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+function adminPage() { if (currentUser?.role === "teacher") return `${pageHeading("Khu vực giáo viên", "Quản lý tài liệu, bài kiểm tra và lớp được phân công.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Khu vực dành cho giáo viên</h2></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() {
   if (state.route !== "admin") return;
   if (currentUser?.role === "teacher") return;
@@ -738,7 +738,7 @@ async function loadAdminUsers() {
       const roleLabel = u.role === "admin"
         ? "Quản trị MAI HỌC"
         : u.role === "teacher"
-          ? (u.homeroomClass ? `Giáo viên chủ nhiệm lớp ${escapeHTML(u.homeroomClass)}` : "Giáo viên bộ môn")
+          ? (u.homeroomClass ? `Giáo viên lớp ${escapeHTML(u.homeroomClass)}` : "Giáo viên bộ môn")
           : u.accountType === "school" ? "Học sinh trong trường" : "Học sinh ngoài trường";
       const canRequestDelete = Number(u.id) !== Number(payload.currentUserId) && !(u.role === "admin" && Number(u.adminLevel) >= 2);
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
@@ -1573,7 +1573,7 @@ function applyAuthUI() {
     const adminButton = $("#admin-open");
     if (adminButton) {
         adminButton.hidden = !["admin", "teacher"].includes(currentUser?.role);
-        adminButton.textContent = isTeacherAccount ? "Giảng viên" : "Quản trị";
+        adminButton.textContent = isTeacherAccount ? "Khu vực giáo viên" : "Quản trị";
     }
     if ($("#school-classes-open")) {
         const canOpenSchoolClasses = currentUser?.role === "admin"
