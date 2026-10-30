@@ -25,7 +25,7 @@ export async function refreshTestsQueue() {
       const unread = Number(data.newCount || 0);
       const user = window.maihocCurrentUser;
       badge.textContent = String(unread);
-      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
+      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role !== "student";
     }
     cachedSummary = data.summary || {
       total: cachedTests.length,
@@ -82,9 +82,9 @@ export async function openCreateTestDialog() {
         classSelect.innerHTML = '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
           classes.map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + '</option>').join("");
         const activeUser = window.maihocCurrentUser;
-        classSelect.required = activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
+        classSelect.required = activeUser?.role === "teacher" && activeUser.accountType === "school";
         const label = classSelect.closest("label");
-        if (label) label.hidden = !(activeUser?.role === "admin" && (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school"));
+        if (label) label.hidden = !(activeUser?.role === "admin" || activeUser?.role === "teacher");
         if (classSelect.required && !classes.length) throw new Error("Bạn chưa được phân công lớp giảng dạy.");
       } catch (error) {
         classSelect.innerHTML = '<option value="">Không tải được danh sách lớp</option>';
@@ -130,7 +130,7 @@ function renderTestAnswerActionButtons(t, compact = false) {
 }
 
 export function renderTestsQueuePage(currentUser) {
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "teacher";
   const filtered = cachedTests.filter(t => {
     if (queueFilterStatus === "incomplete" && t.completed) return false;
     if (queueFilterStatus === "completed" && !t.completed) return false;
@@ -1077,7 +1077,7 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
     try {
       const fd = new FormData(createForm);
       const activeUser = window.maihocCurrentUser;
-      if (activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school" && !fd.get("classCode")) {
+      if (activeUser?.role === "teacher" && activeUser.accountType === "school" && !fd.get("classCode")) {
         throw new Error("Vui lòng chọn lớp nhận bài kiểm tra.");
       }
       const response = await fetch("/api/admin/tests", {
