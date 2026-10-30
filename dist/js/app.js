@@ -392,7 +392,7 @@ function formatGradeAnswerDetails(item, property) {
     if (Array.isArray(item.statements) && item.statements.length) {
         return item.statements.map(statement => {
             const label = statement.statement ? String(statement.statement).toLowerCase() + ") " : "";
-            return label + formatGradeAnswer(statement[property], "true_false");
+            return escapeHTML(label) + escapeHTML(formatGradeAnswer(statement[property], "true_false"));
         }).join("<br>");
     }
     return escapeHTML(formatGradeAnswer(item[property], item.type));
@@ -608,7 +608,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     if(payload.isSuperAdmin){
       extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Giảng viên</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Giảng viên.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Giảng viên</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
-    container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
+    container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
 }
 catch (error) {
