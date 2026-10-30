@@ -249,7 +249,7 @@ async function renderClass(view, user, classCode) {
   const isTeacher = isUserTeacher(user);
   const canViewProgress = isTeacher || isSuper;
   const canManageMembers = Boolean(data.canManageMembers);
-  const isStudent = Boolean(user && !isUserTeacher(user) && !isSuperAdmin(user));
+  const isStudent = Boolean(user && !isUserTeacher(user) && !isUserSuperAdmin(user));
 
   const teacherCards = renderTeacherCards(teachers);
   const studentCards = renderStudentCards(students, classCode, {
