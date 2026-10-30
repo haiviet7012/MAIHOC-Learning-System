@@ -83,6 +83,12 @@ async function extractPdfContent(buffer,{includeImages=true}={}) {
   return {text:pages.join("\n\n").trim(),images};
 }
 
+function isTransientGeminiError(error) {
+  const text = `${error?.status || ""} ${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+  return /(^|\\D)(500|502|503|504)(\\D|$)|overload|high demand|temporarily unavailable|service unavailable|deadline exceeded/.test(text);
+}
+const waitForGeminiRetry = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
 function parseModelJson(raw) {
   const text = String(raw || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try { return JSON.parse(text); } catch {}
@@ -242,24 +248,49 @@ export async function solveExamDocument({
     if (!tryModels.includes("gemini-2.0-flash")) tryModels.push("gemini-2.0-flash");
 
     let lastErr = null;
-    for (const candidateModel of tryModels) {
-      try {
-        const model = client.getGenerativeModel({
-          model: candidateModel,
-          generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: solutionSchema }
-        });
-        const response = await model.generateContent({ contents: [{ role: "user", parts: contentParts }] });
-        generated = parseModelJson(response.response.text());
-        resolvedModelName = candidateModel;
-        lastErr = null;
-        break;
-      } catch (err) {
-        lastErr = err;
-        const msg = String(err?.message || "").toLowerCase();
-        if (msg.includes("404") || msg.includes("not found") || msg.includes("is not supported")) {
+    for (const candidateModel of [...new Set(tryModels)]) {
+      let candidateError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const model = client.getGenerativeModel({
+            model: candidateModel,
+            generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: solutionSchema }
+          });
+          const response = await model.generateContent({ contents: [{ role: "user", parts: contentParts }] });
+          generated = parseModelJson(response.response.text());
+          resolvedModelName = candidateModel;
+          lastErr = null;
+          candidateError = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          candidateError = err;
+          const msg = String(err?.message || "").toLowerCase();
+          if (msg.includes("404") || msg.includes("not found") || msg.includes("is not supported")) {
+            break;
+          }
+          if (isTransientGeminiError(err)) {
+            if (attempt === 0) {
+              await waitForGeminiRetry(900);
+              continue;
+            }
+            // Try the next supported Gemini model after one bounded retry.
+            break;
+          }
+          throw err;
+        }
+      }
+      if (generated) break;
+      if (candidateError && isTransientGeminiError(candidateError)) {
+        console.warn(`[ExamSolution] ${candidateModel} temporarily unavailable; trying fallback model.`);
+        continue;
+      }
+      if (candidateError) {
+        const message = String(candidateError?.message || "").toLowerCase();
+        if (message.includes("404") || message.includes("not found") || message.includes("is not supported")) {
           continue;
         }
-        throw err;
+        throw candidateError;
       }
     }
     if (lastErr && !generated) throw lastErr;
