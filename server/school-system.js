@@ -139,7 +139,7 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!isClassCode(classCode)) return false;
     if (user?.role === "admin" && Number(user.adminLevel) >= 2) return true;
     if (await accountType(user.id) !== "school") return false;
-    if (user.role === "teacher") {
+    if (user.role === "admin") {
       return Boolean(await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
       ).get(user.id, classCode));
@@ -151,7 +151,8 @@ export function installSchoolSystemRoutes(app, deps) {
 
   async function requireHomeroom(req, res, classCode) {
     if (req.user?.role === "admin" && Number(req.user.adminLevel) >= 2) return true;
-    if (req.user?.role !== "teacher" || await accountType(req.user.id) !== "school") {
+    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 1 ||
+        await accountType(req.user.id) !== "school") {
       res.status(403).json({ error: "Chỉ giáo viên chủ nhiệm lớp này mới được thực hiện thao tác." });
       return false;
     }
@@ -173,7 +174,7 @@ export function installSchoolSystemRoutes(app, deps) {
     let classes = [];
     if (isSuper) {
       classes = SCHOOL_CLASSES.map(classCode => ({ classCode, role: "admin", isHomeroom: false }));
-    } else if (req.user.role === "teacher") {
+    } else if (req.user.role === "admin") {
       classes = await db.prepare(`
         SELECT class_code AS classCode,
           MAX(CASE WHEN assignment_type='homeroom' THEN 1 ELSE 0 END) AS isHomeroom,
@@ -234,11 +235,7 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!Number.isInteger(studentId) || !await canAccessClass(req.user, classCode)) {
       return res.status(403).json({ error: "Bạn không có quyền xem tiến trình học sinh này." });
     }
-    const isSuperAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 2;
-    if (!isSuperAdmin && req.user.role !== "teacher") {
-      return res.status(403).json({ error: "Chỉ giáo viên được phân công hoặc Admin mới xem được tiến trình học sinh." });
-    }
-    if (!isSuperAdmin) {
+    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 2) {
       const assigned = await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
       ).get(req.user.id, classCode);
@@ -265,8 +262,8 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!["add", "remove"].includes(action) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: "Vui lòng nhập email hợp lệ và chọn thao tác thêm/xóa." });
     }
-    const target = await db.prepare("SELECT id,name,account_type,role FROM users WHERE LOWER(email)=?").get(email);
-    if (!target || target.account_type !== "school" || target.role !== "student") {
+    const target = await db.prepare("SELECT id,name,account_type FROM users WHERE LOWER(email)=?").get(email);
+    if (!target || target.account_type !== "school") {
       return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh của trường với email này." });
     }
     const alreadyMember = await db.prepare(
@@ -318,7 +315,7 @@ export function installSchoolSystemRoutes(app, deps) {
   });
 
   app.post("/api/school/teacher-messages", requireSameOrigin, requireAuth, async (req, res) => {
-    if (req.user.role !== "teacher" || await accountType(req.user.id) !== "school") {
+    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1 || await accountType(req.user.id) !== "school") {
       return res.status(403).json({ error: "Chỉ giáo viên của trường mới gửi được thông báo." });
     }
     const title = String(req.body?.title || "").trim().slice(0, 120);

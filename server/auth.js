@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { db, pool, initPostgresSchema } from "./postgres.js";
-import { normalizeAccountRole, isStaffRole } from "./account-roles.js";
 
 export { db, pool, initPostgresSchema };
 
@@ -57,10 +56,8 @@ export function publicUser(user) {
     id: Number(user.id),
     name: user.name,
     email: user.email,
-    role: normalizeAccountRole(user.role, user.admin_level ?? user.adminLevel ?? 0),
-    adminLevel: normalizeAccountRole(user.role, user.admin_level ?? user.adminLevel ?? 0) === "admin"
-      ? Number(user.admin_level ?? user.adminLevel ?? 0)
-      : 0,
+    role: user.role,
+    adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
     accountType: String(user.account_type ?? user.accountType ?? "external"),
     ...((user.homeroom_class ?? user.homeroomClass) ? { homeroomClass: user.homeroom_class ?? user.homeroomClass } : {}),
     createdAt
@@ -117,17 +114,13 @@ export async function registerUser({ name, email, password, accountType, classCo
   }
   const passwordHash = await hashPassword(secret);
   try {
-    const createStudent = db.transaction(async () => {
-      const result = await db.prepare(
-        "INSERT INTO users (name,email,password_hash,role,admin_level,account_type) VALUES (?,?,?,'student',0,?)"
-      ).run(safeName, safeEmail, passwordHash, normalizedAccountType);
-      if (normalizedAccountType === "school") {
-        await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)")
-          .run(result.lastInsertRowid, normalizedClassCode);
-      }
-      return await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid);
-    });
-    return publicUser(await createStudent());
+    const result = await db
+      .prepare("INSERT INTO users (name,email,password_hash,role,account_type) VALUES (?,?,?,'user',?)")
+      .run(safeName, safeEmail, passwordHash, normalizedAccountType);
+    if (normalizedAccountType === "school") {
+      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(result.lastInsertRowid, normalizedClassCode);
+    }
+    return publicUser(await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid));
   } catch (error) {
     if (String(error.code).includes("CONSTRAINT") || error.pgCode === "23505" || error.code === "23505") {
       throw new Error("Email này đã được đăng ký.");
@@ -147,7 +140,7 @@ export async function authenticateUser(email, password) {
     return null;
   }
   let homeroomClass = null;
-  if (normalizeAccountRole(user.role, user.admin_level) === "teacher") {
+  if (user.role === "admin" && Number(user.admin_level) >= 1 && Number(user.admin_level) < 2) {
     try {
       const assignment = await db.prepare(
         "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
@@ -209,7 +202,7 @@ export async function loadCurrentUser(req, res, next) {
         .get(hashToken(token));
       if (session && Number(session.expires_at) > Date.now()) {
         let homeroomClass = null;
-        if (normalizeAccountRole(session.role, session.admin_level) === "teacher") {
+        if (session.role === "admin" && Number(session.admin_level) >= 1 && Number(session.admin_level) < 2) {
           try {
             const assignment = await db.prepare(
               "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
@@ -258,7 +251,7 @@ export function requireAuth(req, res, next) {
 
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
-  if (!isStaffRole(req.user.role) || (req.user.role === "admin" && Number(req.user.adminLevel) < 1)) {
+  if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1) {
     return res.status(403).json({ error: "Tài khoản Admin này chưa được Admin cao nhất cấp quyền." });
   }
   next();

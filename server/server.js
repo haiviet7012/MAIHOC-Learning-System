@@ -871,8 +871,8 @@ app.post("/api/auth/reset-password", requireSameOrigin, async (req, res) => {
 // -------------------- ACCOUNT CENTER + GMAIL OTP API --------------------
 
 function requireUserOnlyAccountCenter(req, res, next) {
-  if (req.user?.role !== "student") {
-    return res.status(403).json({ error: "Trung tâm tài khoản chỉ dành cho học sinh." });
+  if (req.user?.role === "admin") {
+    return res.status(403).json({ error: "Trung tâm tài khoản chỉ dành cho học viên (User)." });
   }
   return next();
 }
@@ -1055,7 +1055,7 @@ async function cleanPresenceAndListOnline(now = Date.now()) {
   await db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
   return await db
     .prepare(`
-      SELECT u.id, u.name, u.role, u.account_type AS accountType, u.admin_level AS adminLevel,
+      SELECT u.id, u.name, u.role, u.admin_level AS adminLevel,
              p.last_seen_at AS lastSeenAt, p.activity
       FROM user_presence p
       JOIN users u ON u.id = p.user_id
@@ -1127,7 +1127,7 @@ async function deleteAccountPermanently(id) {
 
 app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
-    .prepare("SELECT id,name,email,role,admin_level,account_type,created_at,(SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class FROM users ORDER BY id DESC LIMIT 500")
+    .prepare("SELECT id,name,email,role,admin_level,created_at,(SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class FROM users ORDER BY id DESC LIMIT 500")
     .all();
   const teacherAssignments = await db.prepare("SELECT teacher_id,class_code,subject,assignment_type FROM school_teacher_assignments ORDER BY class_code,subject").all();
   const assignmentsByTeacher = new Map();
@@ -1161,7 +1161,8 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   });
 });
 
-// Only the top-level admin can create or promote teacher accounts.
+// Only the configured super admin can appoint subordinate admins.
+// Existing user accounts are promoted in place; the account password and learning data remain unchanged.
 app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const name = String(req.body?.name || "").trim();
@@ -1176,73 +1177,80 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
     return res.status(400).json({ error: "Email không hợp lệ." });
   }
 
-  const existing = await db.prepare(
-    "SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE"
-  ).get(email);
+  const existing = await db
+    .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE")
+    .get(email);
   if (existing) {
-    if (existing.role === "admin") {
-      return res.status(409).json({ error: "Tài khoản quản trị không thể chuyển thành giáo viên." });
+    if (Number(existing.admin_level) >= 2) {
+      return res.status(409).json({ error: "Email này thuộc Admin cấp cao nhất; không thể thêm lại." });
     }
-    try {
-      const promote = db.transaction(async () => {
-        const changed = await db.prepare(
-          "UPDATE users SET role='teacher',admin_level=0,account_type='school' WHERE id=? AND role<>'admin'"
-        ).run(existing.id);
-        if (!changed.changes) throw new Error("Tài khoản đã thay đổi trong lúc xử lý. Vui lòng tải lại trang.");
-        await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(existing.id);
-        const teacherProfileSaved = await saveTeacherAssignments(db, existing.id, teacherProfile);
-        const updated = await db.prepare(
-          "SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?"
-        ).get(existing.id);
-        return { updated, teacherProfileSaved };
-      });
-      const { updated, teacherProfileSaved } = await promote();
-      await notifyAdmins("teacher_promoted", "Đã chuyển tài khoản thành giáo viên",
-        `Tài khoản ${updated.name} (${updated.email}) đã được chuyển thành giáo viên; mật khẩu và lịch sử học tập được giữ nguyên.`, "admin")
-        .catch(error => console.warn("[teacher] notification failed after commit:", error.message));
-      return res.json({
-        ok: true, action: "promoted",
-        user: { ...publicUser(updated), teacherProfile: teacherProfileSaved },
-        message: "Đã chuyển tài khoản hiện có thành giáo viên. Mật khẩu và dữ liệu học tập được giữ nguyên."
-      });
-    } catch (error) {
-      if (error?.pgCode === "23505" || error?.code === "23505" || String(error?.code || "").includes("CONSTRAINT")) {
-        return res.status(409).json({ error: "Không thể cập nhật tài khoản hoặc phân công do dữ liệu trùng lặp." });
-      }
-      if (/đã thay đổi trong lúc xử lý/.test(error?.message || "")) return res.status(409).json({ error: error.message });
-      throw error;
+    if (existing.role === "admin" && Number(existing.admin_level) >= 1) {
+      return res.status(409).json({ error: "Tài khoản này đã là Admin cấp dưới." });
     }
+    const savedTeacherProfile = await saveTeacherAssignments(db, existing.id, teacherProfile);
+    const promote = db.transaction(async () => {
+      await db
+        .prepare("UPDATE users SET role='admin',admin_level=1,account_type='school' WHERE id=? AND admin_level<2")
+        .run(existing.id);
+      const updated = await db
+        .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
+        .get(existing.id);
+      await notifyAdmins(
+        "admin_promoted",
+        "Đã nâng quyền tài khoản thành Admin cấp dưới",
+        `Tài khoản ${updated.name} (${updated.email}) đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.`,
+        "admin"
+      );
+      return updated;
+    });
+    const updated = await promote();
+    return res.json({
+      ok: true,
+      action: "promoted",
+      user: { ...publicUser(updated), teacherProfile: savedTeacherProfile },
+      message:
+        "Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."
+    });
   }
 
-  if (name.length < 2 || name.length > 80) return res.status(400).json({ error: "Họ tên cần từ 2 đến 80 ký tự." });
-  if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
+  if (name.length < 2 || name.length > 80) {
+    return res.status(400).json({ error: "Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự." });
+  }
+  if (password.length < 8 || password.length > 128) {
+    return res
+      .status(400)
+      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
+  }
   const passwordHash = await hashPassword(password);
+  let result;
   try {
-    const create = db.transaction(async () => {
-      const result = await db.prepare(
-        "INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'teacher',0,'school')"
-      ).run(name, email, passwordHash);
-      const teacherProfileSaved = await saveTeacherAssignments(db, result.lastInsertRowid, teacherProfile);
-      const created = await db.prepare(
-        "SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?"
-      ).get(result.lastInsertRowid);
-      return { created, teacherProfileSaved };
-    });
-    const { created, teacherProfileSaved } = await create();
-    await notifyAdmins("teacher_created", "Đã tạo tài khoản giáo viên",
-      `Tài khoản ${created.name} (${created.email}) đã được tạo mới.`, "admin")
-      .catch(error => console.warn("[teacher] notification failed after commit:", error.message));
-    return res.status(201).json({
-      ok: true, action: "created",
-      user: { ...publicUser(created), teacherProfile: teacherProfileSaved },
-      message: "Đã tạo tài khoản giáo viên mới."
-    });
+    result = await db
+      .prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'admin',1,'school')")
+      .run(name, email, passwordHash);
   } catch (error) {
-    if (error?.pgCode === "23505" || error?.code === "23505" || String(error?.code || "").includes("CONSTRAINT")) {
-      return res.status(409).json({ error: "Tài khoản vừa được tạo hoặc thay đổi đồng thời. Hãy tải lại danh sách rồi thử lại." });
+    if (String(error.code || "").includes("CONSTRAINT") || error.pgCode === "23505") {
+      return res
+        .status(409)
+        .json({ error: "Tài khoản vừa được tạo hoặc thay đổi đồng thời. Hãy tải lại danh sách rồi thử lại." });
     }
     throw error;
   }
+  const created = await db
+    .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
+    .get(result.lastInsertRowid);
+  const savedTeacherProfile = await saveTeacherAssignments(db, created.id, teacherProfile);
+  await notifyAdmins(
+    "admin_created",
+    "Đã tạo tài khoản giáo viên",
+    `Tài khoản ${name} (${email}) đã được tạo mới.`,
+    "admin"
+  );
+  res.status(201).json({
+    ok: true,
+    action: "created",
+    user: { ...publicUser(created), teacherProfile: savedTeacherProfile },
+    message: "Đã tạo tài khoản giáo viên mới."
+  });
 });
 
 // A subordinate admin may only request deletion. No account is deleted until super-admin approval.
@@ -2096,7 +2104,7 @@ app.post(
       const b = req.body || {},
         cat = String(b.category || "");
       const schoolClassCode = String(b.classCode || "").trim().toUpperCase();
-      const isSchoolStudent = req.user?.role === "student" && req.user?.accountType === "school";
+      const isSchoolStudent = req.user?.role !== "admin" && req.user?.accountType === "school";
       let schoolHomeroom = null;
       if (isSchoolStudent) {
         if (!/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(schoolClassCode)) {
@@ -2133,7 +2141,7 @@ app.post(
       const subject = String(b.subject || "Toán"),
         grade = String(b.grade || "10"),
         title = String(b.title || file.originalname).slice(0, 120),
-        admin = req.user.role === "admin" || req.user.role === "teacher";
+        admin = req.user.role === "admin";
       if (!isSubjectEnabled(subject)) {
         return res.status(400).json({ error: "Môn học chưa được kích hoạt trong configs/subjects.json." });
       }
@@ -2311,7 +2319,7 @@ app.post(
 // -------------------- DOCUMENT LIBRARY API --------------------
 
 app.get("/api/documents", async (req, res) => {
-  const isSubordinateAdmin = req.user?.role === "teacher";
+  const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
   const sql = `
     SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
       d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
@@ -2327,7 +2335,7 @@ app.get("/api/documents", async (req, res) => {
 });
 
 app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
-  const isSubordinateAdmin = req.user.role === "teacher";
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
     .prepare(`
       SELECT d.id,d.category,d.title,d.grade,d.original_name AS originalName,
@@ -2371,7 +2379,7 @@ app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
-  const isSubordinateAdmin = req.user.role === "teacher";
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
       SELECT d.id,d.title,d.subject,d.category,d.original_name,d.uploaded_by,ak.original_name AS referenceAnswerName,
@@ -2425,7 +2433,7 @@ app.get("/api/admin/documents/:id/solution", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requireAdmin, async (req, res) => {
-  const isSubordinateAdmin = req.user.role === "teacher";
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const document = await db.prepare(
     "SELECT id,category FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
   ).get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
@@ -2439,7 +2447,7 @@ app.post("/api/admin/documents/:id/solution/generate", requireSameOrigin, requir
 
 app.post("/api/admin/documents/:id/solution/review", requireSameOrigin, requireAdmin, async (req, res) => {
   const documentId = String(req.params.id);
-  const isSubordinateAdmin = req.user.role === "teacher";
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const row = await db
     .prepare(`
       SELECT d.subject,d.category,d.uploaded_by,s.generated_json,s.solution_version,s.source_hash
@@ -2643,7 +2651,7 @@ app.post(
       if (![".pdf", ".txt", ".json", ".csv", ".docx"].includes(path.extname(req.file.originalname).toLowerCase())) {
         return res.status(400).json({ error: "Invalid answer key format." });
       }
-      const isSubordinateAdmin = req.user.role === "teacher";
+      const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
       const doc = await db
         .prepare("SELECT id,category,subject FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : ""))
         .get(...(isSubordinateAdmin ? [String(req.params.id), req.user.id] : [String(req.params.id)]));
@@ -2669,7 +2677,7 @@ app.post(
 
 app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, next) => {
   try {
-    const isSubordinateAdmin = req.user.role === "teacher";
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const row = await db.prepare(`
       SELECT ak.file_data,ak.r2_key,ak.original_name,ak.content_type
       FROM answer_keys ak JOIN documents d ON d.id=ak.document_id
@@ -2696,7 +2704,7 @@ app.get("/api/admin/documents/:id/answer-key", requireAdmin, async (req, res, ne
 
 app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (req, res, next) => {
   try {
-    const isSubordinateAdmin = req.user.role === "teacher";
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const doc = await db.prepare(
       "SELECT id,filename,r2_key FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
     ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
@@ -2725,7 +2733,7 @@ app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (r
 
 app.get("/api/documents/:id/file", async (req, res, next) => {
   try {
-    const isSubordinateAdmin = req.user?.role === "teacher";
+    const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
     const doc = await db.prepare(
       "SELECT * FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
     ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
@@ -2767,23 +2775,24 @@ app.get("/api/documents/:id/file", async (req, res, next) => {
 });
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
-  const isSubordinateAdmin = req.user.role === "teacher";
+  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
     .prepare(`
       SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
         s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
-        u.name AS userName,u.email AS userEmail,r.class_code AS classCode
+        u.name AS userName,u.email AS userEmail,r.class_code AS classCode,r.class_code AS classCode
       FROM document_submissions s JOIN users u ON u.id=s.user_id
       LEFT JOIN school_document_reviews r ON r.submission_id=s.id
+      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
       WHERE s.status='pending'
-        ${isSubordinateAdmin ? "AND r.class_code IS NOT NULL" : ""}
+        ${isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : ""}
         AND (r.submission_id IS NULL OR ? >= 2 OR EXISTS (
           SELECT 1 FROM school_teacher_assignments a
           WHERE a.teacher_id=? AND a.class_code=r.class_code AND a.assignment_type='homeroom'
         ))
       ORDER BY s.id ASC
     `)
-    .all(Number(req.user.adminLevel), req.user.id);
+    .all(...(isSubordinateAdmin ? [req.user.id, Number(req.user.adminLevel), req.user.id] : [Number(req.user.adminLevel), req.user.id]));
   res.json({ submissions: rows });
 });
 
@@ -2795,15 +2804,15 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     if (!Number.isInteger(id) || !["approved", "rejected"].includes(decision)) {
       return res.status(400).json({ error: "Invalid review decision." });
     }
-    const isSubordinateAdmin = req.user.role === "teacher";
+    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const sub = await db
       .prepare(
         "SELECT s.*,r.class_code AS review_class_code FROM document_submissions s JOIN users u ON u.id=s.user_id " +
         "LEFT JOIN school_document_reviews r ON r.submission_id=s.id " +
         "WHERE s.id=? AND s.status='pending' " +
-        (isSubordinateAdmin ? "AND r.class_code IS NOT NULL" : "")
+        (isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : "")
       )
-      .get(id);
+      .get(...(isSubordinateAdmin ? [id, req.user.id] : [id]));
     if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
     if (sub.review_class_code) {
       const authorized = Number(req.user.adminLevel) >= 2 || Boolean(await db.prepare(

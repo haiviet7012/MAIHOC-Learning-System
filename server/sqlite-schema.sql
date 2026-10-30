@@ -246,11 +246,9 @@ CREATE TABLE users (
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'student' CHECK(role IN ('student','teacher','admin')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    admin_level INTEGER NOT NULL DEFAULT 0,
-    account_type TEXT NOT NULL DEFAULT 'external'
-  );
+    role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  , admin_level INTEGER NOT NULL DEFAULT 0);
 
 -- index: account_deletion_requests_status_idx
 CREATE INDEX account_deletion_requests_status_idx ON account_deletion_requests(status, requested_at);

@@ -533,9 +533,8 @@ export async function initPostgresSchema(targetDb = db) {
         name TEXT NOT NULL,
         email TEXT NOT NULL,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'student' CHECK(role IN ('student','teacher','admin')),
+        role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),
         admin_level BIGINT NOT NULL DEFAULT 0,
-        account_type TEXT NOT NULL DEFAULT 'external',
         created_at TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
       );
 
@@ -906,7 +905,6 @@ export async function initPostgresSchema(targetDb = db) {
     // Ensure backward-compatible columns on migrated tables
     const backwardCompatibleColumns = [
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_level BIGINT NOT NULL DEFAULT 0",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'external'",
       "ALTER TABLE users ALTER COLUMN created_at SET DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))",
       // Recover historical timestamps only when a matching account event exists.
       // If an old account has no recoverable event, leave the date blank rather than inventing one.
@@ -936,32 +934,6 @@ export async function initPostgresSchema(targetDb = db) {
         // Ignore if column constraint already matches
       }
     }
-
-    // Normalize legacy role values while retaining user IDs, password hashes, class membership,
-    // teacher assignments, and all foreign-key-linked learning history.
-    const migrateAccountRoles = async () => {
-      await targetDb.exec("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
-      await targetDb.exec(`
-        UPDATE users SET
-          role = CASE
-            WHEN role='admin' AND COALESCE(admin_level,0)>=2 THEN 'admin'
-            WHEN role='teacher' OR (role='admin' AND COALESCE(admin_level,0)=1) THEN 'teacher'
-            ELSE 'student'
-          END,
-          account_type = CASE
-            WHEN role='teacher' OR (role='admin' AND COALESCE(admin_level,0)=1) THEN 'school'
-            ELSE COALESCE(NULLIF(account_type,''),'external')
-          END,
-          admin_level = CASE
-            WHEN role='admin' AND COALESCE(admin_level,0)=1 THEN 0
-            ELSE COALESCE(admin_level,0)
-          END
-      `);
-      await targetDb.exec("ALTER TABLE users ALTER COLUMN role SET DEFAULT 'student'");
-      await targetDb.exec("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('student','teacher','admin'))");
-    };
-    if (typeof targetDb.transaction === "function") await targetDb.transaction(migrateAccountRoles)();
-    else await migrateAccountRoles();
 
     // Sync PostgreSQL identity sequences so post-migration inserts never collide with imported IDs
     for (const table of IDENTITY_TABLES) {

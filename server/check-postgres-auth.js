@@ -18,7 +18,7 @@ if (!process.env.DATABASE_URL) {
       "SELECT current_database() AS database_name, current_user AS database_user, current_timestamp AS server_time"
     );
     const requiredColumns = {
-      users: ["id", "name", "email", "password_hash", "role", "admin_level", "account_type", "created_at"],
+      users: ["id", "name", "email", "password_hash", "role", "admin_level", "created_at"],
       sessions: ["token_hash", "user_id", "expires_at", "created_at"],
       user_presence: ["user_id", "last_seen_at", "activity"],
       email_verification_codes: ["id", "user_id", "email", "purpose", "target_email", "code_hash", "expires_at", "attempts", "created_at"]
@@ -65,14 +65,7 @@ if (!process.env.DATABASE_URL) {
           "FROM users GROUP BY LOWER(email) HAVING COUNT(*) > 1 ORDER BY LOWER(email)"
         )
       ]);
-      const roleCounts = await pool.query(
-        "SELECT role,account_type,COUNT(*)::bigint AS count FROM users GROUP BY role,account_type ORDER BY role,account_type"
-      );
-      report.counts = {
-        users: Number(users.rows[0].count),
-        admins: Number(admins.rows[0].count),
-        accountsByRole: roleCounts.rows.map(row => ({ role: row.role, accountType: row.account_type, count: Number(row.count) }))
-      };
+      report.counts = { users: Number(users.rows[0].count), admins: Number(admins.rows[0].count) };
       report.duplicateEmails = duplicates.rows.map((row) => ({
         normalizedEmail: row.normalized_email,
         count: Number(row.count)
