@@ -281,8 +281,7 @@ export function installTestsModule({
   notifyUser,
   notifyAdmins
 }) {
-  const isSubordinateAdmin = (req) =>
-    req?.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+  const isSubordinateAdmin = (req) => req?.user?.role === "teacher";
 
   async function ensureTables() {
     await db.exec(`
@@ -1089,7 +1088,7 @@ export function installTestsModule({
       let newCount = 0;
       if (req.user?.id) {
         const account = await db.prepare("SELECT account_type,role FROM users WHERE id=?").get(req.user.id);
-        if (account?.account_type === "school" && account?.role !== "admin") {
+        if (account?.account_type === "school" && account?.role === "student") {
           const memberships = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=?").all(req.user.id);
           const classCodes = memberships.map(item => String(item.class_code));
           visibleRows = rows.filter(row => !row.class_code || classCodes.includes(String(row.class_code)));
@@ -1260,7 +1259,7 @@ export function installTestsModule({
         if (!title) {
           return res.status(400).json({ error: "Vui lòng nhập tên bài kiểm tra." });
         }
-        if (req.user?.role === "admin" && Number(req.user.adminLevel) < 2) {
+        if (req.user?.role === "teacher") {
           const teacher = await db.prepare("SELECT account_type FROM users WHERE id=?").get(req.user.id);
           if (teacher?.account_type === "school") {
             if (!isValidClass) return res.status(400).json({ error: "Giáo viên trường cần chọn lớp nhận bài kiểm tra." });
@@ -1562,7 +1561,7 @@ export function installTestsModule({
 
     const nowMs = Date.now();
     const openMs = new Date(testRow.open_at).getTime();
-    if (req.user.role !== "admin" && Number.isFinite(openMs) && nowMs < openMs) {
+    if (req.user.role === "student" && Number.isFinite(openMs) && nowMs < openMs) {
       return res.status(403).json({ error: "Bài kiểm tra này chưa đến thời gian mở đề." });
     }
 
@@ -1788,7 +1787,7 @@ export function installTestsModule({
     const id = Number(req.params.id);
     const subordinateAdmin = isSubordinateAdmin(req);
     const row =
-      req.user.role === "admin"
+      ["admin", "teacher"].includes(req.user.role)
         ? await db
             .prepare(`
               SELECT ts.*, u.name AS userName, u.email AS userEmail
