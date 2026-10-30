@@ -2949,6 +2949,8 @@ app.use((err, _req, res, _next) => {
 
 export async function initializeApplicationRuntime() {
   await initAuthDatabase();
+  await initSchoolSystemDatabase(db);
+  installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
   await initChatDatabase();
   if (testsModule?.initTestsModuleDatabase) {
     await testsModule.initTestsModuleDatabase();
