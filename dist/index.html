@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20261030results1">
+  <link rel="stylesheet" href="css/styles.css?v=20261030classjoin2">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="css/tests.css?v=20261029v1">
   <link rel="stylesheet" href="css/chat.css?v=20261030v1">
@@ -46,7 +46,7 @@
           <button class="icon-button" id="upload-open" title="Gửi tài liệu để duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
           <button class="icon-button" id="school-classes-open" data-route="school" hidden>👥 <span class="button-label">Lớp của bạn</span></button>
-          <button class="icon-button" id="join-class-open" data-open-join-class title="Tham gia lớp học" aria-label="Tham gia lớp" hidden>🏫 <span class="button-label">Tham gia lớp</span></button>
+
           <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span><span class="notification-count tests-new-count" id="tests-new-count" hidden>0</span></button>
           <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
@@ -210,33 +210,6 @@
     <article id="ai-history-dialog-answer" class="ai-history-dialog-answer"></article>
   </dialog>
 
-  <dialog id="join-class-dialog" class="modal compact">
-    <form id="join-class-form">
-      <div class="modal-heading">
-        <div>
-          <p class="eyebrow">CỘNG ĐỒNG LỚP HỌC MAI HỌC</p>
-          <h2>Tham gia lớp</h2>
-        </div>
-        <button type="button" class="close-button" data-close="join-class-dialog" aria-label="Đóng">×</button>
-      </div>
-      <p class="muted">Chọn lớp học của bạn để vào đúng lớp của giáo viên chủ nhiệm, xem danh sách thành viên và nhận bài kiểm tra của lớp.</p>
-      <p class="muted tiny" data-join-class-current hidden></p>
-      <label>Chọn lớp của bạn
-        <select name="classCode" required>
-          <option value="">-- Chọn lớp học (10A1 – 12C9) --</option>
-          <option value="10A1">Lớp 10A1</option><option value="10A2">Lớp 10A2</option><option value="10A3">Lớp 10A3</option><option value="10A4">Lớp 10A4</option><option value="10A5">Lớp 10A5</option><option value="10A6">Lớp 10A6</option><option value="10A7">Lớp 10A7</option><option value="10A8">Lớp 10A8</option><option value="10A9">Lớp 10A9</option>
-          <option value="11B1">Lớp 11B1</option><option value="11B2">Lớp 11B2</option><option value="11B3">Lớp 11B3</option><option value="11B4">Lớp 11B4</option><option value="11B5">Lớp 11B5</option><option value="11B6">Lớp 11B6</option><option value="11B7">Lớp 11B7</option><option value="11B8">Lớp 11B8</option><option value="11B9">Lớp 11B9</option>
-          <option value="12C1">Lớp 12C1</option><option value="12C2">Lớp 12C2</option><option value="12C3">Lớp 12C3</option><option value="12C4">Lớp 12C4</option><option value="12C5">Lớp 12C5</option><option value="12C6">Lớp 12C6</option><option value="12C7">Lớp 12C7</option><option value="12C8">Lớp 12C8</option><option value="12C9">Lớp 12C9</option>
-        </select>
-      </label>
-      <p id="join-class-error" class="auth-error" role="alert" hidden></p>
-      <div class="modal-actions">
-        <button class="button secondary" type="button" data-close="join-class-dialog">Hủy</button>
-        <button class="button primary" type="submit">Tham gia lớp</button>
-      </div>
-    </form>
-  </dialog>
-
   <dialog id="login-dialog" class="modal compact">
     <form id="login-form">
       <div class="modal-heading"><div><p class="eyebrow">TÀI KHOẢN MAI HỌC</p><h2>Đăng nhập</h2></div><button type="button" class="close-button" data-close="login-dialog" aria-label="Đóng">×</button></div>
@@ -253,15 +226,13 @@
   <dialog id="register-dialog" class="modal compact">
     <form id="register-form">
       <div class="modal-heading"><div><p class="eyebrow">BẮT ĐẦU HÀNH TRÌNH</p><h2>Tạo tài khoản</h2></div><button type="button" class="close-button" data-close="register-dialog" aria-label="Đóng">×</button></div>
-      <p class="muted">Chọn loại tài khoản phù hợp. Các tính năng lớp học chỉ áp dụng cho học sinh của trường.</p>
+      <p class="muted">Chọn loại tài khoản phù hợp. Học sinh của trường có thể chọn lớp sau khi đăng ký tại mục Lớp của bạn.</p>
       <fieldset class="account-type-choice">
         <legend>Loại tài khoản</legend>
         <label><input type="radio" name="accountType" value="external" checked> Học sinh bên ngoài</label>
         <label><input type="radio" name="accountType" value="school"> Học sinh của trường</label>
       </fieldset>
-      <label id="register-school-class-field" hidden>Lớp của bạn
-        <select name="classCode"><option value="">Chọn lớp</option><option value="10A1">10A1</option><option value="10A2">10A2</option><option value="10A3">10A3</option><option value="10A4">10A4</option><option value="10A5">10A5</option><option value="10A6">10A6</option><option value="10A7">10A7</option><option value="10A8">10A8</option><option value="10A9">10A9</option><option value="11B1">11B1</option><option value="11B2">11B2</option><option value="11B3">11B3</option><option value="11B4">11B4</option><option value="11B5">11B5</option><option value="11B6">11B6</option><option value="11B7">11B7</option><option value="11B8">11B8</option><option value="11B9">11B9</option><option value="12C1">12C1</option><option value="12C2">12C2</option><option value="12C3">12C3</option><option value="12C4">12C4</option><option value="12C5">12C5</option><option value="12C6">12C6</option><option value="12C7">12C7</option><option value="12C8">12C8</option><option value="12C9">12C9</option></select>
-      </label>
+
       <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
       <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
       <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="Ít nhất 8 ký tự"></label>
@@ -461,7 +432,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=20261030student-progress1"></script>
+  <script type="module" src="js/app.js?v=20261030classjoin2"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="js/chat.js?v=20261030v1"></script>
 </body>
