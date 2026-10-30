@@ -716,30 +716,50 @@ function formatAdminCreatedAt(value) {
 }
 
 function adminPage() { if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return `${pageHeading("Khu vực giảng viên", "Quản lý tài liệu và bài kiểm tra; quyền quản lý tài khoản chỉ dành cho Admin cao nhất.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Quản lý nội dung học tập</h2></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
-async function loadAdminUsers() { if (state.route !== "admin")
-    return; if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return; const status = $("#admin-users-status"), container = $("#admin-users-table"); try {
+async function loadAdminUsers() {
+  if (state.route !== "admin") return;
+  if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return;
+
+  const status = $("#admin-users-status");
+  const container = $("#admin-users-table");
+
+  try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin" });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok)
-        throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
-    if (state.route !== "admin")
-        return;
-    $("#admin-user-total").textContent = String(payload.total ?? payload.users?.length ?? 0);
-    status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
-    const rows = (payload.users || []).map(u => {
+    if (!response.ok) throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
+    if (state.route !== "admin") return;
+
+    const total = $("#admin-user-total");
+    if (total) total.textContent = String(payload.total ?? payload.users?.length ?? 0);
+    if (status) status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
+
+    const rows = (payload.users || []).map((u) => {
       const created = formatAdminCreatedAt(u.createdAt);
-      const roleLabel = u.role !== "admin" ? "Học sinh" : Number(u.adminLevel) >= 2 ? "Quản lý MAIHOC" : u.homeroomClass ? `Giáo viên lớp ${escapeHTML(u.homeroomClass)}` : "Giáo viên bộ môn";
-      const canRequestDelete = Number(u.id)!==Number(payload.currentUserId) && Number(u.adminLevel)<2;
+      const roleLabel = u.role !== "admin"
+        ? "Học sinh"
+        : Number(u.adminLevel) >= 2
+          ? "Quản lý MAI HỌC"
+          : u.homeroomClass
+            ? `Giáo viên lớp ${escapeHTML(u.homeroomClass)}`
+            : "Giáo viên bộ môn";
+      const canRequestDelete = Number(u.id) !== Number(payload.currentUserId) && Number(u.adminLevel) < 2;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${roleLabel}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
+
     let extra = "";
-    if(payload.isSuperAdmin){
-      const schoolClasses = ["10A","11B","12C"].flatMap(prefix => Array.from({length:9},(_,i)=>prefix+(i+1)));
-      const classOptions = schoolClasses.map(code => '<option value="'+code+'">'+code+'</option>').join("");
-      const subjectOptions = ["Toán","Tiếng Anh","Vật lý","Hóa học","Ngữ văn","Sinh học","IELTS"].map(subject => '<option value="'+subject+'">'+subject+'</option>').join("");
-      const subjectNames = ["Toán","Tiếng Anh","Vật lý","Hóa học","Ngữ văn","Sinh học","IELTS"];
-      const subjectCheckboxes = subjectNames.map(subject => '<label class="teacher-check-option"><input type="checkbox" name="subjects" value="'+subject+'"><span>'+subject+'</span></label>').join("");
-      const classCheckboxes = schoolClasses.map(code => '<label class="teacher-check-option"><input type="checkbox" name="teachingClasses" value="'+code+'"><span>'+code+'</span></label>').join("");
+    if (payload.isSuperAdmin) {
+      const schoolClasses = ["10A", "11B", "12C"].flatMap((prefix) =>
+        Array.from({ length: 9 }, (_, index) => prefix + (index + 1))
+      );
+      const classOptions = schoolClasses.map((code) => `<option value="${code}">${code}</option>`).join("");
+      const subjectNames = ["Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học", "IELTS"];
+      const subjectCheckboxes = subjectNames.map((subject) =>
+        `<label class="teacher-check-option"><input type="checkbox" name="subjects" value="${subject}"><span>${subject}</span></label>`
+      ).join("");
+      const classCheckboxes = schoolClasses.map((code) =>
+        `<label class="teacher-check-option"><input type="checkbox" name="teachingClasses" value="${code}"><span>${code}</span></label>`
+      ).join("");
+
       extra = `<section class="admin-submissions teacher-create-section" style="margin-top:20px">
         <div class="teacher-create-toggle-row">
           <div><h2>Quản lý giáo viên</h2><p class="muted tiny">Tạo tài khoản mới hoặc phân công giáo viên hiện có.</p></div>
@@ -761,16 +781,21 @@ async function loadAdminUsers() { if (state.route !== "admin")
       </section>
       <section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
-    container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
-    if(payload.isSuperAdmin) await loadAccountDeletionRequests();
+
+    if (container) {
+      container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
+    }
+    if (payload.isSuperAdmin) await loadAccountDeletionRequests();
+  } catch (error) {
+    if (state.route !== "admin") return;
+    if (status) {
+      status.textContent = error.message || "Lỗi khi tải dữ liệu.";
+      status.classList.add("auth-error");
+    }
+    if (container) container.innerHTML = "";
+  }
 }
-catch (error) {
-    if (state.route !== "admin")
-        return;
-    status.textContent = error.message || "Lỗi khi tải dữ liệu.";
-    status.classList.add("auth-error");
-    container.innerHTML = "";
-} }
+
 function render() {
     if (state.route === "account-center" && currentUser?.role === "admin") {
         state.route = "admin";
