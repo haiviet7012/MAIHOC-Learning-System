@@ -40,7 +40,10 @@ async function verifyRoomPassword(password, storedHash) {
 
 
 function isUserAdmin(user) {
-  return Boolean(user && user.role === "admin" && (user.adminLevel === undefined || Number(user.adminLevel) >= 1));
+  return Boolean(user && (
+    user.role === "teacher" ||
+    (user.role === "admin" && (user.adminLevel === undefined || Number(user.adminLevel) >= 1))
+  ));
 }
 function studentMembers(room) {
   return [...room.members.values()].filter(member => !member.isAdminObserver);
