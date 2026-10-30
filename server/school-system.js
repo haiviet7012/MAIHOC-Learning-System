@@ -139,7 +139,7 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!isClassCode(classCode)) return false;
     if (user?.role === "admin" && Number(user.adminLevel) >= 2) return true;
     if (await accountType(user.id) !== "school") return false;
-    if (user.role === "admin") {
+    if (user.role === "teacher") {
       return Boolean(await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
       ).get(user.id, classCode));
@@ -151,8 +151,7 @@ export function installSchoolSystemRoutes(app, deps) {
 
   async function requireHomeroom(req, res, classCode) {
     if (req.user?.role === "admin" && Number(req.user.adminLevel) >= 2) return true;
-    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 1 ||
-        await accountType(req.user.id) !== "school") {
+    if (req.user?.role !== "teacher" || await accountType(req.user.id) !== "school") {
       res.status(403).json({ error: "Chỉ giáo viên chủ nhiệm lớp này mới được thực hiện thao tác." });
       return false;
     }
@@ -166,6 +165,20 @@ export function installSchoolSystemRoutes(app, deps) {
     return true;
   }
 
+  app.get("/api/school/available-classes", requireAuth, async (req, res) => {
+    if (req.user?.role !== "student" || await accountType(req.user.id) !== "school") return res.status(403).json({ error: "Chỉ học sinh trong trường mới có thể tham gia lớp." });
+    const memberships = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=?").all(req.user.id);
+    const joined = new Set(memberships.map(row => String(row.class_code)));
+    const classes = [];
+    for (const classCode of SCHOOL_CLASSES) {
+      const homeroom = await db.prepare("SELECT u.name FROM school_teacher_assignments a JOIN users u ON u.id=a.teacher_id WHERE a.class_code=? AND a.assignment_type='homeroom' LIMIT 1").get(classCode);
+      const count = await db.prepare("SELECT COUNT(*) AS total FROM school_class_members WHERE class_code=?").get(classCode);
+      const pending = await db.prepare("SELECT id FROM school_class_change_requests WHERE class_code=? AND target_user_id=? AND action='add' AND status='pending' LIMIT 1").get(classCode, req.user.id);
+      classes.push({ classCode, homeroomTeacher: homeroom?.name || null, studentCount: Number(count?.total || 0), joined: joined.has(classCode), pending: Boolean(pending) });
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ classes });
+  });
   app.get("/api/school/classes", requireAuth, async (req, res) => {
     const isSuper = req.user.role === "admin" && Number(req.user.adminLevel) >= 2;
     if (!isSuper && await accountType(req.user.id) !== "school") {
@@ -174,7 +187,7 @@ export function installSchoolSystemRoutes(app, deps) {
     let classes = [];
     if (isSuper) {
       classes = SCHOOL_CLASSES.map(classCode => ({ classCode, role: "admin", isHomeroom: false }));
-    } else if (req.user.role === "admin") {
+    } else if (req.user.role === "teacher") {
       classes = await db.prepare(`
         SELECT class_code AS classCode,
           MAX(CASE WHEN assignment_type='homeroom' THEN 1 ELSE 0 END) AS isHomeroom,
@@ -222,11 +235,13 @@ export function installSchoolSystemRoutes(app, deps) {
     }
     const students = await db.prepare(`
       SELECT u.id,u.name,u.email FROM school_class_members m
-      JOIN users u ON u.id=m.user_id WHERE m.class_code=? ORDER BY u.name
+      JOIN users u ON u.id=m.user_id WHERE m.class_code=? AND u.role='student' ORDER BY u.name
     `).all(classCode);
-    const canManageMembers = await requireHomeroom(req, { status: () => ({ json: () => {} }) }, classCode).catch(() => false);
+    const isHomeroom = req.user?.role === "teacher" && Boolean(await db.prepare("SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? AND assignment_type='homeroom' LIMIT 1").get(req.user.id, classCode));
+    const isSuperAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) >= 2;
+    const pendingJoinRequests = isHomeroom ? await db.prepare("SELECT r.id,r.created_at AS createdAt,u.id AS studentId,u.name AS studentName,u.email AS studentEmail FROM school_class_change_requests r JOIN users u ON u.id=r.target_user_id WHERE r.class_code=? AND r.action='add' AND r.status='pending' AND u.role='student' AND u.account_type='school' ORDER BY r.created_at ASC").all(classCode) : [];
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ classCode, canManageMembers: Boolean(canManageMembers), teachers: [...teacherMap.values()].sort((a,b) => Number(b.isHomeroom)-Number(a.isHomeroom)), students: students.map(s => ({ id:Number(s.id),name:s.name,email:s.email })) });
+    res.json({ classCode, canManageMembers: isHomeroom, canViewProgress: isHomeroom || isSuperAdmin, pendingJoinRequests, teachers: [...teacherMap.values()].sort((a,b) => Number(b.isHomeroom)-Number(a.isHomeroom)), students: students.map(student => ({ id:Number(student.id),name:student.name,email:student.email })) });
   });
 
   app.get("/api/school/classes/:classCode/students/:studentId/progress", requireAuth, async (req, res) => {
@@ -235,12 +250,9 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!Number.isInteger(studentId) || !await canAccessClass(req.user, classCode)) {
       return res.status(403).json({ error: "Bạn không có quyền xem tiến trình học sinh này." });
     }
-    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 2) {
-      const assigned = await db.prepare(
-        "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
-      ).get(req.user.id, classCode);
-      if (!assigned) return res.status(403).json({ error: "Chỉ giáo viên được phân công lớp này mới xem được tiến trình." });
-    }
+    const isSuperAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 2;
+    const assigned = req.user.role === "teacher" ? await db.prepare("SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1").get(req.user.id, classCode) : null;
+    if (!isSuperAdmin && !assigned) return res.status(403).json({ error: "Chỉ giáo viên được phân công hoặc Admin cao nhất mới xem được tiến trình học sinh." });
     const member = await db.prepare(
       "SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?"
     ).get(studentId, classCode);
@@ -253,6 +265,51 @@ export function installSchoolSystemRoutes(app, deps) {
     res.json({ progress });
   });
 
+  app.post("/api/school/classes/:classCode/join-requests", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (req.user?.role !== "student" || await accountType(req.user.id) !== "school") return res.status(403).json({ error: "Chỉ học sinh trong trường mới được gửi yêu cầu tham gia lớp." });
+    if (!isClassCode(classCode)) return res.status(400).json({ error: "Mã lớp không hợp lệ." });
+    const homeroom = await db.prepare("SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' LIMIT 1").get(classCode);
+    if (!homeroom) return res.status(409).json({ error: "Lớp này chưa có giáo viên chủ nhiệm để xác nhận." });
+    const member = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(req.user.id, classCode);
+    if (member) return res.status(409).json({ error: "Bạn đã là thành viên của lớp này." });
+    const pending = await db.prepare("SELECT id FROM school_class_change_requests WHERE target_user_id=? AND class_code=? AND action='add' AND status='pending' LIMIT 1").get(req.user.id, classCode);
+    if (pending) return res.status(409).json({ error: "Yêu cầu tham gia lớp này đang chờ giáo viên xác nhận." });
+    const id = crypto.randomUUID();
+    await db.prepare("INSERT INTO school_class_change_requests(id,class_code,target_user_id,action,requested_by,note) VALUES(?,?,?,'add',?,?)").run(id, classCode, req.user.id, req.user.id, "Học sinh chủ động xin tham gia lớp");
+    await notifyUser?.(homeroom.teacher_id, "school_class_join_request", "Học sinh xin tham gia lớp", req.user.name + " (" + req.user.email + ") muốn tham gia lớp " + classCode + ".", "/");
+    res.status(201).json({ ok: true, id, message: "Đã gửi yêu cầu. Giáo viên chủ nhiệm sẽ xác nhận." });
+  });
+
+  app.post("/api/school/classes/:classCode/students", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (!isClassCode(classCode) || !await requireHomeroom(req, res, classCode)) return;
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "Vui lòng nhập email học sinh hợp lệ." });
+    const target = await db.prepare("SELECT id,name,email,role,account_type FROM users WHERE LOWER(email)=?").get(email);
+    if (!target || target.role !== "student" || target.account_type !== "school") return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh trong trường với email này." });
+    const existing = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(target.id, classCode);
+    if (existing) return res.status(409).json({ error: "Học sinh này đã ở trong lớp." });
+    const addMember = db.transaction(async () => {
+      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(target.id, classCode);
+      await db.prepare("UPDATE school_class_change_requests SET status='approved',reviewed_at=CURRENT_TIMESTAMP,reviewed_by=? WHERE target_user_id=? AND class_code=? AND action='add' AND status='pending'").run(req.user.id, target.id, classCode);
+    });
+    await addMember();
+    await notifyUser?.(target.id, "school_class_membership", "Bạn đã được thêm vào lớp", "Giáo viên chủ nhiệm đã thêm bạn vào lớp " + classCode + ".", "/");
+    res.status(201).json({ ok: true, student: { id: Number(target.id), name: target.name, email: target.email } });
+  });
+
+  app.delete("/api/school/classes/:classCode/students/:studentId", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (!isClassCode(classCode) || !await requireHomeroom(req, res, classCode)) return;
+    const studentId = Number(req.params.studentId);
+    if (!Number.isSafeInteger(studentId) || studentId < 1) return res.status(400).json({ error: "ID học sinh không hợp lệ." });
+    const member = await db.prepare("SELECT u.id FROM school_class_members m JOIN users u ON u.id=m.user_id WHERE m.user_id=? AND m.class_code=? AND u.role='student' AND u.account_type='school'").get(studentId, classCode);
+    if (!member) return res.status(404).json({ error: "Không tìm thấy học sinh trong lớp." });
+    await db.prepare("DELETE FROM school_class_members WHERE user_id=? AND class_code=?").run(studentId, classCode);
+    await notifyUser?.(studentId, "school_class_membership", "Bạn đã được chuyển khỏi lớp", "Giáo viên chủ nhiệm đã cập nhật danh sách lớp " + classCode + ".", "/");
+    res.json({ ok: true });
+  });
   app.post("/api/school/classes/:classCode/change-requests", requireSameOrigin, requireAuth, async (req, res) => {
     const classCode = String(req.params.classCode || "").toUpperCase();
     if (!await requireHomeroom(req, res, classCode)) return;
@@ -262,8 +319,8 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!["add", "remove"].includes(action) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: "Vui lòng nhập email hợp lệ và chọn thao tác thêm/xóa." });
     }
-    const target = await db.prepare("SELECT id,name,account_type FROM users WHERE LOWER(email)=?").get(email);
-    if (!target || target.account_type !== "school") {
+    const target = await db.prepare("SELECT id,name,account_type,role FROM users WHERE LOWER(email)=?").get(email);
+    if (!target || target.account_type !== "school" || target.role !== "student") {
       return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh của trường với email này." });
     }
     const alreadyMember = await db.prepare(
@@ -315,7 +372,7 @@ export function installSchoolSystemRoutes(app, deps) {
   });
 
   app.post("/api/school/teacher-messages", requireSameOrigin, requireAuth, async (req, res) => {
-    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1 || await accountType(req.user.id) !== "school") {
+    if (req.user.role !== "teacher" || await accountType(req.user.id) !== "school") {
       return res.status(403).json({ error: "Chỉ giáo viên của trường mới gửi được thông báo." });
     }
     const title = String(req.body?.title || "").trim().slice(0, 120);
