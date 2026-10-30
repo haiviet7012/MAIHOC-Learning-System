@@ -1124,7 +1124,7 @@ async function deleteAccountPermanently(id) {
   return true;
 }
 
-app.get("/api/admin/users", requireAdmin, async (req, res) => {
+app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
     .prepare("SELECT id,name,email,role,admin_level,created_at FROM users ORDER BY id DESC LIMIT 500")
     .all();
@@ -1396,7 +1396,7 @@ app.delete("/api/notifications", requireSameOrigin, requireAuth, async (req, res
   return res.json({ ok: true, deleted: result.changes, unread: 0 });
 });
 
-app.get("/api/admin/progress", requireAdmin, async (req, res) => {
+app.get("/api/admin/progress", requireSuperAdmin, async (req, res) => {
   const subordinateAdmin = Number(req.user.adminLevel) < 2;
   const rows = await db
     .prepare(`
