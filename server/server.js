@@ -407,7 +407,7 @@ function queueExamSolution(documentId) {
           /insufficient balance/i.test(errorText),
         quota = isAIQuotaError(error) && !insufficient,
         network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(errorText),
-        transientUnavailable = /(^|\\D)(500|502|503|504)(\\D|$)|high demand|overloaded|temporarily unavailable|service unavailable|deadline exceeded/i.test(
+        transientUnavailable = /500|502|503|504|high demand|overloaded|temporarily unavailable|service unavailable|deadline exceeded/i.test(
           `${error?.status || ""} ${errorText}`
         );
       const providerName = solver.provider === "gemini" ? "Gemini" : String(solver.provider || "AI");
@@ -419,7 +419,7 @@ function queueExamSolution(documentId) {
             ? `${providerName} đang quá tải hoặc tạm thời không khả dụng (HTTP ${error?.status || 503}). Hệ thống đã tự thử lại và thử model dự phòng nhưng chưa thành công. Vui lòng thử lại sau ít phút.`
             : network
               ? `Không kết nối được ${providerName} API. Hãy kiểm tra kết nối máy chủ rồi thử lại.`
-              : /GoogleGenerativeAI Error|generativelanguage\\.googleapis\\.com/i.test(errorText)
+              : /GoogleGenerativeAI Error|generativelanguage[.]googleapis[.]com/i.test(errorText)
                 ? `Dịch vụ ${providerName} tạm thời gặp sự cố. Vui lòng thử lại sau ít phút.`
                 : errorText.slice(0, 1000) || "Không thể tạo lời giải AI.";
       await updateSolutionJob(id, {
