@@ -331,6 +331,7 @@ function queueExamSolution(documentId) {
   activeSolutionJobs.add(id);
   setImmediate(async () => {
     let solver = examSolverConfig();
+    let documentTitle = id;
     try {
       const doc = await db
         .prepare(
@@ -338,6 +339,7 @@ function queueExamSolution(documentId) {
         )
         .get(id);
       if (!doc || !["exam", "practice", "test"].includes(doc.category)) return;
+      documentTitle = doc.title || id;
       const state = await db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
       if (!state || !["queued", "reading", "solving"].includes(state.status)) return;
       if (!solver.apiKey) {
@@ -438,7 +440,7 @@ function queueExamSolution(documentId) {
         : quota || insufficient
           ? `${solver.provider} cần kiểm tra hạn mức API`
           : "Không thể tạo lời giải AI";
-      const notificationMessage = `${doc?.title || id}: ${message}`;
+      const notificationMessage = `${documentTitle}: ${message}`;
       await updateSolutionJob(id, {
         status: "failed",
         progress: 0,
