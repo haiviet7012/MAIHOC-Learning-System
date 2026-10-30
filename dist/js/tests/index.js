@@ -25,7 +25,12 @@ export async function refreshTestsQueue() {
       const unread = Number(data.newCount || 0);
       const user = window.maihocCurrentUser;
       badge.textContent = String(unread);
-      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
+      badge.hidden =
+        unread <= 0 ||
+        !user?.id ||
+        user.role === "admin" ||
+        user.role === "teacher" ||
+        Boolean(user.isTeacher);
     }
     cachedSummary = data.summary || {
       total: cachedTests.length,
@@ -43,7 +48,9 @@ export async function refreshTestsQueue() {
 export function formatTestDateTime(value) {
   if (!value) return "—";
   const raw = String(value).trim();
-  const d = new Date(raw);
+  let iso = raw.includes("T") ? raw : raw.replace(" ", "T");
+  iso = iso.replace(/(\.\d{3})\d+/, "$1").replace(/([+-]\d{2})$/, "$1:00");
+  const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return raw;
   return d.toLocaleString("vi-VN", {
     day: "2-digit",
@@ -79,15 +86,26 @@ export async function openCreateTestDialog() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Không tải được danh sách lớp.");
         const classes = data.classes || [];
-        classSelect.innerHTML = '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
-          classes.map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + '</option>').join("");
+        classSelect.innerHTML =
+          '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
+          '<option value="ALL">Cả khối</option>' +
+          classes
+            .map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + "</option>")
+            .join("");
         const activeUser = window.maihocCurrentUser;
-        classSelect.required = activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
+        classSelect.required =
+          activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
         const label = classSelect.closest("label");
-        if (label) label.hidden = !(activeUser?.role === "admin" && (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school"));
-        if (classSelect.required && !classes.length) throw new Error("Bạn chưa được phân công lớp giảng dạy.");
+        if (label) {
+          label.hidden = !(
+            activeUser?.role === "admin" &&
+            (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school")
+          );
+        }
       } catch (error) {
-        classSelect.innerHTML = '<option value="">Không tải được danh sách lớp</option>';
+        classSelect.innerHTML =
+          '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
+          '<option value="ALL">Cả khối</option>';
         toast(error.message || "Không tải được danh sách lớp.", "error");
       }
     }
@@ -120,7 +138,7 @@ function renderTestAnswerActionButtons(t, compact = false) {
 
   return `
     ${viewReadyBtn}
-    <button type="button" class="button ${isAiReview ? "primary" : "secondary"} small" data-test-answer-ai="${escapeHTML(t.id)}" title="Chọn AI giải đề rồi giảng viên duyệt lại">
+    <button type="button" class="button ${isAiReview ? "primary" : "secondary"} small" data-test-answer-ai="${escapeHTML(t.id)}" title="Chọn AI giải đề rồi giáo viên duyệt lại">
       ${escapeHTML(compact && !isAiReview && !isAiRunning ? "🤖 AI giải" : aiLabel)}
     </button>
     <button type="button" class="button ${isManualReview ? "primary" : "secondary"} small" data-test-answer-manual="${escapeHTML(t.id)}" title="Nhập đáp án chuẩn thủ công theo từng câu">
@@ -155,6 +173,11 @@ export function renderTestsQueuePage(currentUser) {
           const durationText = test.durationMinutes ? `${test.durationMinutes} phút` : "Không giới hạn";
           const openText = formatTestDateTime(test.openAt);
           const closeText = formatTestDateTime(test.closeAt);
+          const classDisplay = test.classCode
+            ? test.classCode === "ALL"
+              ? " · Cả khối"
+              : ` · ${test.classCode}`
+            : "";
 
           let scoreOrPendingHtml = "";
           if (isCompleted && test.submission) {
@@ -163,18 +186,24 @@ export function renderTestsQueuePage(currentUser) {
             } else if (test.submission.score != null) {
               scoreOrPendingHtml = `<span class="test-score-tag">Điểm: ${Number(test.submission.score).toFixed(2)}/${test.submission.scale || 10}</span>`;
             }
+          } else if (isAdmin && isCompleted) {
+            if (test.pendingGradingCount > 0) {
+              scoreOrPendingHtml = `<span class="test-score-tag is-pending-grade">⏳ ${test.pendingGradingCount} bài chờ chấm</span>`;
+            } else {
+              scoreOrPendingHtml = `<span class="test-score-tag">${test.totalSubmissionsCount || 0} bài đã nộp</span>`;
+            }
           } else if (!isCompleted) {
             if (test.availability === "upcoming") {
               scoreOrPendingHtml = `<span class="muted tiny">Chưa đến giờ mở đề</span>`;
             } else if (test.availability === "closed") {
               scoreOrPendingHtml = `<span class="muted tiny" style="color:var(--danger)">Đã hết hạn nộp bài</span>`;
             } else if (test.answerMode === "deferred" && !test.hasApprovedAnswers) {
-              scoreOrPendingHtml = `<span class="muted tiny">Giảng viên chấm sau khi nộp</span>`;
+              scoreOrPendingHtml = `<span class="muted tiny">Giáo viên chấm sau khi nộp</span>`;
             }
           }
 
           let primaryActionHtml = "";
-          if (isCompleted && test.submission) {
+          if (!isAdmin && isCompleted && test.submission) {
             primaryActionHtml = `
               <button type="button" class="button secondary small" data-action="view-test-submission" data-id="${escapeHTML(test.submission.id)}">Xem kết quả</button>
             `;
@@ -216,8 +245,8 @@ export function renderTestsQueuePage(currentUser) {
                   <strong>${escapeHTML(test.title)}</strong>
                 </div>
                 <div class="test-cell-meta">
-                  <span class="pill">${escapeHTML(test.subject)} · Lớp ${escapeHTML(test.grade)}</span>
-                  <span>${test.hasApprovedAnswers ? "Chấm tự động" : "Giảng viên chấm"}${adminSubMeta}</span>
+                  <span class="pill">${escapeHTML(test.subject)} · Lớp ${escapeHTML(test.grade)}${escapeHTML(classDisplay)}</span>
+                  <span>${test.hasApprovedAnswers ? "Chấm tự động" : "Giáo viên chấm"}${adminSubMeta}</span>
                 </div>
               </div>
 
@@ -276,7 +305,7 @@ export function renderTestsQueuePage(currentUser) {
           ${
             isAdmin
               ? `
-                <button type="button" class="button secondary" data-export-teacher-sheets="xlsx">📊 Xuất bảng điểm giảng viên (.xlsx)</button>
+                <button type="button" class="button secondary" data-export-teacher-sheets="xlsx">📊 Xuất bảng điểm giáo viên (.xlsx)</button>
                 <button type="button" class="button secondary" data-route="admin">📋 Bài chờ chấm (${cachedSummary.pendingGradingTotal || 0})</button>
                 <button type="button" class="button primary" data-open-create-test>＋ Thêm bài kiểm tra</button>
               `
@@ -337,7 +366,7 @@ export async function openTestGradingDialog(submissionId) {
   const saveBtn = dialog.querySelector("[data-grading-save]");
   const previewBox = dialog.querySelector("[data-grading-paper-preview]");
 
-  if (titleEl) titleEl.textContent = "Đang tải bài làm của học viên…";
+  if (titleEl) titleEl.textContent = "Đang tải bài làm của học sinh…";
   if (metaEl) metaEl.textContent = "Đang kết nối hệ thống…";
   if (contentEl) contentEl.innerHTML = '<p class="muted">Đang tải đề bài và bài làm…</p>';
   if (errorEl) errorEl.hidden = true;
@@ -358,7 +387,7 @@ export async function openTestGradingDialog(submissionId) {
     activeGradingContext = data;
 
     if (titleEl) {
-      titleEl.textContent = `${data.title} — Học viên: ${data.userName}`;
+      titleEl.textContent = `${data.title} — Học sinh: ${data.userName}`;
     }
     if (metaEl) {
       metaEl.innerHTML = `Email: <strong>${escapeHTML(data.userEmail)}</strong> · Môn ${escapeHTML(data.subject)} · Lớp ${escapeHTML(data.grade)} · Nộp lúc: <strong>${escapeHTML(formatTestDateTime(data.submittedAt))}</strong>${
@@ -468,16 +497,16 @@ function renderGradingQuestions(data) {
           </div>
           <div class="solution-review-grid">
             <section class="solution-review-pane">
-              <h4>ĐỀ BÀI VÀ BÀI LÀM HỌC VIÊN</h4>
+              <h4>ĐỀ BÀI VÀ BÀI LÀM HỌC SINH</h4>
               <p><strong>${escapeHTML(item.questionText || `Câu ${targetId}`)}</strong></p>
               <div class="student-answer-highlight">
-                <strong>Học viên chọn / trả lời:</strong> <span>${escapeHTML(displayStudentAnswer)}</span>
+                <strong>Học sinh chọn / trả lời:</strong> <span>${escapeHTML(displayStudentAnswer)}</span>
               </div>
-              <p class="muted">${escapeHTML(item.explanation || "Đối chiếu đề bài bên trên với câu trả lời của học viên và chọn đáp án đúng ở khung bên phải.")}</p>
+              <p class="muted">${escapeHTML(item.explanation || "Đối chiếu đề bài bên trên với câu trả lời của học sinh và chọn đáp án đúng ở khung bên phải.")}</p>
               <p class="muted tiny"><strong>Rubric chấm điểm:</strong><br>${escapeHTML(rubricSummaryText)}</p>
             </section>
             <section class="solution-review-pane">
-              <h4>ĐÁP ÁN ĐÚNG (GIẢNG VIÊN CHẤM)</h4>
+              <h4>ĐÁP ÁN ĐÚNG (GIÁO VIÊN CHẤM)</h4>
               <label>
                 Đáp án chuẩn
                 ${answerEditorHtml}
@@ -597,9 +626,9 @@ export async function loadAdminTestsAndPendingGrading() {
     section.innerHTML = `
       <div class="section-head" style="margin-top:28px">
         <div>
-          <span class="pill">GIẢNG VIÊN & ADMIN · QUẢN LÝ KIỂM TRA & CHẤM ĐIỂM</span>
+          <span class="pill">GIÁO VIÊN & ADMIN · QUẢN LÝ KIỂM TRA & CHẤM ĐIỂM</span>
           <h2>Bài kiểm tra chờ chấm</h2>
-          <p class="muted">Khi giảng viên chọn chưa nhập đáp án ngay lúc đăng đề, bài làm của học viên sẽ xuất hiện tại đây với trạng thái “Đang chờ chấm”. Giảng viên có thể chấm trực tiếp từng bài, hoặc chọn <strong>🤖 AI giải đề -> Duyệt lại</strong> / <strong>✍️ Nhập đáp án thủ công</strong> để hệ thống tự động chấm toàn bộ bài nộp cùng đề.</p>
+          <p class="muted">Khi giáo viên chọn chưa nhập đáp án ngay lúc đăng đề, bài làm của học sinh sẽ xuất hiện tại đây với trạng thái “Đang chờ chấm”. Giáo viên có thể chấm trực tiếp từng bài, hoặc chọn <strong>🤖 AI giải đề -> Duyệt lại</strong> / <strong>✍️ Nhập đáp án thủ công</strong> để hệ thống tự động chấm toàn bộ bài nộp cùng đề.</p>
         </div>
         <div class="tests-header-actions">
           <button type="button" class="button primary small" data-open-create-test>＋ Thêm bài kiểm tra</button>
@@ -632,7 +661,7 @@ export async function loadAdminTestsAndPendingGrading() {
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>Học viên</th>
+                  <th>Học sinh</th>
                   <th>Bài kiểm tra</th>
                   <th>Môn / Lớp</th>
                   <th>Thời gian nộp</th>
@@ -728,13 +757,18 @@ export async function loadAdminTestsAndPendingGrading() {
                     } else {
                       statusBadgeHtml = `<span class="answer-key-status">Chưa nhập đáp án (Chờ chấm)</span>`;
                     }
+                    const classInfo = t.classCode
+                      ? t.classCode === "ALL"
+                        ? " · Cả khối"
+                        : ` · ${t.classCode}`
+                      : "";
                     return `
                       <tr>
                         <td>
                           <strong>${escapeHTML(t.title)}</strong><br>
                           <span class="muted tiny">${escapeHTML(t.originalName || t.filename || "")}</span>
                         </td>
-                        <td>${escapeHTML(t.subject)} · Lớp ${escapeHTML(t.grade)}</td>
+                        <td>${escapeHTML(t.subject)} · Lớp ${escapeHTML(t.grade)}${escapeHTML(classInfo)}</td>
                         <td>
                           <span class="tiny">Mở: <strong>${escapeHTML(formatTestDateTime(t.openAt))}</strong></span><br>
                           <span class="tiny">Đóng: <strong>${escapeHTML(formatTestDateTime(t.closeAt))}</strong></span>
@@ -1060,7 +1094,7 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
       const fmt = exportTeacherBtn.dataset.exportTeacherSheets || "xlsx";
       const subj = queueFilterSubject !== "all" ? `&subject=${encodeURIComponent(queueFilterSubject)}` : "";
       window.location.href = `/api/admin/tests/export-sheets?format=${encodeURIComponent(fmt)}${subj}`;
-      toast("Đang xuất bảng điểm Bài kiểm tra ra tệp Sheets…", "success");
+      toast("Đang xuất bảng điểm giáo viên ra tệp Sheets…", "success");
       return;
     }
   });
@@ -1078,7 +1112,7 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
       const fd = new FormData(createForm);
       const activeUser = window.maihocCurrentUser;
       if (activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school" && !fd.get("classCode")) {
-        throw new Error("Vui lòng chọn lớp nhận bài kiểm tra.");
+        throw new Error("Vui lòng chọn lớp nhận bài kiểm tra (hoặc chọn Cả khối).");
       }
       const response = await fetch("/api/admin/tests", {
         method: "POST",

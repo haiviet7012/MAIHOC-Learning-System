@@ -204,7 +204,7 @@ export async function upsertLearningResult(payload) {
   await resultsDb.prepare(UPSERT_RESULT_SQL).run({
     recordKey: String(payload.recordKey),
     userId: Number(payload.userId),
-    userName: String(payload.userName || "Học viên"),
+    userName: String(payload.userName || "Học sinh"),
     userEmail: String(payload.userEmail || ""),
     subjectCode: subjectInfo.code,
     subjectName: subjectInfo.name,
@@ -386,22 +386,68 @@ export async function syncFromMainDatabase(mainDb = resultsDb) {
   }
 }
 
-function formatDateTimeVN(value) {
-  if (!value) return "—";
+export function formatDateTimeVN(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "—";
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit"
+    }).formatToParts(value);
+    const day = parts.find((p) => p.type === "day")?.value || "01";
+    const month = parts.find((p) => p.type === "month")?.value || "01";
+    const year = parts.find((p) => p.type === "year")?.value || "00";
+    return `${day}/${month}/${year}`;
+  }
+
   const raw = String(value).trim();
-  const hasTimezone = /Z$|[+-]\d{2}(?::?\d{2})?$/.test(raw);
-  const normalized = raw.includes("T")
-    ? raw
-    : raw.replace(" ", "T") + (hasTimezone ? "" : "Z");
-  const d = new Date(normalized);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  if (!raw || raw === "—") return "—";
+
+  // Already in dd/mm/yyyy or dd/mm/yy or HH:mm dd/mm/yyyy
+  const dmyMatch = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(raw);
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, "0");
+    const mm = dmyMatch[2].padStart(2, "0");
+    const yy = dmyMatch[3].slice(-2);
+    return `${dd}/${mm}/${yy}`;
+  }
+
+  // Normalize PostgreSQL / SQLite / ISO timestamps (e.g. "2026-10-30 07:16:31.929425+00")
+  let iso = raw.includes("T") ? raw : raw.replace(" ", "T");
+  iso = iso.replace(/(\.\d{3})\d+/, "$1");
+  iso = iso.replace(/([+-]\d{2})$/, "$1:00");
+  const isDateTimeLocalNoSec = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(iso);
+  if (isDateTimeLocalNoSec) {
+    const [yyyy, mm, dd] = iso.slice(0, 10).split("-");
+    return `${dd}/${mm}/${yyyy.slice(-2)}`;
+  }
+
+  const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/i.test(iso);
+  if (!hasTimezone && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) {
+    iso += "Z";
+  }
+
+  const d = new Date(iso);
+  if (!Number.isNaN(d.getTime())) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit"
+    }).formatToParts(d);
+    const day = parts.find((p) => p.type === "day")?.value || "01";
+    const month = parts.find((p) => p.type === "month")?.value || "01";
+    const year = parts.find((p) => p.type === "year")?.value || "00";
+    return `${day}/${month}/${year}`;
+  }
+
+  const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (ymdMatch) {
+    return `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1].slice(-2)}`;
+  }
+  return raw;
 }
 
 function categoryDisplayName(category) {
@@ -416,6 +462,17 @@ function categoryDisplayName(category) {
   return map[category] || category;
 }
 
+function categorySectionOrder(categoryLabel) {
+  const map = {
+    "Tài liệu lý thuyết": 1,
+    "Bài học": 1,
+    "Đề ôn tập": 2,
+    "Đề thi thử": 3,
+    "Bài kiểm tra": 4
+  };
+  return map[categoryLabel] || 5;
+}
+
 export async function queryTeacherTestScores({
   subject = "",
   grade = "",
@@ -426,8 +483,6 @@ export async function queryTeacherTestScores({
   const clauses = ["category = 'test'"];
   const params = [];
 
-  // An explicit list is a server-enforced ownership scope. An empty list means
-  // this instructor has no tests, so it must not fall back to an unfiltered export.
   if (Array.isArray(allowedTestIds)) {
     if (!allowedTestIds.length) {
       clauses.push("1 = 0");
@@ -481,7 +536,7 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
 
   const headers = [
     "STT",
-    "Họ và tên học viên",
+    "Họ và tên học sinh",
     "Email",
     "Môn học",
     "Khối lớp",
@@ -562,17 +617,18 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
     return {
       buffer: buildCsvBuffer(headers, mainSheetRows),
       contentType: "text/csv; charset=utf-8",
-      filename: `MAIHOC-Bang-Diem-Bai-Kiem-Tra-${new Date().toISOString().slice(0, 10)}.csv`
+      filename: `MAIHOC-Bang-Diem-Giao-Vien-${new Date().toISOString().slice(0, 10)}.csv`
     };
   }
 
   const sheets = [
     {
       name: "Tổng hợp điểm kiểm tra",
-      title: "HỆ THỐNG HỌC TẬP MAI HỌC — BẢNG ĐIỂM BÀI KIỂM TRA (GIẢNG VIÊN)",
-      subtitle: `Xuất lúc: ${formatDateTimeVN(new Date().toISOString())} · Tổng số lượt nộp: ${rows.length}`,
+      title: "HỆ THỐNG HỌC TẬP MAI HỌC — BẢNG ĐIỂM BÀI KIỂM TRA (GIÁO VIÊN)",
+      subtitle: `Xuất ngày: ${formatDateTimeVN(new Date().toISOString())} · Tổng số lượt nộp: ${rows.length}`,
       headers,
-      rows: mainSheetRows
+      rows: mainSheetRows,
+      sectionColumnIndex: 5
     }
   ];
 
@@ -585,10 +641,11 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
   for (const [subj, subjRows] of bySubject.entries()) {
     sheets.push({
       name: `Môn ${subj}`,
-      title: `BẢNG ĐIỂM MÔN ${subj.toUpperCase()} — MAI HỌC`,
-      subtitle: `Tổng số bài làm môn ${subj}: ${subjRows.length}`,
+      title: `BẢNG ĐIỂM MÔN ${subj.toUpperCase()} — GIÁO VIÊN MAI HỌC`,
+      subtitle: `Tổng số bài làm môn ${subj}: ${subjRows.length} · Ngày xuất: ${formatDateTimeVN(new Date().toISOString())}`,
       headers,
-      rows: subjRows.map(mapRowToCells)
+      rows: subjRows.map(mapRowToCells),
+      sectionColumnIndex: 5
     });
   }
 
@@ -623,7 +680,7 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
       t.id,
       t.title,
       t.subject,
-      `Lớp ${t.grade}`,
+      `Lớp ${t.grade}${t.class_code ? (t.class_code === "ALL" ? " (Cả khối)" : ` (${t.class_code})`) : ""}`,
       formatDateTimeVN(t.open_at),
       formatDateTimeVN(t.close_at),
       t.duration_minutes ? `${t.duration_minutes} phút` : "Không giới hạn",
@@ -639,64 +696,76 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
   if (summaryRows.length) {
     sheets.push({
       name: "Thống kê theo đề",
-      title: "THỐNG KÊ KẾT QUẢ THEO ĐỀ KIỂM TRA & MÔN HỌC",
-      subtitle: `Tổng số đề kiểm tra: ${allTests.length}`,
+      title: "THỐNG KÊ KẾT QUẢ THEO ĐỀ KIỂM TRA & MÔN HỌC (GIÁO VIÊN)",
+      subtitle: `Tổng số đề kiểm tra: ${allTests.length} · Ngày xuất: ${formatDateTimeVN(new Date().toISOString())}`,
       headers: summaryHeaders,
-      rows: summaryRows
+      rows: summaryRows,
+      sectionColumnIndex: 3
     });
   }
 
   return {
     buffer: buildXlsxWorkbook(sheets),
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    filename: `MAIHOC-Bang-Diem-Bai-Kiem-Tra-${new Date().toISOString().slice(0, 10)}.xlsx`
+    filename: `MAIHOC-Bang-Diem-Giao-Vien-${new Date().toISOString().slice(0, 10)}.xlsx`
   };
 }
 
-export async function buildUserLearningResultsSheetExport(mainDb = resultsDb, user, format = "xlsx") {
-  await syncFromMainDatabase(mainDb);
+async function resolveStudentExportIdentity(mainDb, targetUser) {
+  let dbUser = null;
+  let classCode = targetUser?.classCode || targetUser?.student_class || targetUser?.class_code || null;
+  try {
+    if (targetUser?.id != null) {
+      dbUser = await mainDb
+        .prepare("SELECT id, name, email, role, account_type FROM users WHERE id = ?")
+        .get(targetUser.id);
+      if (!classCode) {
+        const member = await mainDb
+          .prepare("SELECT class_code FROM school_class_members WHERE user_id = ? ORDER BY created_at DESC LIMIT 1")
+          .get(targetUser.id);
+        if (member?.class_code) classCode = member.class_code;
+      }
+    }
+  } catch {}
 
+  const rawName = String(dbUser?.name || targetUser?.name || "").trim();
+  const email = String(dbUser?.email || targetUser?.email || "").trim();
+  const emailPrefix = email.includes("@") ? email.split("@")[0] : email;
+  const studentName =
+    !rawName || /^MAI\s*H[OỌ]C\s*ADMIN$/i.test(rawName)
+      ? emailPrefix || rawName || "Học sinh"
+      : rawName;
+
+  return {
+    id: Number(dbUser?.id ?? targetUser?.id ?? 0),
+    name: studentName,
+    email,
+    classCode
+  };
+}
+
+async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers, scoreHeaders) {
+  const identity = await resolveStudentExportIdentity(mainDb, targetUser);
   const results = await resultsDb
     .prepare(`
       SELECT *
       FROM learning_results
       WHERE user_id = ?
-      ORDER BY
-        CASE category
-          WHEN 'test' THEN 1
-          WHEN 'exam' THEN 2
-          WHEN 'practice' THEN 3
-          ELSE 4
-        END,
-        updated_at DESC
+      ORDER BY updated_at DESC
     `)
-    .all(user.id);
+    .all(identity.id);
 
-  const allTests = await mainDb.prepare("SELECT * FROM tests ORDER BY open_at DESC").all();
-  const completedTestIds = new Set(results.filter((r) => r.category === "test").map((r) => String(r.item_id)));
+  const completedTestIds = new Set(
+    results.filter((r) => r.category === "test").map((r) => String(r.item_id))
+  );
 
-  const headers = [
-    "STT",
-    "Tên nội dung / Bài kiểm tra / Đề",
-    "Phân loại",
-    "Môn học",
-    "Khối lớp",
-    "Trạng thái hoàn thành",
-    "Tiến trình (%)",
-    "Điểm số",
-    "Thang điểm",
-    "Trạng thái chấm điểm",
-    "Ngày bắt đầu / Ngày mở",
-    "Ngày hoàn thành / Hạn nộp"
-  ];
-
-  const combinedRows = [];
-  let index = 1;
+  const rawItems = [];
 
   for (const r of results) {
     const isCompleted = r.completion_status === "completed" || Number(r.progress_percent) >= 100;
     const hasScore = r.score !== null && r.score !== undefined && r.grading_status === "graded";
     const isPendingGrade = r.grading_status === "pending_grade";
+    const categoryLabel = categoryDisplayName(r.category);
 
     const scoreCell = hasScore
       ? { value: Number(Number(r.score).toFixed(2)), type: "number", style: 6 }
@@ -712,79 +781,80 @@ export async function buildUserLearningResultsSheetExport(mainDb = resultsDb, us
           ? "Lý thuyết (Không tính điểm)"
           : "Chưa chấm tự động";
 
-    combinedRows.push([
-      { value: index++, type: "number", style: 5 },
-      r.item_title,
-      categoryDisplayName(r.category),
-      r.subject_name,
-      `Lớp ${r.grade}`,
-      { value: isCompleted ? "Đã hoàn thành" : "Chưa hoàn thành", style: isCompleted ? 7 : 8 },
-      { value: Number(r.progress_percent || 0), type: "number", style: 5 },
-      scoreCell,
-      hasScore || isPendingGrade ? { value: Number(r.scale || 10), type: "number", style: 5 } : "—",
-      gradingLabel,
-      formatDateTimeVN(r.open_at || r.started_at),
-      formatDateTimeVN(r.submitted_at || r.close_at || r.updated_at)
-    ]);
+    rawItems.push({
+      sectionOrder: categorySectionOrder(categoryLabel),
+      categoryLabel,
+      cellsWithoutIndex: [
+        r.item_title,
+        categoryLabel,
+        r.subject_name,
+        `Lớp ${r.grade}`,
+        { value: isCompleted ? "Đã hoàn thành" : "Chưa hoàn thành", style: isCompleted ? 7 : 8 },
+        { value: Number(r.progress_percent || 0), type: "number", style: 5 },
+        scoreCell,
+        hasScore || isPendingGrade ? { value: Number(r.scale || 10), type: "number", style: 5 } : "—",
+        gradingLabel,
+        formatDateTimeVN(r.open_at || r.started_at || r.submitted_at || r.updated_at),
+        formatDateTimeVN(r.submitted_at || r.close_at || r.updated_at)
+      ]
+    });
   }
 
   for (const t of allTests) {
     if (completedTestIds.has(String(t.id))) continue;
-    combinedRows.push([
-      { value: index++, type: "number", style: 5 },
-      t.title,
-      "Bài kiểm tra",
-      t.subject,
-      `Lớp ${t.grade}`,
-      { value: "Chưa hoàn thành", style: 8 },
-      { value: 0, type: "number", style: 5 },
-      "—",
-      { value: 10, type: "number", style: 5 },
-      "Chưa nộp bài",
-      formatDateTimeVN(t.open_at),
-      formatDateTimeVN(t.close_at)
-    ]);
+    const testClass = t.class_code ? String(t.class_code).toUpperCase() : null;
+    if (testClass && testClass !== "ALL" && identity.classCode && testClass !== String(identity.classCode).toUpperCase()) {
+      continue;
+    }
+    const categoryLabel = "Bài kiểm tra";
+    rawItems.push({
+      sectionOrder: categorySectionOrder(categoryLabel),
+      categoryLabel,
+      cellsWithoutIndex: [
+        t.title,
+        categoryLabel,
+        t.subject,
+        `Lớp ${t.grade}`,
+        { value: "Chưa hoàn thành", style: 8 },
+        { value: 0, type: "number", style: 5 },
+        "—",
+        { value: 10, type: "number", style: 5 },
+        "Chưa nộp bài",
+        formatDateTimeVN(t.open_at),
+        formatDateTimeVN(t.close_at)
+      ]
+    });
   }
 
-  if (!combinedRows.length) {
-    combinedRows.push([
-      "—",
-      "Chưa có dữ liệu học tập",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—",
-      "—"
-    ]);
-  }
+  // Group contiguously by section (Tài liệu lý thuyết -> Đề ôn tập -> Đề thi thử -> Bài kiểm tra)
+  rawItems.sort((a, b) => a.sectionOrder - b.sectionOrder);
 
-  if (String(format).toLowerCase() === "csv") {
-    return {
-      buffer: buildCsvBuffer(headers, combinedRows),
-      contentType: "text/csv; charset=utf-8",
-      filename: `MAIHOC-Ket-Qua-Hoc-Tap-${new Date().toISOString().slice(0, 10)}.csv`
-    };
-  }
+  const combinedRows = rawItems.length
+    ? rawItems.map((item, idx) => [
+        { value: idx + 1, type: "number", style: 5 },
+        ...item.cellsWithoutIndex
+      ])
+    : [
+        [
+          "—",
+          "Chưa có dữ liệu học tập",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—",
+          "—"
+        ]
+      ];
 
-  const scoredResults = results.filter((r) => ["test", "exam", "practice"].includes(r.category));
-  const scoreHeaders = [
-    "STT",
-    "Tên bài kiểm tra / Đề thi",
-    "Phân loại",
-    "Môn học",
-    "Khối lớp",
-    "Điểm đạt được",
-    "Thang điểm",
-    "Tỷ lệ (%)",
-    "Số câu đúng",
-    "Trạng thái chấm",
-    "Thời gian nộp"
-  ];
+  const scoredResults = results
+    .filter((r) => ["test", "exam", "practice"].includes(r.category))
+    .sort((a, b) => categorySectionOrder(categoryDisplayName(a.category)) - categorySectionOrder(categoryDisplayName(b.category)));
+
   const scoreRows = scoredResults.length
     ? scoredResults.map((r, i) => {
         const hasScore = r.score != null && r.grading_status === "graded";
@@ -826,26 +896,111 @@ export async function buildUserLearningResultsSheetExport(mainDb = resultsDb, us
         ]
       ];
 
-  const sheets = [
-    {
-      name: "Kết quả học tập",
-      title: `BÁO CÁO KẾT QUẢ & TIẾN TRÌNH HỌC TẬP — ${String(user.name || "").toUpperCase()}`,
-      subtitle: `Tài khoản: ${user.email} · Ngày xuất: ${formatDateTimeVN(new Date().toISOString())}`,
-      headers,
-      rows: combinedRows
-    },
-    {
-      name: "Bảng điểm Kiểm tra & Thi",
-      title: `BẢNG ĐIỂM BÀI KIỂM TRA & ĐỀ LUYỆN TẬP — ${String(user.name || "").toUpperCase()}`,
-      subtitle: `Lưu trữ từ Database Kết quả học tập MAI HỌC`,
-      headers: scoreHeaders,
-      rows: scoreRows
-    }
+  const exportDateStr = formatDateTimeVN(new Date().toISOString());
+  const classText = identity.classCode ? ` · Lớp: ${identity.classCode}` : "";
+  const shortName = identity.name.length > 12 ? identity.name.slice(0, 12).trim() : identity.name;
+
+  return {
+    identity,
+    combinedRows,
+    sheets: [
+      {
+        name: `${shortName} -> Kết quả học tập`,
+        title: `HỌC SINH: ${identity.name.toUpperCase()} -> BẢNG KẾT QUẢ HỌC TẬP`,
+        subtitle: `Họ và tên học sinh: ${identity.name}${classText} · Tài khoản: ${identity.email} · Ngày xuất: ${exportDateStr}`,
+        headers,
+        rows: combinedRows,
+        sectionColumnIndex: 2
+      },
+      {
+        name: `${shortName} -> Bảng điểm`,
+        title: `HỌC SINH: ${identity.name.toUpperCase()} -> BẢNG ĐIỂM KIỂM TRA & THI`,
+        subtitle: `Họ và tên học sinh: ${identity.name}${classText} · Tài khoản: ${identity.email} · Ngày xuất: ${exportDateStr}`,
+        headers: scoreHeaders,
+        rows: scoreRows,
+        sectionColumnIndex: 2
+      }
+    ]
+  };
+}
+
+export async function buildUserLearningResultsSheetExport(mainDb = resultsDb, user, format = "xlsx") {
+  await syncFromMainDatabase(mainDb);
+
+  const allTests = await mainDb.prepare("SELECT * FROM tests ORDER BY open_at DESC").all();
+
+  const headers = [
+    "STT",
+    "Tên nội dung / Bài kiểm tra / Đề",
+    "Phân loại",
+    "Môn học",
+    "Khối lớp",
+    "Trạng thái hoàn thành",
+    "Tiến trình (%)",
+    "Điểm số",
+    "Thang điểm",
+    "Trạng thái chấm điểm",
+    "Ngày bắt đầu / Ngày mở",
+    "Ngày hoàn thành / Hạn nộp"
   ];
+
+  const scoreHeaders = [
+    "STT",
+    "Tên bài kiểm tra / Đề thi",
+    "Phân loại",
+    "Môn học",
+    "Khối lớp",
+    "Điểm đạt được",
+    "Thang điểm",
+    "Tỷ lệ (%)",
+    "Số câu đúng",
+    "Trạng thái chấm",
+    "Thời gian nộp"
+  ];
+
+  const primary = await buildSheetsForSingleStudent(mainDb, user, allTests, headers, scoreHeaders);
+
+  if (String(format).toLowerCase() === "csv") {
+    return {
+      buffer: buildCsvBuffer(headers, primary.combinedRows),
+      contentType: "text/csv; charset=utf-8",
+      filename: `MAIHOC-Ket-Qua-Hoc-Tap-${normalizeSubjectCode(primary.identity.name)}-${new Date().toISOString().slice(0, 10)}.csv`
+    };
+  }
+
+  const sheets = [...primary.sheets];
+
+  // If exported by a teacher/admin, also include individual student learning result sheets
+  // so teachers/admins can review each student's "Tên học sinh -> Bảng kết quả học tập".
+  const isAdminOrTeacher = Boolean(
+    user && (user.role === "admin" || user.role === "teacher" || user.isTeacher || Number(user.adminLevel) >= 1)
+  );
+  if (isAdminOrTeacher) {
+    try {
+      const studentUsers = await mainDb
+        .prepare(`
+          SELECT DISTINCT u.id, u.name, u.email,
+                 (SELECT m.class_code FROM school_class_members m WHERE m.user_id = u.id ORDER BY m.created_at DESC LIMIT 1) AS classCode
+          FROM users u
+          WHERE u.id <> ?
+            AND u.role NOT IN ('admin', 'teacher')
+            AND COALESCE(u.admin_level, 0) < 1
+            AND EXISTS (SELECT 1 FROM learning_results lr WHERE lr.user_id = u.id)
+          ORDER BY u.name ASC, u.id ASC
+          LIMIT 25
+        `)
+        .all(primary.identity.id);
+
+      for (const stu of studentUsers) {
+        const stuBuilt = await buildSheetsForSingleStudent(mainDb, stu, allTests, headers, scoreHeaders);
+        sheets.push(stuBuilt.sheets[0]);
+      }
+    } catch {}
+  }
 
   return {
     buffer: buildXlsxWorkbook(sheets),
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    filename: `MAIHOC-Ket-Qua-Hoc-Tap-${new Date().toISOString().slice(0, 10)}.xlsx`
+    filename: `MAIHOC-Ket-Qua-Hoc-Tap-${normalizeSubjectCode(primary.identity.name)}-${new Date().toISOString().slice(0, 10)}.xlsx`
   };
 }

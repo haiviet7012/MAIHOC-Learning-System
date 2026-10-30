@@ -112,7 +112,19 @@ function buildZipBuffer(entries) {
   return Buffer.concat([...localParts, centralDirectory, eocd]);
 }
 
-function buildWorksheetXml({ title, subtitle, headers, rows }) {
+function extractCellText(cell) {
+  if (cell && typeof cell === "object" && "value" in cell) {
+    return String(cell.value ?? "").trim();
+  }
+  return String(cell ?? "").trim();
+}
+
+function buildWorksheetXml({ title, subtitle, headers, rows, sectionColumnIndex }) {
+  const effectiveSectionCol =
+    typeof sectionColumnIndex === "number"
+      ? sectionColumnIndex
+      : headers.findIndex((h) => /^Phân loại$/i.test(String(h || "").trim()));
+
   const colWidths = headers.map((h, idx) => {
     let maxLen = String(h || "").length + 4;
     for (const r of rows) {
@@ -156,7 +168,36 @@ function buildWorksheetXml({ title, subtitle, headers, rows }) {
   sheetRows.push(`<row r="${currentRow}" ht="24" customHeight="1">${headerCells}</row>`);
   currentRow++;
 
-  for (const row of rows) {
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+
+    // Determine section border position:
+    // 0 = middle row, 1 = section top border, 2 = section bottom border, 3 = single-row section (top + bottom border)
+    let sectionBorderPos = 0;
+    if (effectiveSectionCol >= 0 && rows.length > 0) {
+      const currSec = extractCellText(row[effectiveSectionCol]);
+      const prevSec = rowIdx > 0 ? extractCellText(rows[rowIdx - 1][effectiveSectionCol]) : null;
+      const nextSec = rowIdx < rows.length - 1 ? extractCellText(rows[rowIdx + 1][effectiveSectionCol]) : null;
+      const isFirst = rowIdx === 0 || currSec !== prevSec;
+      const isLast = rowIdx === rows.length - 1 || currSec !== nextSec;
+      if (isFirst && isLast) sectionBorderPos = 3;
+      else if (isFirst) sectionBorderPos = 1;
+      else if (isLast) sectionBorderPos = 2;
+    } else if (rows.length > 0) {
+      const isFirst = rowIdx === 0;
+      const isLast = rowIdx === rows.length - 1;
+      if (isFirst && isLast) sectionBorderPos = 3;
+      else if (isFirst) sectionBorderPos = 1;
+      else if (isLast) sectionBorderPos = 2;
+    }
+
+    const applyBorderVariant = (baseStyleId) => {
+      if (baseStyleId >= 4 && baseStyleId <= 8 && sectionBorderPos > 0) {
+        return baseStyleId + sectionBorderPos * 5;
+      }
+      return baseStyleId;
+    };
+
     const cells = row
       .map((cell, colIdx) => {
         const ref = `${columnLetter(colIdx)}${currentRow}`;
@@ -165,25 +206,28 @@ function buildWorksheetXml({ title, subtitle, headers, rows }) {
         const explicitType = cell && typeof cell === "object" ? cell.type : null;
 
         if (raw === null || raw === undefined || raw === "") {
-          return `<c r="${ref}" s="${explicitStyle || 4}" t="inlineStr"><is><t>—</t></is></c>`;
+          const st = applyBorderVariant(explicitStyle || 4);
+          return `<c r="${ref}" s="${st}" t="inlineStr"><is><t>—</t></is></c>`;
         }
 
         if ((explicitType === "number" || typeof raw === "number") && Number.isFinite(Number(raw))) {
           const num = Number(raw);
-          const styleId = explicitStyle || (Number.isInteger(num) ? 5 : 6);
-          return `<c r="${ref}" s="${styleId}" t="n"><v>${num}</v></c>`;
+          const baseStyleId = explicitStyle || (Number.isInteger(num) ? 5 : 6);
+          const st = applyBorderVariant(baseStyleId);
+          return `<c r="${ref}" s="${st}" t="n"><v>${num}</v></c>`;
         }
 
         const str = String(raw);
-        let styleId = explicitStyle || 4;
+        let baseStyleId = explicitStyle || 4;
         if (!explicitStyle) {
-          if (/^(Đã hoàn thành|Hoàn thành|Đã chấm)$/i.test(str)) styleId = 7;
-          else if (/^(Chưa hoàn thành|Đang chờ chấm|Chờ chấm)$/i.test(str)) styleId = 8;
+          if (/^(Đã hoàn thành|Hoàn thành|Đã chấm)$/i.test(str)) baseStyleId = 7;
+          else if (/^(Chưa hoàn thành|Đang chờ chấm|Chờ chấm)$/i.test(str)) baseStyleId = 8;
         }
-        return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escapeXml(str)}</t></is></c>`;
+        const st = applyBorderVariant(baseStyleId);
+        return `<c r="${ref}" s="${st}" t="inlineStr"><is><t>${escapeXml(str)}</t></is></c>`;
       })
       .join("");
-    sheetRows.push(`<row r="${currentRow}" ht="20" customHeight="1">${cells}</row>`);
+    sheetRows.push(`<row r="${currentRow}" ht="21" customHeight="1">${cells}</row>`);
     currentRow++;
   }
 
@@ -203,6 +247,16 @@ function buildWorksheetXml({ title, subtitle, headers, rows }) {
   <sheetData>${sheetRows.join("")}</sheetData>
   ${mergeXml}
 </worksheet>`;
+}
+
+function buildDataCellXfsForBorder(borderId) {
+  return [
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="${borderId}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>`,
+    `<xf numFmtId="1" fontId="0" fillId="0" borderId="${borderId}" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>`,
+    `<xf numFmtId="164" fontId="0" fillId="0" borderId="${borderId}" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>`,
+    `<xf numFmtId="0" fontId="4" fillId="4" borderId="${borderId}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>`,
+    `<xf numFmtId="0" fontId="5" fillId="5" borderId="${borderId}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>`
+  ].join("\n    ");
 }
 
 function buildStylesXml() {
@@ -227,29 +281,49 @@ function buildStylesXml() {
     <fill><patternFill patternType="solid"><fgColor rgb="FFE6F6EE"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="2">
+  <borders count="5">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border>
-      <left style="thin"><color rgb="FFD8E2EF"/></left>
-      <right style="thin"><color rgb="FFD8E2EF"/></right>
-      <top style="thin"><color rgb="FFD8E2EF"/></top>
-      <bottom style="thin"><color rgb="FFD8E2EF"/></bottom>
+      <left style="thin"><color rgb="FF94A3B8"/></left>
+      <right style="thin"><color rgb="FF94A3B8"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF94A3B8"/></left>
+      <right style="thin"><color rgb="FF94A3B8"/></right>
+      <top style="medium"><color rgb="FF123B70"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF94A3B8"/></left>
+      <right style="thin"><color rgb="FF94A3B8"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="medium"><color rgb="FF123B70"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF94A3B8"/></left>
+      <right style="thin"><color rgb="FF94A3B8"/></right>
+      <top style="medium"><color rgb="FF123B70"/></top>
+      <bottom style="medium"><color rgb="FF123B70"/></bottom>
       <diagonal/>
     </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="9">
+  <cellXfs count="24">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="1" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="4" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    ${buildDataCellXfsForBorder(1)}
+    ${buildDataCellXfsForBorder(2)}
+    ${buildDataCellXfsForBorder(3)}
+    ${buildDataCellXfsForBorder(4)}
   </cellXfs>
 </styleSheet>`;
 }

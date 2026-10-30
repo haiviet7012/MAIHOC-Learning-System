@@ -338,7 +338,7 @@ export function translateSqlToPostgres(rawSql, rawArgs = [], options = {}) {
   // Safe integer cast for grade ordering
   sql = sql.replace(
     /CAST\s*\(\s*([a-zA-Z0-9_.]*grade)\s+AS\s+INTEGER\s*\)/gi,
-    "CASE WHEN $1 ~ '^[0-9]+$' THEN CAST($1 AS INTEGER) ELSE 99 END"
+    (_match, gradeCol) => `CASE WHEN ${gradeCol} ~ '^[0-9]+$' THEN CAST(${gradeCol} AS INTEGER) ELSE 99 END`
   );
 
   // Unpack arguments

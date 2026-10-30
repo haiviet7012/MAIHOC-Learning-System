@@ -392,7 +392,7 @@ export function installTestsModule({
       },
       {
         id: "test-sample-toan10-cho-cham-02",
-        title: "Bài kiểm tra 30 phút Toán 10 — Mệnh đề & Tập hợp (Chờ giảng viên chấm)",
+        title: "Bài kiểm tra 30 phút Toán 10 — Mệnh đề & Tập hợp (Chờ giáo viên chấm)",
         subject: "Toán",
         grade: "10",
         openAt: "2026-10-15T08:00",
@@ -929,7 +929,7 @@ export function installTestsModule({
 
     const nowIso = new Date().toISOString();
     const reviewerId = reviewerUser?.id || null;
-    const reviewerName = reviewerUser?.name || "Giảng viên";
+    const reviewerName = reviewerUser?.name || "Giáo viên";
     let newlyGradedCount = 0;
 
     const tx = db.transaction(async () => {
@@ -1053,7 +1053,7 @@ export function installTestsModule({
             sub.user_id,
             "test_graded",
             `Đã có điểm: ${sub.title}`,
-            `Giảng viên đã duyệt đáp án và chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(
+            `Giáo viên đã duyệt đáp án và chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(
               evaluated.score
             ).toFixed(2)}/${evaluated.scale || 10}.`
           );
@@ -1085,19 +1085,6 @@ export function installTestsModule({
         `)
         .all(...(subordinateAdmin ? [req.user.id] : []));
 
-      let visibleRows = rows;
-      let newCount = 0;
-      if (req.user?.id) {
-        const account = await db.prepare("SELECT account_type,role FROM users WHERE id=?").get(req.user.id);
-        if (account?.account_type === "school" && account?.role !== "admin") {
-          const memberships = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=?").all(req.user.id);
-          const classCodes = memberships.map(item => String(item.class_code));
-          visibleRows = rows.filter(row => !row.class_code || classCodes.includes(String(row.class_code)));
-          newCount = visibleRows.filter(row => row.class_code && new Date(row.open_at).getTime() <= Date.now() &&
-            new Date(row.close_at).getTime() >= Date.now()).length;
-        }
-      }
-
       const userSubmissionsByTest = new Map();
       if (req.user?.id) {
         const subs = await db
@@ -1122,9 +1109,43 @@ export function installTestsModule({
         return Number.isNaN(d.getTime()) ? null : d.getTime();
       };
 
+      let visibleRows = rows;
+      let newCount = 0;
+      let isAdminOrTeacher = Boolean(
+        req.user && (req.user.role === "admin" || req.user.role === "teacher" || req.user.isTeacher)
+      );
+      if (req.user?.id) {
+        const account = await db.prepare("SELECT account_type, role, admin_level FROM users WHERE id=?").get(req.user.id);
+        if (account) {
+          isAdminOrTeacher =
+            account.role === "admin" || account.role === "teacher" || Number(account.admin_level) >= 1;
+        }
+        if (!isAdminOrTeacher) {
+          const memberships = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=?").all(req.user.id);
+          const classCodes = memberships.map(item => String(item.class_code).toUpperCase());
+          if (account?.account_type === "school" || classCodes.length > 0) {
+            visibleRows = rows.filter(row => {
+              if (!row.class_code) return true;
+              const code = String(row.class_code).toUpperCase();
+              return code === "ALL" || classCodes.includes(code);
+            });
+          } else {
+            visibleRows = rows.filter(row => !row.class_code || String(row.class_code).toUpperCase() === "ALL");
+          }
+          newCount = visibleRows.filter(row => {
+            if (!row.class_code) return false;
+            if (userSubmissionsByTest.has(row.id)) return false;
+            const openMs = parseTimeMs(row.open_at);
+            const closeMs = parseTimeMs(row.close_at);
+            return (openMs == null || openMs <= nowMs) && (closeMs == null || closeMs >= nowMs);
+          }).length;
+        }
+      }
+
       const formatted = visibleRows.map((row) => {
         const sub = userSubmissionsByTest.get(row.id) || null;
-        const completed = Boolean(sub);
+        const totalSubmissionsCount = Number(row.totalSubmissionsCount) || 0;
+        const completed = isAdminOrTeacher ? totalSubmissionsCount > 0 : Boolean(sub);
         const openMs = parseTimeMs(row.open_at);
         const closeMs = parseTimeMs(row.close_at);
         const isNotOpenYet = openMs != null && nowMs < openMs;
@@ -1244,8 +1265,11 @@ export function installTestsModule({
         }
 
         const b = req.body || {};
-        const classCode = String(b.classCode || "").trim().toUpperCase();
-        const isValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(classCode);
+        const rawClassCode = String(b.classCode || "").trim().toUpperCase();
+        const isAllGrade = rawClassCode === "ALL" || rawClassCode === "CA_KHOI" || rawClassCode === "CẢ KHỐI";
+        const classCode = isAllGrade ? "ALL" : rawClassCode;
+        const isValidSpecificClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(classCode);
+        const isValidClass = isAllGrade || isValidSpecificClass;
         const title = String(b.title || documentFile.originalname || "").trim().slice(0, 140);
         const subject = String(b.subject || "Toán").trim();
         const grade = String(b.grade || "10").trim();
@@ -1263,9 +1287,11 @@ export function installTestsModule({
         if (req.user?.role === "admin" && Number(req.user.adminLevel) < 2) {
           const teacher = await db.prepare("SELECT account_type FROM users WHERE id=?").get(req.user.id);
           if (teacher?.account_type === "school") {
-            if (!isValidClass) return res.status(400).json({ error: "Giáo viên trường cần chọn lớp nhận bài kiểm tra." });
-            const assigned = await db.prepare("SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1").get(req.user.id, classCode);
-            if (!assigned) return res.status(403).json({ error: "Bạn chỉ được giao bài kiểm tra cho lớp đã được phân công." });
+            if (!isValidClass) return res.status(400).json({ error: "Giáo viên trường cần chọn lớp nhận bài kiểm tra (hoặc Cả khối)." });
+            if (!isAllGrade) {
+              const assigned = await db.prepare("SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1").get(req.user.id, classCode);
+              if (!assigned) return res.status(403).json({ error: "Bạn chỉ được giao bài kiểm tra cho lớp đã được phân công hoặc chọn Cả khối." });
+            }
           }
         }
         if (classCode && !isValidClass) return res.status(400).json({ error: "Lớp nhận bài kiểm tra không hợp lệ." });
@@ -1431,7 +1457,19 @@ export function installTestsModule({
         });
         await saveTx();
 
-        if (isValidClass) {
+        if (isAllGrade) {
+          const allStudents = await db.prepare(`
+            SELECT id AS user_id FROM users
+            WHERE role NOT IN ('admin', 'teacher') AND COALESCE(admin_level, 0) < 1
+          `).all();
+          await Promise.all(allStudents.map(student => notifyUser?.(
+            student.user_id,
+            "new_class_test",
+            `Bài kiểm tra mới: ${title}`,
+            `Khối ${grade} (Cả khối) có bài kiểm tra môn ${subject} mới.`,
+            "/"
+          )));
+        } else if (isValidSpecificClass) {
           const members = await db.prepare(`
             SELECT m.user_id FROM school_class_members m
             JOIN users u ON u.id=m.user_id
@@ -1470,7 +1508,7 @@ export function installTestsModule({
             answerMode === "deferred"
               ? "Đã tạo bài kiểm tra ở chế độ Chưa nhập đáp án ngay (Học viên nộp bài sẽ hiện 'Đang chờ chấm')."
               : answerEntryMethod === "ai"
-                ? "Đã tạo bài kiểm tra. AI đang giải đề để giảng viên duyệt lại."
+                ? "Đã tạo bài kiểm tra. AI đang giải đề để giáo viên duyệt lại."
                 : "Đã tạo bài kiểm tra. Hãy nhập và xác nhận bộ đáp án chuẩn."
         });
       } catch (error) {
@@ -1600,7 +1638,7 @@ export function installTestsModule({
         questionCount: targets.length || Object.keys(answers).length || 0,
         answeredCount: Object.values(answers).filter((v) => String(v).trim() !== "").length,
         autoSubmittedFullscreen,
-        message: "Đang chờ chấm — Bài kiểm tra của bạn đã được lưu và đang chờ giảng viên chấm điểm."
+        message: "Đang chờ chấm — Bài kiểm tra của bạn đã được lưu và đang chờ giáo viên chấm điểm."
       };
     }
 
@@ -1751,7 +1789,7 @@ export function installTestsModule({
           req.user.id,
           "test_pending_grade",
           `Đã nộp ${testRow.title} (Đang chờ chấm)`,
-          `Bài làm "${testRow.title}" của bạn đã được ghi nhận và đang chờ giảng viên chấm điểm.`
+          `Bài làm "${testRow.title}" của bạn đã được ghi nhận và đang chờ giáo viên chấm điểm.`
         );
         const submissionNotice =
           `Học viên ${req.user.name} (${req.user.email}) vừa nộp bài "${testRow.title}" — đang chờ chấm điểm.`;
@@ -1777,6 +1815,14 @@ export function installTestsModule({
             )
         );
       }
+
+      try {
+        await db
+          .prepare(
+            "UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND type = 'new_class_test' AND title = ? AND read_at IS NULL"
+          )
+          .run(req.user.id, `Bài kiểm tra mới: ${testRow.title}`);
+      } catch {}
 
       return fullPayload;
     });
@@ -1848,7 +1894,7 @@ export function installTestsModule({
         percent: row.percent != null ? Number(row.percent) : null,
         message: row.graded
           ? result.message
-          : "Đang chờ chấm — Bài kiểm tra của bạn đang chờ giảng viên chấm điểm."
+          : "Đang chờ chấm — Bài kiểm tra của bạn đang chờ giáo viên chấm điểm."
       },
       createdAt: row.submitted_at,
       submittedAt: row.submitted_at,
@@ -2164,7 +2210,7 @@ export function installTestsModule({
     const answerKeyPayload = {
       schemaVersion: 1,
       source: "manual-entry",
-      model: "Giảng viên chấm",
+      model: "Giáo viên chấm",
       version: 1,
       scale: 10,
       answers: answersMap,
@@ -2284,7 +2330,7 @@ export function installTestsModule({
         sub.user_id,
         "test_graded",
         `Đã có điểm: ${sub.title}`,
-        `Giảng viên đã chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(evaluated.score).toFixed(
+        `Giáo viên đã chấm bài kiểm tra "${sub.title}" của bạn. Điểm số: ${Number(evaluated.score).toFixed(
           2
         )}/${evaluated.scale || 10}.${teacherNote ? " Nhận xét: " + teacherNote : ""}`
       );
@@ -2296,7 +2342,7 @@ export function installTestsModule({
             INSERT INTO exam_solutions (
               document_id, status, progress, phase, model, generated_json, approved_json,
               solution_version, generated_at, approved_at, approved_by, updated_at
-            ) VALUES (?, 'ready', 100, 'Đã duyệt, sẵn sàng chấm', 'Giảng viên chấm', ?, ?, 1, datetime('now'), datetime('now'), ?, datetime('now'))
+            ) VALUES (?, 'ready', 100, 'Đã duyệt, sẵn sàng chấm', 'Giáo viên chấm', ?, ?, 1, datetime('now'), datetime('now'), ?, datetime('now'))
             ON CONFLICT(document_id) DO UPDATE SET
               status = 'ready',
               progress = 100,
@@ -2430,7 +2476,7 @@ export function installTestsModule({
             other.user_id,
             "test_graded",
             `Đã có điểm: ${other.title}`,
-            `Giảng viên đã chấm bài kiểm tra "${other.title}" của bạn. Điểm số: ${Number(
+            `Giáo viên đã chấm bài kiểm tra "${other.title}" của bạn. Điểm số: ${Number(
               otherEval.score
             ).toFixed(2)}/${otherEval.scale || 10}.`
           );

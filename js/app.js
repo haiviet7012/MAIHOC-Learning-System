@@ -125,6 +125,13 @@ function go(route, params = {}) {
     // Ghi trang mới vào lịch sử điều hướng của Chrome.
     history.pushState(saveRouteHistory(), "", window.location.href);
     render();
+    if (route === "tests") {
+        refreshTestsQueue().then(() => {
+            if (state.route === "tests") {
+                view.innerHTML = renderTestsQueuePage(currentUser);
+            }
+        });
+    }
     if (route === "exam") window.scrollTo(0, 0);
 }
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
@@ -549,7 +556,7 @@ function resultPage() {
     const details = result?.graded
         ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><h2>Đối chiếu đáp án từng câu</h2>${renderGradeDetailsTable(rows)}`
         : isPendingGrade
-          ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giảng viên chấm điểm.")}</p>`
+          ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giáo viên chấm điểm.")}</p>`
           : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
     const isTestItem = d?.category === "test" || result?.isTest;
     const actions = isTestItem
@@ -700,7 +707,7 @@ function formatAdminCreatedAt(value) {
         const timestamp = Number(value);
         date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
     } else {
-        const raw = String(value).trim();
+        const raw = String(value).trim().replace(/(\.\d{3})\d+/, "$1").replace(/([+-]\d{2})$/, "$1:00");
         const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
         const normalized = raw.includes(" ") ? raw.replace(" ", "T") : raw;
         date = new Date(
@@ -1056,6 +1063,7 @@ function finishExam(options = {}) {
         state.gradeResult = result;
         if (isTest) {
             await refreshTestsQueue();
+            window.dispatchEvent(new Event("maihoc-auth-changed"));
         }
         go("result");
     });
@@ -1217,7 +1225,7 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giảng viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
+        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giáo viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -1606,7 +1614,7 @@ function applyAuthUI() {
     const adminButton = $("#admin-open");
     if (adminButton) {
         adminButton.hidden = !signedIn || !(isSuperAdmin || isTeacherAccount);
-        adminButton.textContent = isTeacherAccount ? "Trung tâm giảng viên" : "Quản trị";
+        adminButton.textContent = isTeacherAccount ? "Trung tâm giáo viên" : "Quản trị";
     }
     if ($("#school-classes-open")) {
         const canOpenSchoolClasses = isSuperAdmin || isTeacherAccount || (isStudentAccount && (currentUser?.accountType === "school" || Boolean(currentUser?.classCode)));
@@ -1764,7 +1772,7 @@ async function loadAccountDeletionRequests(){
     const requests=data.requests||[];
     const pending=requests.filter(r=>r.status==="pending");
     if(!pending.length){box.innerHTML='<p class="muted">Không có yêu cầu chờ duyệt.</p>';return;}
-    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giảng viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
+    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giáo viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
 document.addEventListener("click", e => {
@@ -1808,7 +1816,7 @@ document.addEventListener("submit",async e=>{
     if (teachingClassesGroup) teachingClassesGroup.hidden = false;
     toast(data.message || (data.action==="promoted"?"Đã cập nhật phân công Giáo viên.":"Đã tạo tài khoản Giáo viên mới."),"success");
     await loadAdminUsers();
-  }catch(error){toast(error.message||"Không tạo được Giảng viên.","error");}
+  }catch(error){toast(error.message||"Không tạo được Giáo viên.","error");}
   finally{button.disabled=false;}
 });
 document.addEventListener("click",async e=>{

@@ -531,7 +531,7 @@ function formatVietnameseDate(value) {
     const timestamp = Number(value);
     date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
   } else {
-    const raw = String(value).trim();
+    const raw = String(value).trim().replace(/(\.\d{3})\d+/, "$1").replace(/([+-]\d{2})$/, "$1:00");
     const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
     const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
     const utcValue = !hasTimezone && /^\d{4}-\d{2}-\d{2}/.test(normalized)
@@ -1030,7 +1030,7 @@ async function loadAnswerKeySections(){
   }
 }
 
-function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ giảng viên / admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
+function solutionLabel(status){return ({queued:"Đang chờ xử lý",reading:"Đang đọc đề",solving:"AI đang giải đề",review:"Chờ giáo viên / admin duyệt",ready:"Đã duyệt, sẵn sàng chấm",failed:"Không tạo được lời giải",not_started:"Chưa tạo lời giải"})[status]||status;}
 function solutionMathText(value){
   let text=String(value??"")
     .replace(/\\\\/g,"\n")
@@ -1437,7 +1437,7 @@ document.addEventListener("click",async e=>{
       const autoGradeNote=Number(saveRes?.regradedSubmissionsCount)>0
         ?` (Đã tự động chấm điểm ${saveRes.regradedSubmissionsCount} bài nộp của học viên)`
         :"";
-      toastNotice((manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của giảng viên / admin.")+autoGradeNote,"success");
+      toastNotice((manualMode?"Đã lưu bộ đáp án nhập thủ công.":"Đã lưu bộ đáp án chuẩn theo xác nhận của giáo viên / admin.")+autoGradeNote,"success");
     }catch(error){if(errNode){errNode.hidden=false;errNode.textContent=error.message;}}
     finally{setSolutionReviewReady();}
     return;
