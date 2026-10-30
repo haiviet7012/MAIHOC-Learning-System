@@ -10,10 +10,10 @@ export function setTheme(dark){
   localStorage.setItem("maihoc-theme",dark?"dark":"light");
   const btn=document.querySelector("#theme-toggle");
   if(btn){
-    const icon=dark?"☀":"☾";
-    const label=dark?"Light mode":"Dark mode";
-    btn.setAttribute("aria-label",label);
-    btn.title=label;
-    btn.innerHTML=`<span class="theme-toggle-icon" aria-hidden="true">${icon}</span><span class="button-label">${label}</span>`;
+    const icon=dark?"☾":"☀";
+    const title=dark?"Giao diện Tối (Nhấn để chuyển sang Sáng)":"Giao diện Sáng (Nhấn để chuyển sang Tối)";
+    btn.setAttribute("aria-label",title);
+    btn.title=title;
+    btn.innerHTML=`<span class="theme-toggle-icon" aria-hidden="true">${icon}</span>`;
   }
 }

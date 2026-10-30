@@ -1,5 +1,5 @@
 import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, setSubjectCatalog, getSubjectConfig, CATEGORIES } from "./data.js";
-import { initTheme } from "./theme.js";
+import { initTheme } from "./theme.js?v=20261031v1";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
 import {
     getDocuments,

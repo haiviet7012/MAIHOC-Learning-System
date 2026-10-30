@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20261030classjoin2">
+  <link rel="stylesheet" href="css/styles.css?v=20261031v1">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="css/tests.css?v=20261029v1">
-  <link rel="stylesheet" href="css/chat.css?v=20261030v1">
+  <link rel="stylesheet" href="css/chat.css?v=20261031v1">
   <link rel="stylesheet" href="js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
   <link rel="stylesheet" href="js/chemistry/ai-solver/solver.css?v=20261029v8">
   <link rel="stylesheet" href="js/ai-solver/solver.css?v=20261029v4">
@@ -34,10 +34,16 @@
 <body class="is-home-lobby">
   <div id="app" class="app-shell">
     <header class="topbar">
-      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">HỆ THỐNG HỌC TẬP</span></span></button>
+      <button class="brand" id="brand-home" aria-label="Về trang chủ">
+        <span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span>
+        <span class="brand-text-block">
+          <span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">HỆ THỐNG HỌC TẬP</span></span>
+          <span class="account-greeting" id="user-greeting" hidden></span>
+        </span>
+      </button>
       <div class="topbar-actions">
-        <span class="account-greeting" id="user-greeting" hidden></span>
-        <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
+
+
         <div class="inline-actions" id="auth-actions">
           <button class="icon-button" id="login-open">Đăng nhập</button>
           <button class="button primary small" id="register-open">Đăng ký</button>
@@ -51,7 +57,7 @@
           <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
         </div>
-        <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
+        <button class="icon-button icon-only-btn" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾</button>
         <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu">☰</button>
       </div>
       <nav class="subject-menu" id="subject-menu" aria-label="Danh sách môn học">
@@ -99,6 +105,11 @@
 
       <main id="view" class="view" tabindex="-1"></main>
     </div>
+
+    <button class="notification-launcher" id="notifications-open" aria-label="Mở thông báo" title="Thông báo" hidden>
+      <svg class="notification-launcher-icon" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span class="notification-count" id="notification-count" hidden>0</span>
+    </button>
 
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
   </div>
@@ -433,8 +444,8 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=20261030classjoin2"></script>
+  <script type="module" src="js/app.js?v=20261031v1"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="js/chat.js?v=20261030v1"></script>
+  <script type="module" src="js/chat.js?v=20261031v1"></script>
 </body>
 </html>
