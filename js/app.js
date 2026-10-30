@@ -1695,7 +1695,9 @@ document.addEventListener("change", e => {
   const select = field?.querySelector("select");
   const isHomeroom = e.target.value === "homeroom";
   if (field) field.hidden = !isHomeroom;
+  const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
   if (select) select.required = isHomeroom;
+  if (teachingClasses) teachingClasses.required = !isHomeroom;
 });
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;
