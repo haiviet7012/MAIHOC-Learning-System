@@ -1863,3 +1863,74 @@ body.test-open #online-dashboard-launcher {
   .ai-history-dialog { width:calc(100vw - 18px); max-height:92vh; padding:17px; }
   .ai-history-dialog-answer { max-height:62vh; }
 }
+
+/* Compact admin tables: show at most five data rows, then scroll inside the panel. */
+.admin-users-scroll {
+  max-height: 340px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.admin-users-scroll .admin-table {
+  min-width: 760px;
+}
+.admin-users-scroll .admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.admin-users-scroll .admin-table tbody tr {
+  height: 58px;
+}
+#approved-documents .admin-approved-documents-scroll {
+  max-height: 340px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+#approved-documents .admin-approved-documents-scroll .admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+#approved-documents .admin-approved-documents-scroll .admin-table tbody tr {
+  height: 58px;
+}
+
+/* Per-question result comparison: learner answer vs. the approved answer key. */
+.grade-details-table .result-answer-subitem {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.grade-details-table .result-answer-subitem:last-child {
+  margin-bottom: 0;
+}
+.grade-details-table td:nth-child(2),
+.grade-details-table td:nth-child(3) {
+  min-width: 170px;
+  max-width: 360px;
+}
+.grade-details-table td:nth-child(4) {
+  min-width: 135px;
+  white-space: nowrap;
+}
+
+/* The PDF toolbar uses a dark surface, so its open-file link must stay white. */
+.pdf-reader-toolbar a,
+.pdf-reader-toolbar a:visited,
+.pdf-reader-toolbar a:hover,
+.pdf-reader-toolbar a:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+.pdf-reader-toolbar a:hover {
+  opacity: .82;
+}
+@media (max-width: 620px) {
+  .admin-users-scroll,
+  #approved-documents .admin-approved-documents-scroll {
+    max-height: 340px;
+  }
+}
+
