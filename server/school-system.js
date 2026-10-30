@@ -47,6 +47,11 @@ export async function initSchoolSystemDatabase(db) {
     CREATE INDEX IF NOT EXISTS school_teacher_assignments_class_idx
       ON school_teacher_assignments(class_code, teacher_id);
 
+    CREATE TABLE IF NOT EXISTS school_document_reviews (
+      submission_id BIGINT PRIMARY KEY REFERENCES document_submissions(id) ON DELETE CASCADE,
+      class_code TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS school_class_change_requests (
       id TEXT PRIMARY KEY,
       class_code TEXT NOT NULL,
