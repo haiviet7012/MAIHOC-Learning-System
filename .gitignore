@@ -10,5 +10,3 @@ server/data/
 *.sqlite3
 *.db
 .env
-env
-.wrangler/
