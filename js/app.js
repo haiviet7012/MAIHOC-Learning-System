@@ -257,7 +257,7 @@ ${naturalScienceTools}
 <div class="grid four">
 ${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
 }
-function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
+function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", `Chọn khối lớp để xem tài liệu môn ${state.subject}.`)}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
 function resourceListPage(category, grade) {
     const list = by(grade, category);
     const isAssessment = category === "practice" || category === "exam";
@@ -1746,7 +1746,12 @@ $("#register-form").addEventListener("submit", async (event) => {
             submit.disabled = false;
     }
 });
+let logoutInProgress = false;
+let lastLogoutCompletedAt = 0;
 $("#logout-button").addEventListener("click", async () => {
+    if (logoutInProgress || Date.now() - lastLogoutCompletedAt < 1000)
+        return;
+    logoutInProgress = true;
     try {
         const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
         if (!response.ok) {
@@ -1758,10 +1763,14 @@ $("#logout-button").addEventListener("click", async () => {
         window.dispatchEvent(new Event("maihoc-auth-changed"));
         if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center" || state.route === "tests")
             go("home");
+        lastLogoutCompletedAt = Date.now();
         toast("Bạn đã đăng xuất.", "success");
     }
     catch (error) {
         toast(error.message || "Không thể đăng xuất.", "error");
+    }
+    finally {
+        logoutInProgress = false;
     }
 });
 // Khởi tạo giao diện như bình thường.
