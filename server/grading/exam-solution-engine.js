@@ -85,7 +85,7 @@ async function extractPdfContent(buffer,{includeImages=true}={}) {
 
 function isTransientGeminiError(error) {
   const text = `${error?.status || ""} ${error?.code || ""} ${error?.message || ""}`.toLowerCase();
-  return /(^|\\D)(500|502|503|504)(\\D|$)|overload|high demand|temporarily unavailable|service unavailable|deadline exceeded/.test(text);
+  return /500|502|503|504|overload|high demand|temporarily unavailable|service unavailable|deadline exceeded/.test(text);
 }
 const waitForGeminiRetry = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
