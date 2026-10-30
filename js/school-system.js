@@ -66,23 +66,22 @@ function renderTeacherMessageForm() {
 }
 
 async function renderAdminTools() {
-  try {
-    const [requestsData, messagesData] = await Promise.all([
-      request("/api/school/admin/class-change-requests"),
-      request("/api/school/admin/teacher-messages")
-    ]);
-    const requests = (requestsData.requests || []).map(item =>
-      '<article class="school-admin-request"><div><strong>' + esc(item.action === "add" ? "Thêm học sinh" : "Xóa học sinh") + ' · ' + classLabel(item.classCode) + '</strong><small>' + esc(item.studentName) + ' (' + esc(item.studentEmail) + ') · Giáo viên: ' + esc(item.teacherName) + '</small></div><div class="school-request-actions"><button class="button primary small" data-school-review-request="' + esc(item.id) + '" data-decision="approve">Duyệt</button><button class="button secondary small" data-school-review-request="' + esc(item.id) + '" data-decision="reject">Từ chối</button></div></article>'
-    ).join("");
-    const messages = (messagesData.messages || []).map(item =>
-      '<article class="school-admin-request"><div><strong>' + esc(item.title) + '</strong><small>' + esc(item.teacherName) + ' · ' + esc(item.createdAt) + '<br>' + esc(item.message) + '</small></div><span class="role-chip">' + esc(item.status === "read" ? "Đã đọc" : "Mới") + '</span></article>'
-    ).join("");
-    return '<section class="school-admin-tools"><h2>Yêu cầu thay đổi thành viên chờ duyệt</h2><div class="school-admin-list">' + (requests || '<p class="muted">Không có yêu cầu đang chờ.</p>') + '</div><h2>Thông báo từ giáo viên</h2><div class="school-admin-list">' + (messages || '<p class="muted">Chưa có thông báo từ giáo viên.</p>') + '</div></section>';
-  } catch (error) {
-    return '<p class="auth-error">Không tải được công cụ quản trị lớp: ' + esc(error.message) + '</p>';
-  }
+  const results = await Promise.allSettled([
+    request("/api/school/admin/class-change-requests"),
+    request("/api/school/admin/teacher-messages")
+  ]);
+  const requestsData = results[0].status === "fulfilled" ? results[0].value : { requests: [] };
+  const messagesData = results[1].status === "fulfilled" ? results[1].value : { messages: [] };
+  const requests = (requestsData.requests || []).map(item =>
+    '<article class="school-admin-request"><div><strong>' + esc(item.action === "add" ? "Thêm học sinh" : "Xóa học sinh") + " · " + classLabel(item.classCode) + '</strong><small>' + esc(item.studentName) + " (" + esc(item.studentEmail) + ") · Giáo viên: " + esc(item.teacherName) + '</small></div><div class="school-request-actions"><button class="button primary small" data-school-review-request="' + esc(item.id) + '" data-decision="approve">Duyệt</button><button class="button secondary small" data-school-review-request="' + esc(item.id) + '" data-decision="reject">Từ chối</button></div></article>'
+  ).join("");
+  const messages = (messagesData.messages || []).map(item =>
+    '<article class="school-admin-request"><div><strong>' + esc(item.title) + '</strong><small>' + esc(item.teacherName) + " · " + esc(item.createdAt) + '<br>' + esc(item.message) + '</small></div><span class="role-chip">' + esc(item.status === "read" ? "Đã đọc" : "Mới") + '</span></article>'
+  ).join("");
+  const reqError = results[0].status === "rejected" ? '<p class="muted tiny">Không tải được yêu cầu: ' + esc(results[0].reason?.message || "Lỗi API") + '</p>' : "";
+  const msgError = results[1].status === "rejected" ? '<p class="muted tiny">Không tải được thông báo: ' + esc(results[1].reason?.message || "Lỗi API") + '</p>' : "";
+  return '<section class="school-admin-tools"><h2>Yêu cầu thay đổi thành viên chờ duyệt</h2><div class="school-admin-list">' + (requests || '<p class="muted">Không có yêu cầu đang chờ.</p>') + '</div>' + reqError + '<h2>Thông báo từ giáo viên</h2><div class="school-admin-list">' + (messages || '<p class="muted">Chưa có thông báo từ giáo viên.</p>') + '</div>' + msgError + '</section>';
 }
-
 export function wireSchoolEvents(onNavigate) {
   document.addEventListener("click", async event => {
     const classButton = event.target.closest("[data-school-class]");

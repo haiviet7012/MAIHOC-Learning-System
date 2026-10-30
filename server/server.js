@@ -1129,6 +1129,16 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
     .prepare("SELECT id,name,email,role,admin_level,created_at,(SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class FROM users ORDER BY id DESC LIMIT 500")
     .all();
+  const teacherAssignments = await db.prepare("SELECT teacher_id,class_code,subject,assignment_type FROM school_teacher_assignments ORDER BY class_code,subject").all();
+  const assignmentsByTeacher = new Map();
+  for (const assignment of teacherAssignments) {
+    const key = Number(assignment.teacher_id);
+    const entry = assignmentsByTeacher.get(key) || { teachingClasses: [], subjects: [], homeroomClass: null };
+    if (!entry.teachingClasses.includes(assignment.class_code)) entry.teachingClasses.push(assignment.class_code);
+    if (assignment.assignment_type === "homeroom") entry.homeroomClass = assignment.class_code;
+    if (assignment.assignment_type === "subject" && assignment.subject && !entry.subjects.includes(assignment.subject)) entry.subjects.push(assignment.subject);
+    assignmentsByTeacher.set(key, entry);
+  }
   const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
   const total = Number(totalRow?.count || 0);
   const formattedUsers = users.map(user => {
@@ -1136,7 +1146,9 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     const createdAt = user.created_at ?? user.createdAt ?? null;
     return {
       ...publicAccount,
-      homeroomClass: user.homeroom_class || null,
+      homeroomClass: user.homeroom_class || assignmentsByTeacher.get(Number(user.id))?.homeroomClass || null,
+      teachingClasses: assignmentsByTeacher.get(Number(user.id))?.teachingClasses || [],
+      subjects: assignmentsByTeacher.get(Number(user.id))?.subjects || [],
       createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
     };
   });
@@ -1175,6 +1187,7 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
     if (existing.role === "admin" && Number(existing.admin_level) >= 1) {
       return res.status(409).json({ error: "Tài khoản này đã là Admin cấp dưới." });
     }
+    const savedTeacherProfile = await saveTeacherAssignments(db, existing.id, teacherProfile);
     const promote = db.transaction(async () => {
       await db
         .prepare("UPDATE users SET role='admin',admin_level=1,account_type='school' WHERE id=? AND admin_level<2")
@@ -1191,11 +1204,10 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
       return updated;
     });
     const updated = await promote();
-    const savedTeacherProfile = await saveTeacherAssignments(db, updated.id, teacherProfile);
     return res.json({
       ok: true,
       action: "promoted",
-      user: publicUser(updated),
+      user: { ...publicUser(updated), teacherProfile: savedTeacherProfile },
       message:
         "Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."
     });
