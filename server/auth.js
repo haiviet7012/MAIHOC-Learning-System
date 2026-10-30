@@ -59,7 +59,7 @@ export function publicUser(user) {
     role: user.role,
     adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
     accountType: String(user.account_type ?? user.accountType ?? "external"),
-    homeroomClass: user.homeroom_class ?? user.homeroomClass ?? null,
+    ...((user.homeroom_class ?? user.homeroomClass) ? { homeroomClass: user.homeroom_class ?? user.homeroomClass } : {}),
     createdAt
   };
 }
