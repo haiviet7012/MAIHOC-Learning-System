@@ -28,6 +28,32 @@ export async function initSchoolSystemDatabase(db) {
     CREATE INDEX IF NOT EXISTS school_class_members_class_idx
       ON school_class_members(class_code, user_id);
 
+    CREATE TABLE IF NOT EXISTS school_class_join_locks (
+      user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      class_code TEXT NOT NULL,
+      joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT INTO school_class_join_locks(user_id,class_code,joined_at)
+    SELECT user_id,class_code,created_at FROM school_class_members
+    ON CONFLICT(user_id) DO NOTHING;
+
+    CREATE TABLE IF NOT EXISTS school_class_leave_requests (
+      id TEXT PRIMARY KEY,
+      class_code TEXT NOT NULL,
+      student_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at TEXT,
+      reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS school_class_leave_requests_class_idx
+      ON school_class_leave_requests(class_code,status,created_at);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS school_class_leave_requests_pending_idx
+      ON school_class_leave_requests(student_id,class_code) WHERE status='pending';
+
     CREATE TABLE IF NOT EXISTS school_teacher_assignments (
       id TEXT PRIMARY KEY,
       teacher_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -221,10 +247,28 @@ export function installSchoolSystemRoutes(app, deps) {
       isTeacherUser(user) &&
       assignments.some(row => Number(row.id) === Number(user.id) && row.assignmentType === "homeroom")
     );
+    const leaveRequests = canManageMembers ? await db.prepare(`
+      SELECT r.id,r.class_code AS classCode,r.created_at AS createdAt,
+        u.id AS studentId,u.name AS studentName,u.email AS studentEmail
+      FROM school_class_leave_requests r
+      JOIN users u ON u.id=r.student_id
+      WHERE r.class_code=? AND r.status='pending'
+      ORDER BY r.created_at,r.id
+    `).all(classCode) : [];
+    const leaveRequest = !isSuperAdminUser(user) && !isTeacherUser(user)
+      ? await db.prepare(`
+          SELECT id,status,created_at AS createdAt
+          FROM school_class_leave_requests
+          WHERE student_id=? AND class_code=?
+          ORDER BY created_at DESC LIMIT 1
+        `).get(user.id, classCode)
+      : null;
     return {
       classCode,
       canManageMembers,
       isHomeroomTeacher,
+      leaveRequests,
+      leaveRequest: leaveRequest || null,
       teachers: [...teacherMap.values()].sort((a, b) => Number(b.isHomeroom) - Number(a.isHomeroom)),
       students: students.map(s => ({
         id: Number(s.id),
@@ -353,13 +397,33 @@ export function installSchoolSystemRoutes(app, deps) {
     if (alreadyMember) {
       return res.status(409).json({ error: `Học sinh ${target.name} (${target.email}) đã có trong danh sách lớp ${classCode}.` });
     }
+    const previousClass = await db
+      .prepare("SELECT class_code FROM school_class_members WHERE user_id=? LIMIT 1")
+      .get(target.id);
+    const joinLock = await db
+      .prepare("SELECT class_code FROM school_class_join_locks WHERE user_id=?")
+      .get(target.id);
+    if (previousClass || joinLock) {
+      return res.status(409).json({
+        error: joinLock?.class_code
+          ? `Học sinh đã được ghi nhận tham gia lớp ${joinLock.class_code}; không thể thêm sang lớp khác.`
+          : "Học sinh đã thuộc một lớp khác."
+      });
+    }
 
     const addTx = db.transaction(async () => {
+      await db.prepare("INSERT INTO school_class_join_locks(user_id,class_code) VALUES(?,?)").run(target.id, classCode);
       await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(target.id);
-      await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(target.id);
       await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(target.id, classCode);
     });
-    await addTx();
+    try {
+      await addTx();
+    } catch (error) {
+      if (error?.pgCode === "23505" || error?.code === "23505" || /constraint|unique/i.test(String(error?.code || ""))) {
+        return res.status(409).json({ error: "Học sinh đã được ghi nhận tham gia một lớp trước đó." });
+      }
+      throw error;
+    }
 
     await notifyUser?.(
       target.id,
@@ -408,22 +472,44 @@ export function installSchoolSystemRoutes(app, deps) {
     return res.json({ ok: true, classCode, removedStudentId: studentId });
   });
 
-  // Học sinh tự bấm nút "Tham gia lớp" để vào lớp của giáo viên (Ảnh 2)
+  // Học sinh của trường chọn lớp một lần duy nhất; lịch sử được giữ kể cả khi rời lớp.
   app.post("/api/school/join-class", requireSameOrigin, requireAuth, async (req, res) => {
     if (isSuperAdminUser(req.user) || isTeacherUser(req.user)) {
-      return res.status(403).json({ error: "Chức năng Tham gia lớp chỉ dành cho tài khoản Học sinh." });
+      return res.status(403).json({ error: "Chức năng tham gia lớp chỉ dành cho tài khoản Học sinh." });
     }
     const classCode = String(req.body?.classCode || "").trim().toUpperCase();
     if (!isClassCode(classCode)) {
       return res.status(400).json({ error: "Vui lòng chọn lớp hợp lệ (từ 10A1 đến 12C9)." });
     }
 
+    const joinLock = await db.prepare(
+      "SELECT class_code FROM school_class_join_locks WHERE user_id=?"
+    ).get(req.user.id);
+    const currentMembership = await db.prepare(
+      "SELECT class_code FROM school_class_members WHERE user_id=? LIMIT 1"
+    ).get(req.user.id);
+    if (joinLock || currentMembership) {
+      const joinedClass = joinLock?.class_code || currentMembership?.class_code;
+      return res.status(409).json({
+        error: joinedClass
+          ? `Bạn đã tham gia Lớp ${joinedClass}. Mỗi tài khoản chỉ được chọn lớp một lần; hãy liên hệ giáo viên chủ nhiệm nếu cần hỗ trợ.`
+          : "Tài khoản này đã tham gia lớp học trước đó và không thể tham gia lần thứ hai."
+      });
+    }
+
     const joinTx = db.transaction(async () => {
+      await db.prepare("INSERT INTO school_class_join_locks(user_id,class_code) VALUES(?,?)").run(req.user.id, classCode);
       await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(req.user.id);
-      await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(req.user.id);
       await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(req.user.id, classCode);
     });
-    await joinTx();
+    try {
+      await joinTx();
+    } catch (error) {
+      if (error?.pgCode === "23505" || error?.code === "23505" || /constraint|unique/i.test(String(error?.code || ""))) {
+        return res.status(409).json({ error: "Tài khoản này đã được ghi nhận tham gia một lớp trước đó." });
+      }
+      throw error;
+    }
 
     const homeroom = await db.prepare(`
       SELECT a.teacher_id AS teacherId, u.name AS teacherName
@@ -457,6 +543,100 @@ export function installSchoolSystemRoutes(app, deps) {
       user: updatedUser,
       message: `Đã tham gia Lớp ${classCode} thành công!`
     });
+  });
+
+  // Học sinh gửi yêu cầu rời lớp; membership chỉ bị xóa khi GVCN chấp thuận.
+  app.post("/api/school/classes/:classCode/leave-requests", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (!isClassCode(classCode)) return res.status(400).json({ error: "Mã lớp không hợp lệ." });
+    if (isSuperAdminUser(req.user) || isTeacherUser(req.user)) {
+      return res.status(403).json({ error: "Chỉ học sinh mới có thể gửi yêu cầu rời lớp." });
+    }
+
+    const membership = await db.prepare(
+      "SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?"
+    ).get(req.user.id, classCode);
+    if (!membership) return res.status(404).json({ error: "Bạn không còn là thành viên của lớp này." });
+
+    const existingPending = await db.prepare(
+      "SELECT id FROM school_class_leave_requests WHERE student_id=? AND class_code=? AND status='pending' LIMIT 1"
+    ).get(req.user.id, classCode);
+    if (existingPending) return res.status(409).json({ error: "Yêu cầu rời lớp của bạn đang chờ giáo viên duyệt." });
+
+    const homeroom = await db.prepare(`
+      SELECT a.teacher_id AS teacherId
+      FROM school_teacher_assignments a
+      WHERE a.class_code=? AND a.assignment_type='homeroom'
+      LIMIT 1
+    `).get(classCode);
+    if (!homeroom?.teacherId) {
+      return res.status(409).json({ error: "Lớp chưa có giáo viên chủ nhiệm để duyệt yêu cầu rời lớp." });
+    }
+
+    const id = crypto.randomUUID();
+    try {
+      await db.prepare(
+        "INSERT INTO school_class_leave_requests(id,class_code,student_id) VALUES(?,?,?)"
+      ).run(id, classCode, req.user.id);
+    } catch (error) {
+      if (error?.pgCode === "23505" || error?.code === "23505" || /constraint|unique/i.test(String(error?.code || ""))) {
+        return res.status(409).json({ error: "Yêu cầu rời lớp của bạn đang chờ giáo viên duyệt." });
+      }
+      throw error;
+    }
+
+    await notifyUser?.(
+      homeroom.teacherId,
+      "school_class_leave_request",
+      `Yêu cầu rời lớp ${classCode}`,
+      `Học sinh ${req.user.name} (${req.user.email}) đã gửi yêu cầu rời lớp. Vui lòng mở lớp để duyệt.`,
+      "/"
+    );
+    return res.status(201).json({ ok: true, id, message: "Đã gửi yêu cầu rời lớp. Hãy chờ giáo viên chủ nhiệm duyệt." });
+  });
+
+  app.post("/api/school/classes/:classCode/leave-requests/:requestId/review", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    const requestId = String(req.params.requestId || "");
+    const decision = String(req.body?.decision || "");
+    if (!isClassCode(classCode) || !requestId) return res.status(400).json({ error: "Thông tin yêu cầu không hợp lệ." });
+    if (!["approve", "reject"].includes(decision)) return res.status(400).json({ error: "Quyết định không hợp lệ." });
+    if (!await requireHomeroom(req, res, classCode)) return;
+
+    const leaveRequest = await db.prepare(
+      "SELECT id,student_id AS studentId FROM school_class_leave_requests WHERE id=? AND class_code=? AND status='pending'"
+    ).get(requestId, classCode);
+    if (!leaveRequest) return res.status(404).json({ error: "Yêu cầu không tồn tại hoặc đã được xử lý." });
+
+    if (decision === "approve") {
+      const membership = await db.prepare(
+        "SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?"
+      ).get(leaveRequest.studentId, classCode);
+      if (!membership) return res.status(409).json({ error: "Học sinh không còn thuộc lớp này." });
+    }
+
+    await db.transaction(async () => {
+      if (decision === "approve") {
+        await db.prepare("DELETE FROM school_class_members WHERE user_id=? AND class_code=?")
+          .run(leaveRequest.studentId, classCode);
+      }
+      await db.prepare(`
+        UPDATE school_class_leave_requests
+        SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=?
+        WHERE id=? AND status='pending'
+      `).run(decision === "approve" ? "approved" : "rejected", req.user.id, requestId);
+    })();
+
+    await notifyUser?.(
+      leaveRequest.studentId,
+      "school_class_leave_request",
+      decision === "approve" ? `Đã duyệt rời lớp ${classCode}` : `Chưa duyệt yêu cầu rời lớp ${classCode}`,
+      decision === "approve"
+        ? `Giáo viên chủ nhiệm đã chấp thuận yêu cầu rời lớp ${classCode}. Lịch sử tham gia vẫn được lưu nên bạn không thể tự đăng ký lớp khác.`
+        : `Giáo viên chủ nhiệm chưa chấp thuận yêu cầu rời lớp ${classCode}. Bạn vẫn là thành viên của lớp.`,
+      "/"
+    );
+    return res.json({ ok: true, decision, classCode, studentId: Number(leaveRequest.studentId) });
   });
 
   app.get("/api/school/classes/:classCode/students/:studentId/progress", requireAuth, async (req, res) => {
@@ -532,6 +712,13 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!request) return res.status(404).json({ error: "Yêu cầu không tồn tại hoặc đã xử lý." });
     if (decision === "approve") {
       if (request.action === "add") {
+        const priorJoin = await db.prepare("SELECT class_code FROM school_class_join_locks WHERE user_id=?").get(request.target_user_id);
+        const priorMember = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=? LIMIT 1").get(request.target_user_id);
+        if ((priorJoin && priorJoin.class_code !== request.class_code) || (priorMember && priorMember.class_code !== request.class_code)) {
+          return res.status(409).json({ error: "Học sinh đã được ghi nhận tham gia một lớp khác." });
+        }
+        await db.prepare("INSERT INTO school_class_join_locks(user_id,class_code) VALUES(?,?) ON CONFLICT(user_id) DO NOTHING")
+          .run(request.target_user_id, request.class_code);
         await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(request.target_user_id);
         const existing = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(request.target_user_id, request.class_code);
         if (!existing) await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(request.target_user_id, request.class_code);
