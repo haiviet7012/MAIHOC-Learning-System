@@ -1595,7 +1595,7 @@ function applyAuthUI() {
     const greetingRole = !currentUser
         ? ""
         : currentUser.role === "admin"
-            ? " · Quản trị MAI HỌC"
+            ? " · Admin"
             : currentUser.role === "teacher"
                 ? (currentUser.homeroomClass ? " · Giáo viên chủ nhiệm" : " · Giáo viên bộ môn")
                 : currentUser.accountType === "school" ? " · Học sinh trong trường" : " · Học sinh ngoài trường";
