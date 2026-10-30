@@ -1,4 +1,13 @@
-export const SUBJECTS = ["Toán","Tiếng Anh","Vật lý","Hóa học","Ngữ văn","Sinh học","Đề thi THPT quốc gia","IELTS"];
+export let SUBJECT_CATALOG = [];
+export let SUBJECTS = [];
+export let ENABLED_SUBJECTS = [];
+export function setSubjectCatalog(subjects) {
+  if (!Array.isArray(subjects)) return;
+  SUBJECT_CATALOG = subjects.filter(subject => subject && typeof subject.name === "string");
+  SUBJECTS = SUBJECT_CATALOG.map(subject => subject.name);
+  ENABLED_SUBJECTS = SUBJECT_CATALOG.filter(subject => subject.enabled).map(subject => subject.name);
+}
+export const getSubjectConfig = name => SUBJECT_CATALOG.find(subject => subject.name === name || subject.id === name) || null;
 export const CATEGORIES = {
   theory: {label:"Ôn tập lý thuyết", icon:"▤"},
   practice: {label:"Đề thi ôn tập", icon:"✎"},

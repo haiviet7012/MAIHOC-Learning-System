@@ -42,24 +42,68 @@ function writeCookie(res, token, maxAgeSeconds) {
   );
 }
 
+export function isSuperAdminUser(user) {
+  if (!user) return false;
+  const adminLevel = Number(user.admin_level ?? user.adminLevel ?? 0);
+  return user.role === "admin" && adminLevel >= 2;
+}
+
+export function isTeacherUser(user) {
+  if (!user) return false;
+  const adminLevel = Number(user.admin_level ?? user.adminLevel ?? 0);
+  return user.role === "teacher" || (user.role === "admin" && adminLevel >= 1 && adminLevel < 2);
+}
+
 export function publicUser(user) {
   if (!user) return null;
   const rawCreatedAt = user.created_at ?? user.createdAt ?? user.created_at_ms ?? null;
   let createdAt = rawCreatedAt;
-  if (typeof rawCreatedAt === "number" || /^\\d{10,13}$/.test(String(rawCreatedAt ?? "").trim())) {
+  if (typeof rawCreatedAt === "number" || /^\d{10,13}$/.test(String(rawCreatedAt ?? "").trim())) {
     const timestamp = Number(rawCreatedAt);
     if (Number.isFinite(timestamp) && timestamp > 0) {
       createdAt = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp).toISOString();
     }
   }
+  const adminLevel = Number(user.admin_level ?? user.adminLevel ?? 0);
+  const rawRole = String(user.role || "user").trim().toLowerCase();
+  const isSuperAdmin = rawRole === "admin" && adminLevel >= 2;
+  const isTeacher = rawRole === "teacher" || (rawRole === "admin" && adminLevel >= 1 && adminLevel < 2);
+  const homeroomClass = (user.homeroom_class ?? user.homeroomClass) || null;
+  const classCode = !isSuperAdmin && !isTeacher
+    ? ((user.student_class ?? user.class_code ?? user.classCode) || null)
+    : null;
+  const teacherKind = isTeacher
+    ? (homeroomClass || user.teacher_kind === "homeroom" || user.teacherKind === "homeroom" ? "homeroom" : "subject")
+    : null;
+  const rawAccountType = String(user.account_type ?? user.accountType ?? "").trim().toLowerCase();
+  const accountType = (rawAccountType === "school" || Boolean(classCode) || isTeacher) ? "school" : "external";
+  const accountRole = isSuperAdmin ? "admin" : isTeacher ? "teacher" : "student";
+  const roleLabel = isSuperAdmin
+    ? "Quản trị MAI HỌC"
+    : isTeacher
+      ? (homeroomClass
+          ? `Giáo viên chủ nhiệm · Lớp ${homeroomClass}`
+          : teacherKind === "homeroom"
+            ? "Giáo viên chủ nhiệm"
+            : "Giáo viên bộ môn")
+      : accountType === "school"
+        ? (classCode ? `Học sinh trong trường · Lớp ${classCode}` : "Học sinh trong trường")
+        : "Học sinh ngoài trường";
+
   return {
     id: Number(user.id),
     name: user.name,
     email: user.email,
-    role: user.role,
-    adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
-    accountType: String(user.account_type ?? user.accountType ?? "external"),
-    ...((user.homeroom_class ?? user.homeroomClass) ? { homeroomClass: user.homeroom_class ?? user.homeroomClass } : {}),
+    role: rawRole,
+    accountRole,
+    isSuperAdmin,
+    isTeacher,
+    adminLevel,
+    accountType,
+    ...(teacherKind ? { teacherKind } : {}),
+    ...(homeroomClass ? { homeroomClass } : {}),
+    ...(classCode ? { classCode } : {}),
+    roleLabel,
     createdAt
   };
 }
@@ -94,13 +138,56 @@ export async function verifyPassword(password, stored) {
   }
 }
 
+async function enrichUserSchoolFields(user) {
+  if (!user) return null;
+  let homeroomClass = user.homeroom_class ?? user.homeroomClass ?? null;
+  let teacherKind = user.teacher_kind ?? user.teacherKind ?? null;
+  let studentClass = user.student_class ?? user.class_code ?? user.classCode ?? null;
+  const adminLevel = Number(user.admin_level ?? user.adminLevel ?? 0);
+  const isTeacher = user.role === "teacher" || (user.role === "admin" && adminLevel >= 1 && adminLevel < 2);
+
+  if (isTeacher) {
+    try {
+      const assignment = await db.prepare(
+        "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
+      ).get(user.id);
+      if (assignment?.class_code) {
+        homeroomClass = assignment.class_code;
+        teacherKind = "homeroom";
+      } else if (!teacherKind) {
+        teacherKind = "subject";
+      }
+    } catch {
+      // Teacher assignment tables may not exist in isolated auth tests.
+    }
+  } else if (user.role !== "admin") {
+    try {
+      const membership = await db.prepare(
+        "SELECT class_code FROM school_class_members WHERE user_id=? ORDER BY created_at DESC LIMIT 1"
+      ).get(user.id);
+      if (membership?.class_code) {
+        studentClass = membership.class_code;
+      }
+    } catch {
+      // Class membership table may not exist in isolated auth tests.
+    }
+  }
+  return {
+    ...user,
+    homeroom_class: homeroomClass,
+    teacher_kind: teacherKind,
+    student_class: studentClass
+  };
+}
+
 export async function registerUser({ name, email, password, accountType, classCode }) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim().toLowerCase();
   const secret = String(password || "");
-  const normalizedAccountType = accountType === "school" ? "school" : "external";
   const normalizedClassCode = String(classCode || "").trim().toUpperCase();
-  if (normalizedAccountType === "school" && !/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode)) {
+  const hasValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode);
+  const normalizedAccountType = (accountType === "school" || hasValidClass) ? "school" : "external";
+  if (normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {
     throw new Error("Học sinh của trường cần chọn lớp hợp lệ (10A1–12C9).");
   }
   if (safeName.length < 2 || safeName.length > 80) {
@@ -117,10 +204,17 @@ export async function registerUser({ name, email, password, accountType, classCo
     const result = await db
       .prepare("INSERT INTO users (name,email,password_hash,role,account_type) VALUES (?,?,?,'user',?)")
       .run(safeName, safeEmail, passwordHash, normalizedAccountType);
-    if (normalizedAccountType === "school") {
-      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(result.lastInsertRowid, normalizedClassCode);
+    if (normalizedAccountType === "school" && hasValidClass) {
+      await db
+        .prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)")
+        .run(result.lastInsertRowid, normalizedClassCode);
     }
-    return publicUser(await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid));
+    const created = await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid);
+    return publicUser({
+      ...created,
+      account_type: normalizedAccountType,
+      student_class: hasValidClass ? normalizedClassCode : null
+    });
   } catch (error) {
     if (String(error.code).includes("CONSTRAINT") || error.pgCode === "23505" || error.code === "23505") {
       throw new Error("Email này đã được đăng ký.");
@@ -139,18 +233,8 @@ export async function authenticateUser(email, password) {
   if (!(await verifyPassword(String(password || ""), user.password_hash))) {
     return null;
   }
-  let homeroomClass = null;
-  if (user.role === "admin" && Number(user.admin_level) >= 1 && Number(user.admin_level) < 2) {
-    try {
-      const assignment = await db.prepare(
-        "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
-      ).get(user.id);
-      homeroomClass = assignment?.class_code || null;
-    } catch {
-      // Teacher assignment tables may not exist in isolated auth tests.
-    }
-  }
-  return publicUser({ ...user, homeroom_class: homeroomClass });
+  const enriched = await enrichUserSchoolFields(user);
+  return publicUser(enriched);
 }
 
 export async function createSession(userId, res) {
@@ -201,18 +285,8 @@ export async function loadCurrentUser(req, res, next) {
         `)
         .get(hashToken(token));
       if (session && Number(session.expires_at) > Date.now()) {
-        let homeroomClass = null;
-        if (session.role === "admin" && Number(session.admin_level) >= 1 && Number(session.admin_level) < 2) {
-          try {
-            const assignment = await db.prepare(
-              "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
-            ).get(session.id);
-            homeroomClass = assignment?.class_code || null;
-          } catch {
-            // Teacher assignment tables may not exist in isolated auth tests.
-          }
-        }
-        req.user = publicUser({ ...session, homeroom_class: homeroomClass });
+        const enriched = await enrichUserSchoolFields(session);
+        req.user = publicUser(enriched);
         req.sessionTokenHash = hashToken(token);
 
         const nowMs = Date.now();
@@ -251,16 +325,16 @@ export function requireAuth(req, res, next) {
 
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
-  if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1) {
-    return res.status(403).json({ error: "Tài khoản Admin này chưa được Admin cao nhất cấp quyền." });
+  if (!isSuperAdminUser(req.user) && !isTeacherUser(req.user)) {
+    return res.status(403).json({ error: "Tài khoản này không có quyền truy cập khu vực giảng viên / quản trị." });
   }
   next();
 }
 
 export function requireSuperAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
-  if (req.user.role !== "admin" || Number(req.user.adminLevel) < 2) {
-    return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới có quyền thực hiện thao tác này." });
+  if (!isSuperAdminUser(req.user)) {
+    return res.status(403).json({ error: "Chỉ Quản trị viên MAI HỌC (Admin) mới có quyền thực hiện thao tác này." });
   }
   next();
 }

@@ -535,8 +535,11 @@ export async function initPostgresSchema(targetDb = db) {
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),
         admin_level BIGINT NOT NULL DEFAULT 0,
+        account_type TEXT NOT NULL DEFAULT 'external',
         created_at TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
       );
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'external';
 
       CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_lower ON users (LOWER(email));
 

@@ -14,12 +14,27 @@
   <link rel="stylesheet" href="css/styles.css?v=20261030results1">
   <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="css/tests.css?v=20261029v1">
-  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/chat.css?v=20261030v1">
+  <link rel="stylesheet" href="js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
+  <link rel="stylesheet" href="js/chemistry/ai-solver/solver.css?v=20261029v8">
+  <link rel="stylesheet" href="js/ai-solver/solver.css?v=20261029v4">
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [["\\(", "\\)"], ["$", "$"]],
+        displayMath: [["\\[", "\\]"], ["$$", "$$"]],
+        processEscapes: true
+      },
+      options: { skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"] },
+      startup: { typeset: false }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body class="is-home-lobby">
   <div id="app" class="app-shell">
     <header class="topbar">
-      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">LEARNING SYSTEM</span></span></button>
+      <button class="brand" id="brand-home" aria-label="Về trang chủ"><span class="brand-mark" aria-hidden="true"><img src="/images/mai-hoc-logo.jpg" alt=""></span><span class="brand-title">MAI<span class="brand-light">HỌC</span> <span class="brand-system">HỆ THỐNG HỌC TẬP</span></span></button>
       <div class="topbar-actions">
         <span class="account-greeting" id="user-greeting" hidden></span>
         <button class="icon-button notification-bell" id="notifications-open" aria-label="Thông báo" title="Thông báo" hidden>🔔<span class="notification-count" id="notification-count" hidden>0</span></button>
@@ -28,10 +43,12 @@
           <button class="button primary small" id="register-open">Đăng ký</button>
         </div>
         <div class="inline-actions" id="user-actions" hidden>
-          <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
-          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span></button>
-          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
+          <button class="icon-button" id="upload-open" title="Gửi tài liệu để duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
+          <button class="icon-button" id="school-classes-open" data-route="school" hidden>👥 <span class="button-label">Lớp của bạn</span></button>
+          <button class="icon-button" id="join-class-open" data-open-join-class title="Tham gia lớp học" aria-label="Tham gia lớp" hidden>🏫 <span class="button-label">Tham gia lớp</span></button>
+          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span><span class="notification-count tests-new-count" id="tests-new-count" hidden>0</span></button>
+          <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
         </div>
         <button class="icon-button" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾ <span class="button-label">Dark mode</span></button>
@@ -47,6 +64,7 @@
         <button data-subject="Đề thi THPT quốc gia" class="subject-link">Đề thi THPT quốc gia</button>
         <button data-subject="IELTS" class="subject-link">IELTS</button>
         <button data-route="study-rooms" class="subject-link study-room-nav-link">Phòng tự học</button>
+        <button data-route="ai-solver" class="subject-link ai-solver-nav-link">✨ AI giải bài tập</button>
       </nav>
     </header>
 
@@ -68,7 +86,7 @@
         <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
           <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
           <button type="button" class="online-filter-btn" data-online-filter="user">Học sinh</button>
-          <button type="button" class="online-filter-btn" data-online-filter="admin">Giảng viên</button>
+          <button type="button" class="online-filter-btn" data-online-filter="admin">Giáo viên</button>
         </div>
         <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
           <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
@@ -91,6 +109,9 @@
       <p class="muted">Tài liệu bạn gửi sẽ được Admin kiểm tra trước khi xuất hiện trong thư viện. Admin có thể tải lên trực tiếp.</p>
       <div id="upload-dialog-columns" class="upload-dialog-columns">
       <section class="upload-document-column">
+      <label id="upload-school-class-field" hidden>Lớp của bạn
+        <select name="classCode"><option value="">Chọn lớp</option><option value="10A1">10A1</option><option value="10A2">10A2</option><option value="10A3">10A3</option><option value="10A4">10A4</option><option value="10A5">10A5</option><option value="10A6">10A6</option><option value="10A7">10A7</option><option value="10A8">10A8</option><option value="10A9">10A9</option><option value="11B1">11B1</option><option value="11B2">11B2</option><option value="11B3">11B3</option><option value="11B4">11B4</option><option value="11B5">11B5</option><option value="11B6">11B6</option><option value="11B7">11B7</option><option value="11B8">11B8</option><option value="11B9">11B9</option><option value="12C1">12C1</option><option value="12C2">12C2</option><option value="12C3">12C3</option><option value="12C4">12C4</option><option value="12C5">12C5</option><option value="12C6">12C6</option><option value="12C7">12C7</option><option value="12C8">12C8</option><option value="12C9">12C9</option></select>
+      </label>
       <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
       <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="test" id="upload-category-test-opt" hidden>Bài kiểm tra (Giảng viên / Admin)</option></select></label>
@@ -166,10 +187,54 @@
     </div>
   </dialog>
 
-  <dialog id="notifications-dialog" class="modal compact">
+  <dialog id="notifications-dialog" class="modal notifications-dialog">
     <div class="modal-heading"><div><p class="eyebrow">TRUNG TÂM THÔNG BÁO</p><h2>Thông báo</h2></div><button type="button" class="close-button" data-close="notifications-dialog" aria-label="Đóng">×</button></div>
     <div class="notification-toolbar"><button type="button" class="text-button" id="notifications-read-all">Đánh dấu tất cả đã đọc</button><button type="button" class="text-button danger-text" id="notifications-delete-all">Xóa tất cả</button></div>
     <div id="notifications-list" class="notifications-list"><p class="muted">Đang tải thông báo…</p></div>
+  </dialog>
+
+  <dialog id="ai-solution-history-dialog" class="modal ai-history-dialog">
+    <div class="modal-heading">
+      <div>
+        <p class="eyebrow">LỊCH SỬ GIẢI BÀI AI</p>
+        <h2 id="ai-history-dialog-title">Lời giải AI</h2>
+      </div>
+      <button type="button" class="close-button" data-close="ai-solution-history-dialog" aria-label="Đóng">×</button>
+    </div>
+    <p class="muted tiny ai-history-dialog-meta" id="ai-history-dialog-meta"></p>
+    <section class="ai-history-problem" id="ai-history-problem-section" hidden>
+      <h3>Đề bài đã nhập (tóm tắt)</h3>
+      <p id="ai-history-dialog-prompt"></p>
+    </section>
+    <p id="ai-history-dialog-status" class="muted ai-history-dialog-status">Chọn một lời giải để mở.</p>
+    <article id="ai-history-dialog-answer" class="ai-history-dialog-answer"></article>
+  </dialog>
+
+  <dialog id="join-class-dialog" class="modal compact">
+    <form id="join-class-form">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">CỘNG ĐỒNG LỚP HỌC MAI HỌC</p>
+          <h2>Tham gia lớp</h2>
+        </div>
+        <button type="button" class="close-button" data-close="join-class-dialog" aria-label="Đóng">×</button>
+      </div>
+      <p class="muted">Chọn lớp học của bạn để vào đúng lớp của giáo viên chủ nhiệm, xem danh sách thành viên và nhận bài kiểm tra của lớp.</p>
+      <p class="muted tiny" data-join-class-current hidden></p>
+      <label>Chọn lớp của bạn
+        <select name="classCode" required>
+          <option value="">-- Chọn lớp học (10A1 – 12C9) --</option>
+          <option value="10A1">Lớp 10A1</option><option value="10A2">Lớp 10A2</option><option value="10A3">Lớp 10A3</option><option value="10A4">Lớp 10A4</option><option value="10A5">Lớp 10A5</option><option value="10A6">Lớp 10A6</option><option value="10A7">Lớp 10A7</option><option value="10A8">Lớp 10A8</option><option value="10A9">Lớp 10A9</option>
+          <option value="11B1">Lớp 11B1</option><option value="11B2">Lớp 11B2</option><option value="11B3">Lớp 11B3</option><option value="11B4">Lớp 11B4</option><option value="11B5">Lớp 11B5</option><option value="11B6">Lớp 11B6</option><option value="11B7">Lớp 11B7</option><option value="11B8">Lớp 11B8</option><option value="11B9">Lớp 11B9</option>
+          <option value="12C1">Lớp 12C1</option><option value="12C2">Lớp 12C2</option><option value="12C3">Lớp 12C3</option><option value="12C4">Lớp 12C4</option><option value="12C5">Lớp 12C5</option><option value="12C6">Lớp 12C6</option><option value="12C7">Lớp 12C7</option><option value="12C8">Lớp 12C8</option><option value="12C9">Lớp 12C9</option>
+        </select>
+      </label>
+      <p id="join-class-error" class="auth-error" role="alert" hidden></p>
+      <div class="modal-actions">
+        <button class="button secondary" type="button" data-close="join-class-dialog">Hủy</button>
+        <button class="button primary" type="submit">Tham gia lớp</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="login-dialog" class="modal compact">
@@ -188,7 +253,15 @@
   <dialog id="register-dialog" class="modal compact">
     <form id="register-form">
       <div class="modal-heading"><div><p class="eyebrow">BẮT ĐẦU HÀNH TRÌNH</p><h2>Tạo tài khoản</h2></div><button type="button" class="close-button" data-close="register-dialog" aria-label="Đóng">×</button></div>
-      <p class="muted">Tài khoản mới mặc định là Học sinh. Quyền Giảng viên chỉ được cấp qua cấu hình quản trị phía máy chủ.</p>
+      <p class="muted">Chọn loại tài khoản phù hợp. Các tính năng lớp học chỉ áp dụng cho học sinh của trường.</p>
+      <fieldset class="account-type-choice">
+        <legend>Loại tài khoản</legend>
+        <label><input type="radio" name="accountType" value="external" checked> Học sinh bên ngoài</label>
+        <label><input type="radio" name="accountType" value="school"> Học sinh của trường</label>
+      </fieldset>
+      <label id="register-school-class-field" hidden>Lớp của bạn
+        <select name="classCode"><option value="">Chọn lớp</option><option value="10A1">10A1</option><option value="10A2">10A2</option><option value="10A3">10A3</option><option value="10A4">10A4</option><option value="10A5">10A5</option><option value="10A6">10A6</option><option value="10A7">10A7</option><option value="10A8">10A8</option><option value="10A9">10A9</option><option value="11B1">11B1</option><option value="11B2">11B2</option><option value="11B3">11B3</option><option value="11B4">11B4</option><option value="11B5">11B5</option><option value="11B6">11B6</option><option value="11B7">11B7</option><option value="11B8">11B8</option><option value="11B9">11B9</option><option value="12C1">12C1</option><option value="12C2">12C2</option><option value="12C3">12C3</option><option value="12C4">12C4</option><option value="12C5">12C5</option><option value="12C6">12C6</option><option value="12C7">12C7</option><option value="12C8">12C8</option><option value="12C9">12C9</option></select>
+      </label>
       <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
       <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
       <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="Ít nhất 8 ký tự"></label>
@@ -251,7 +324,7 @@
     <form id="create-test-form" method="dialog">
       <div class="modal-heading">
         <div>
-          <p class="eyebrow">GIẢNG VIÊN &amp; QUẢN TRỊ VIÊN</p>
+          <p class="eyebrow">GIÁO VIÊN &amp; QUẢN TRỊ VIÊN</p>
           <h2>Thêm bài kiểm tra mới</h2>
         </div>
         <button type="button" class="close-button" data-close="create-test-dialog" aria-label="Đóng">×</button>
@@ -276,6 +349,11 @@
             <option value="10">Lớp 10</option>
             <option value="11">Lớp 11</option>
             <option value="12">Lớp 12</option>
+          </select>
+        </label>
+        <label>Lớp nhận bài kiểm tra
+          <select name="classCode" required>
+            <option value="">Đang tải danh sách lớp…</option>
           </select>
         </label>
       </div>
@@ -385,6 +463,6 @@
 
   <script type="module" src="js/app.js?v=20261030resultanswers1"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="js/chat.js"></script>
+  <script type="module" src="js/chat.js?v=20261030v1"></script>
 </body>
 </html>

@@ -333,6 +333,11 @@ document.addEventListener("click", async event => {
     toastNotice("Đã cập nhật tiến trình học tập.");
     return;
   }
+  if (event.target.closest("[data-ai-history-refresh]")) {
+    await loadAccountAiHistory();
+    toastNotice("Đã cập nhật lịch sử giải bài AI.");
+    return;
+  }
   if (
     event.target.closest("#online-dashboard-collapse") ||
     event.target.closest("#online-dashboard-launcher")
@@ -621,6 +626,100 @@ async function loadAccountCenterProgress() {
   }
 }
 
+async function loadAccountAiHistory() {
+  const list = $("#account-ai-history-list");
+  const summary = $("#account-ai-history-summary");
+  if (!list || !activeUser || activeUser.role === "admin") return;
+  list.setAttribute("aria-busy", "true");
+  try {
+    const data = await request("/api/ai/history");
+    if (!$("#account-ai-history-list")) return;
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (summary) summary.textContent = items.length
+      ? `${items.length} lời giải đã lưu · mới nhất ở đầu danh sách`
+      : "Chưa có lời giải AI nào được lưu cho tài khoản này.";
+    if (!items.length) {
+      list.innerHTML = '<div class="account-ai-history-empty"><span aria-hidden="true">✦</span><p class="muted">Khi bạn giải bài bằng AI trong lúc đăng nhập, lời giải sẽ được lưu tại đây để mở lại sau.</p></div>';
+      return;
+    }
+    const sourceLabels = { text: "Nhập văn bản", image: "Ảnh đề bài", pdf: "Tệp PDF" };
+    list.innerHTML = items.map((item, index) => {
+      const mode = item.mode === "quick" || item.mode === "concise" ? "Giải nhanh" : item.mode === "hint" ? "Gợi ý phương pháp" : "Giải chi tiết";
+      return `
+        <article class="account-ai-history-row" data-ai-history-row="${esc(item.id)}">
+          <div class="account-ai-history-main">
+            <div class="account-ai-history-title-line">
+              <span class="account-ai-history-index">${index + 1}</span>
+              <strong title="${esc(item.title || "Bài tập AI")}">${esc(item.title || "Bài tập AI")}</strong>
+            </div>
+            <div class="account-ai-history-meta">
+              <span>${esc(item.subject || "Môn học")}</span>
+              <span>${esc(mode)}</span>
+              <span>${esc(sourceLabels[item.source] || "Đề bài")}</span>
+            </div>
+          </div>
+          <time class="account-ai-history-date">${esc(formatVietnameseDate(item.createdAt))}</time>
+          <a class="button secondary small account-ai-history-open" href="#ai-solution-history-dialog" data-ai-history-open="${esc(item.id)}">Mở lời giải <span aria-hidden="true">↗</span></a>
+        </article>`;
+    }).join("");
+  } catch (error) {
+    if (list) list.innerHTML = `<p class="auth-error">${esc(error.message || "Không tải được lịch sử giải bài AI.")}</p>`;
+    if (summary) summary.textContent = "Không thể đồng bộ lịch sử.";
+  } finally {
+    if ($("#account-ai-history-list")) list.removeAttribute("aria-busy");
+  }
+}
+
+async function openSavedAiSolution(historyId) {
+  const dialog = $("#ai-solution-history-dialog");
+  const title = $("#ai-history-dialog-title");
+  const meta = $("#ai-history-dialog-meta");
+  const prompt = $("#ai-history-dialog-prompt");
+  const promptSection = $("#ai-history-problem-section");
+  const answer = $("#ai-history-dialog-answer");
+  const status = $("#ai-history-dialog-status");
+  if (!dialog || !answer) return;
+  if (window.MathJax?.typesetClear) window.MathJax.typesetClear([answer]);
+  if (title) title.textContent = "Đang tải lời giải…";
+  if (meta) meta.textContent = "";
+  if (prompt) prompt.textContent = "";
+  if (promptSection) promptSection.hidden = true;
+  if (answer) answer.textContent = "";
+  if (status) {
+    status.hidden = false;
+    status.textContent = "Đang lấy lời giải đã lưu…";
+    status.className = "muted ai-history-dialog-status";
+  }
+  if (!dialog.open) dialog.showModal();
+  try {
+    const data = await request("/api/ai/history/" + encodeURIComponent(historyId));
+    if (title) title.textContent = data.title || "Lời giải AI";
+    if (meta) meta.textContent = [
+      data.subject || "Môn học",
+      data.mode === "quick" || data.mode === "concise" ? "Giải nhanh" : data.mode === "hint" ? "Gợi ý phương pháp" : "Giải chi tiết",
+      formatVietnameseDate(data.createdAt),
+      data.modelUsed || ""
+    ].filter(Boolean).join(" · ");
+    if (prompt) prompt.textContent = data.promptPreview || "";
+    if (promptSection) promptSection.hidden = !data.promptPreview;
+    const answerText = typeof data.solution?.answer === "string"
+      ? data.solution.answer
+      : (data.solution ? JSON.stringify(data.solution, null, 2) : "Không có nội dung lời giải.");
+    answer.innerHTML = esc(answerText).replace(/\r?\n/g, "<br>");
+    if (status) status.hidden = true;
+    if (window.MathJax?.typesetPromise) {
+      try { await window.MathJax.typesetPromise([answer]); }
+      catch (mathError) { console.warn("[AI history] MathJax rendering failed:", mathError); }
+    }
+  } catch (error) {
+    if (status) {
+      status.hidden = false;
+      status.textContent = error.message || "Không thể mở lời giải đã lưu.";
+      status.className = "auth-error ai-history-dialog-status";
+    }
+  }
+}
+
 function renderOnlineUsersList() {
   const listNode = $("#online-dashboard-list");
   const countNode = $("#online-dashboard-count");
@@ -648,8 +747,16 @@ function renderOnlineUsersList() {
 
   listNode.innerHTML = filtered.map(u => {
     const isSelf = activeUser && Number(u.id) === Number(activeUser.id);
-    const isAdmin = u.role === "admin";
-    const roleLabel = !isAdmin ? "Học sinh" : Number(u.adminLevel) >= 2 ? "Quản lý MAIHOC" : "Giảng viên";
+    const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
+    const isTeacher = u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2);
+    const isAdmin = isSuper || isTeacher;
+    const roleLabel = isSuper
+      ? "Quản trị MAI HỌC"
+      : isTeacher
+        ? (u.homeroomClass ? `GVCN ${u.homeroomClass}` : "Giáo viên")
+        : u.classCode
+          ? `Học sinh (${u.classCode})`
+          : "Học sinh";
     const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
     return `
       <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""} ${isSelf ? "" : "is-clickable"}"
@@ -700,6 +807,7 @@ async function loadUser() {
     const reader = $("#reader-layout");
     if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
     if (activeUser.role !== "admin" && $("#account-progress-list")) loadAccountCenterProgress();
+    if (activeUser.role !== "admin" && $("#account-ai-history-list")) loadAccountAiHistory();
   }
 
 }
@@ -853,9 +961,9 @@ window.addEventListener("pagehide",()=>{
 function addAdminReviewPanel() {
   if(!activeUser||activeUser.role!=="admin"||!$("#admin-users-table")||$("#admin-review-panel"))return;
   const panel=document.createElement("section");panel.id="admin-review-panel";panel.className="admin-submissions";
-  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div><button type="button" class="button primary" data-answer-key-open>Quản lý đáp án</button></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2></div></div><div id="admin-progress-list"><p class="muted">Loading...</p></div>';
+  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div><button type="button" class="button primary" data-answer-key-open>Quản lý đáp án</button></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div>';
 
-  $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();loadAdminProgress();
+  $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();
   window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
 }
 function documentCategoryLabel(category) {
@@ -873,7 +981,7 @@ function documentCategoryLabel(category) {
 async function loadApprovedDocuments(){
   const box=$("#approved-documents");if(!box)return;
   try{
-    const data=await request("/api/documents");
+    const data=await request("/api/documents?scope=manage");
     const documents=Array.isArray(data)?data:[];
     if(!documents.length){box.innerHTML='<p class="muted">Chưa có tài liệu đã duyệt.</p>';return;}
     box.innerHTML='<div class="admin-table-wrap admin-approved-documents-scroll" role="region" aria-label="Danh sách tài liệu đã duyệt" tabindex="0"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Danh mục</th><th>Dung lượng</th><th>Thao tác</th></tr></thead><tbody>'+documents.map(d=>'<tr><td><strong>'+esc(d.title)+'</strong><br><span class="muted tiny">'+esc(d.originalName||d.filename)+'</span></td><td>'+esc(d.subject)+' / Lớp '+esc(d.grade)+' / '+esc(documentCategoryLabel(d.category))+'</td><td>'+Math.ceil((Number(d.size)||0)/1024)+' KB</td><td><button class="button secondary small" data-delete-document="'+esc(d.id)+'">Xóa</button></td></tr>').join('')+'</tbody></table></div>';
@@ -1190,7 +1298,7 @@ document.addEventListener("click",async e=>{
       await loadAnswerKeySections();
       window.dispatchEvent(new Event("maihoc-tests-rerender"));
       window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
-      toastNotice("Đã chuyển sang chế độ AI giải đề -> Giảng viên duyệt lại.","success");
+      toastNotice("Đã chuyển sang chế độ AI giải đề -> Giáo viên duyệt lại.","success");
     }catch(error){
       const node=$("[data-solution-error]");if(node){node.hidden=false;node.textContent=error.message;}
     }
@@ -1401,6 +1509,16 @@ window.addEventListener("maihoc-auth-changed",loadUser);
 window.addEventListener("maihoc-account-center-open", () => {
   if (activeUser?.role === "admin") return;
   loadAccountCenterProgress();
+  loadAccountAiHistory();
+});
+window.addEventListener("maihoc-ai-solution-saved", () => {
+  if ($("#account-ai-history-list") && activeUser?.role !== "admin") loadAccountAiHistory();
+});
+document.addEventListener("click", async event => {
+  const link = event.target.closest("[data-ai-history-open]");
+  if (!link) return;
+  event.preventDefault();
+  await openSavedAiSolution(link.dataset.aiHistoryOpen);
 });
 window.addEventListener("maihoc-route-changed", event => {
   const route = event.detail?.route || "home";
@@ -1433,6 +1551,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshOnlineDashboard();
     if ($("#account-progress-list") && activeUser && activeUser.role !== "admin") loadAccountCenterProgress();
+    if ($("#account-ai-history-list") && activeUser && activeUser.role !== "admin") loadAccountAiHistory();
   }
 });
 

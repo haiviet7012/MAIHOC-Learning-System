@@ -1,0 +1,197 @@
+/* js/chemistry/ai-solver/solver.css */
+
+.solver-container {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 24px;
+  animation: enter 0.28s ease both;
+}
+
+@media (max-width: 960px) {
+  .solver-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Khung nhập đề (Trái) */
+.solver-panel {
+  background: #070e1b;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+}
+
+.solver-panel h3 {
+  margin: 0 0 14px;
+  color: #38bdf8;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.solver-textarea {
+  width: 100%;
+  min-height: 140px;
+  background: #040810;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  color: #f8fafc;
+  padding: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.solver-textarea:focus {
+  outline: 2px solid #38bdf8;
+  border-color: transparent;
+}
+
+/* Kéo thả ảnh */
+.solver-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 18px;
+  margin: 14px 0;
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.solver-dropzone:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.solver-dropzone-preview {
+  position: relative;
+  max-width: 100%;
+  margin-top: 10px;
+}
+
+.solver-dropzone-preview img {
+  max-height: 160px;
+  border-radius: 8px;
+  border: 1px solid #38bdf8;
+}
+
+/* Các nút mẫu nhanh */
+.solver-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.solver-sample-btn {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #7dd3fc;
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.solver-sample-btn:hover {
+  background: #38bdf8;
+  color: #030712;
+}
+
+/* Khung hiển thị lời giải (Phải) */
+.solution-panel {
+  background: #081224;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  color: #e2e8f0;
+  min-height: 480px;
+}
+
+/* Các khối phân đoạn lời giải */
+.solution-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.7);
+  border-left: 4px solid #38bdf8;
+  border-radius: 0 12px 12px 0;
+}
+
+.solution-section h4 {
+  margin: 0 0 10px;
+  color: #7dd3fc;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Khối đáp số cuối cùng nổi bật */
+.solution-final-box {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(56, 189, 248, 0.15));
+  border: 2px solid #10b981;
+  padding: 18px;
+  border-radius: 14px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.solution-final-box strong {
+  font-size: 22px;
+  color: #34d399;
+}
+
+
+
+/* Theme-aware colors for the chemistry solver; inherit the MAI HỌC light/dark palette. */
+.chemistry-workspace .solver-panel,
+.chemistry-workspace .solution-panel {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+.chemistry-workspace .solver-panel h3 { color: var(--accent); }
+.chemistry-workspace .solver-textarea {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+.chemistry-workspace .solver-textarea::placeholder { color: var(--muted); }
+.chemistry-workspace .solver-dropzone {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.chemistry-workspace .solver-dropzone:hover { border-color: var(--accent); }
+.chemistry-workspace .solver-sample-btn {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--primary);
+}
+.chemistry-workspace .solver-sample-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+.chemistry-workspace .solution-section {
+  background: var(--surface-2);
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+.chemistry-workspace .solution-section h4 { color: var(--primary); }
+.chemistry-workspace .solution-section p,
+.chemistry-workspace .solution-section li { color: var(--text); }
+.chemistry-workspace .solution-final-box {
+  background: color-mix(in srgb, #10b981 12%, var(--surface));
+  border-color: #10b981;
+}
+.chemistry-workspace .solution-final-box strong { color: #059669; }
+:root.dark .chemistry-workspace .solution-final-box strong { color: #6ee7b7; }

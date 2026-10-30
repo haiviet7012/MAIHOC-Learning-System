@@ -1,4 +1,7 @@
-const STUN_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const FALLBACK_ICE_SERVERS = [
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.l.google.com:19302" }
+];
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const EMOTES = ["👍", "❤️", "👏", "😂", "🎉", "🔥"];
 
@@ -45,6 +48,7 @@ export function mountStudyRooms(container, user) {
   const peers = new Map();
   let processingPoll = false;
   let sendBusy = false;
+  let iceServersPromise = null;
 
   const setExpandedRoomMode = active => {
     container.classList.toggle("study-room-fullscreen", Boolean(active));
@@ -259,8 +263,8 @@ export function mountStudyRooms(container, user) {
   }
 
   function roomCard(room, isAdmin = false) {
-    const isOwner = user?.id === room.creatorId;
-    const canClose = isOwner || isAdmin;
+    const isOwner = Number(user?.id) === Number(room.creatorId);
+    const canClose = isOwner;
     
     const joinLabel = room.isFull && !isOwner ? "Đã đủ 12 người" : isOwner ? "Vào phòng" : "Tham gia";
     return `
@@ -311,8 +315,18 @@ export function mountStudyRooms(container, user) {
       }
       await refreshMembersAndConnect();
     } catch (error) {
-      setExpandedRoomMode(false);
-      showError(error.message);
+      // A WebRTC/media setup failure can happen after the server has accepted the join.
+      // Always release tracks and leave the backend room so no camera/mic stays active.
+      if (currentRoom && participantToken) {
+        await leaveRoom(true);
+      } else {
+        await stopLocalMedia();
+        currentRoom = null;
+        participant = null;
+        participantToken = null;
+        setExpandedRoomMode(false);
+      }
+      showError(error.message || "Không thể vào phòng học.");
     }
   }
 
@@ -365,7 +379,7 @@ export function mountStudyRooms(container, user) {
 
   function renderRoom(messages = []) {
     const isStealthAdmin = Boolean(participant?.isAdminObserver);
-    const canCloseRoom = currentRoom?.creatorId === user?.id || user?.role === "admin";
+    const canCloseRoom = Number(currentRoom?.creatorId) === Number(user?.id);
     const initialLetter = escapeHtml((user?.name || "B").trim().slice(0, 1).toLocaleUpperCase("vi"));
 
     container.innerHTML = `
@@ -404,7 +418,7 @@ export function mountStudyRooms(container, user) {
                   </div>
                   <div class="study-room-tile-reactions" data-tile-reactions="${escapeHtml(participant?.participantId || "local")}"></div>
                   <div class="study-room-video-label">
-                    <strong>${escapeHtml(user?.name || "Bạn")}</strong> <span>(Bạn${currentRoom.creatorId === user?.id ? " · Chủ phòng" : ""})</span>
+                    <strong>${escapeHtml(user?.name || "Bạn")}</strong> <span>(Bạn${Number(currentRoom.creatorId) === Number(user?.id) ? " · Chủ phòng" : ""})</span>
                   </div>
                 </article>
               `}
@@ -419,7 +433,7 @@ export function mountStudyRooms(container, user) {
                 </div>
                 <button type="button" class="study-room-control" data-room-toggle-side title="Ẩn/Hiện danh sách & chat">💬 <span>Chat &amp; Thành viên</span></button>
                 <button type="button" class="study-room-control danger" data-room-leave title="Rời chế độ giám sát">⏻ <span>Rời giám sát</span></button>
-                <button type="button" class="study-room-control danger-outline" data-room-close title="Đóng phòng học này">✕ <span>Đóng phòng</span></button>
+                ${canCloseRoom ? '<button type="button" class="study-room-control danger-outline" data-room-close title="Đóng phòng học này">✕ <span>Đóng phòng</span></button>' : ""}
               ` : `
                 <button type="button" class="study-room-control" data-room-mic aria-pressed="true" title="Bật/tắt microphone">🎙️ <span>Tắt mic</span></button>
                 <button type="button" class="study-room-control" data-room-camera aria-pressed="true" title="Bật/tắt camera">📹 <span>Tắt camera</span></button>
@@ -756,13 +770,34 @@ export function mountStudyRooms(container, user) {
     syncRemoteVideoTiles();
   }
 
-  function ensurePeer(member, isOfferer = false) {
+  async function getIceServers() {
+    if (!iceServersPromise) {
+      iceServersPromise = api("/api/study-rooms/ice-servers")
+        .then(data => Array.isArray(data.iceServers) && data.iceServers.length
+          ? data.iceServers
+          : FALLBACK_ICE_SERVERS)
+        .catch(error => {
+          console.warn("[Study Rooms] Could not load TURN credentials; using STUN fallback:", error.message);
+          return FALLBACK_ICE_SERVERS;
+        });
+    }
+    return iceServersPromise;
+  }
+
+  async function ensurePeer(member, isOfferer = false) {
     const targetId = typeof member === "string" ? member : member?.participantId;
     if (!targetId || targetId === participant?.participantId) return null;
     if (peers.has(targetId)) return peers.get(targetId);
 
-    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
-    const entry = { pc, stream: new MediaStream(), isStealthPeer: Boolean(member?.isStealthPeer) };
+    const iceServers = await getIceServers();
+    if (peers.has(targetId)) return peers.get(targetId);
+    const pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 4 });
+    const entry = {
+      pc,
+      stream: new MediaStream(),
+      isStealthPeer: Boolean(member?.isStealthPeer),
+      pendingIceCandidates: []
+    };
     peers.set(targetId, entry);
 
     if (!participant?.isAdminObserver) {
@@ -795,7 +830,11 @@ export function mountStudyRooms(container, user) {
         sendEvent("signal-ice", { candidate: event.candidate }, targetId).catch(() => {});
       }
     };
+    pc.oniceconnectionstatechange = () => {
+      console.info("[Study Rooms] ICE state:", targetId, pc.iceConnectionState);
+    };
     pc.onconnectionstatechange = () => {
+      console.info("[Study Rooms] Peer connection state:", targetId, pc.connectionState);
       if (["failed", "closed"].includes(pc.connectionState)) {
         closePeer(targetId);
       }
@@ -840,7 +879,7 @@ export function mountStudyRooms(container, user) {
       const shouldOffer = participant?.isAdminObserver
         ? true
         : participant.participantId.localeCompare(member.participantId) < 0;
-      const entry = ensurePeer(member, shouldOffer);
+      const entry = await ensurePeer(member, shouldOffer);
       if (entry && shouldOffer && entry.pc.signalingState === "stable" && entry.pc.remoteDescription === null) {
         try {
           const offer = await entry.pc.createOffer();
@@ -898,10 +937,15 @@ export function mountStudyRooms(container, user) {
         const fromId = event.fromParticipantId;
         if (!fromId || !event.payload?.description) continue;
         const knownMember = members.find(member => member.participantId === fromId);
-        const peer = ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
+        const peer = await ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
         if (!peer) continue;
         try {
           await peer.pc.setRemoteDescription(event.payload.description);
+          while (peer.pendingIceCandidates.length) {
+            const candidate = peer.pendingIceCandidates.shift();
+            try { await peer.pc.addIceCandidate(candidate); }
+            catch (error) { console.warn("[Study Rooms] Queued ICE candidate rejected:", error.message); }
+          }
           if (!participant?.isAdminObserver) {
             for (const kind of ["audio", "video"]) {
               const track = localStream?.getTracks().find(item => item.kind === kind) || null;
@@ -929,17 +973,32 @@ export function mountStudyRooms(container, user) {
         if (peer && event.payload?.description) {
           try {
             await peer.pc.setRemoteDescription(event.payload.description);
+            while (peer.pendingIceCandidates.length) {
+              const candidate = peer.pendingIceCandidates.shift();
+              try { await peer.pc.addIceCandidate(candidate); }
+              catch (candidateError) { console.warn("[Study Rooms] Queued ICE candidate rejected:", candidateError.message); }
+            }
           } catch (error) {
             console.warn("Could not apply WebRTC answer:", error.message);
           }
         }
       } else if (event.type === "signal-ice") {
-        const peer = peers.get(event.fromParticipantId);
-        if (peer && event.payload?.candidate) {
+        const fromId = event.fromParticipantId;
+        if (!fromId || !event.payload?.candidate) continue;
+
+        // The peer connection must be created first, even if this ICE event
+        // is received before the offer. ensurePeer() also fetches TURN servers.
+        const knownMember = members.find(member => member.participantId === fromId);
+        const peer = await ensurePeer(knownMember || { participantId: fromId, isStealthPeer: true }, false);
+        if (!peer) continue;
+
+        if (!peer.pc.remoteDescription) {
+          peer.pendingIceCandidates.push(event.payload.candidate);
+        } else {
           try {
             await peer.pc.addIceCandidate(event.payload.candidate);
           } catch (error) {
-            console.warn("Could not add ICE candidate:", error.message);
+            console.warn("[Study Rooms] Could not add ICE candidate:", error.message);
           }
         }
       } else if (event.type === "room-closed") {
@@ -980,33 +1039,43 @@ export function mountStudyRooms(container, user) {
   }
 
   async function stopLocalMedia() {
-    if (localStream) {
-      for (const track of localStream.getTracks()) {
-        try {
-          track.enabled = false;
-          track.stop();
-        } catch {}
-      }
-    }
+    // Snapshot then clear the reference first, making repeated cleanup calls safe.
+    const stream = localStream;
     localStream = null;
     cameraOn = false;
     micOn = false;
     handRaised = false;
-    for (const video of container.querySelectorAll("video")) {
-      try {
-        video.pause();
-        video.srcObject = null;
-      } catch {}
-    }
-    for (const [id, peer] of peers.entries()) {
-      try {
-        for (const sender of peer.pc.getSenders()) {
-          try { sender.track?.stop(); } catch {}
+
+    const tracks = new Set([
+      ...(stream?.getTracks() || []),
+      ...[...peers.values()].flatMap(peer => {
+        try {
+          return peer.pc.getSenders().map(sender => sender.track).filter(Boolean);
+        } catch {
+          return [];
         }
-        peer.pc.close();
+      })
+    ]);
+    for (const track of tracks) {
+      try {
+        track.enabled = false;
+        track.stop();
       } catch {}
-      peers.delete(id);
     }
+
+    // Detach local and remote media elements so camera/mic devices and remote playback
+    // cannot remain referenced by a tile after the user leaves the room.
+    for (const mediaElement of container.querySelectorAll("video, audio")) {
+      try {
+        mediaElement.pause();
+        mediaElement.srcObject = null;
+      } catch {}
+    }
+    for (const peer of peers.values()) {
+      try { peer.pc.close(); } catch {}
+    }
+    peers.clear();
+    updateMediaButtons();
   }
 
   async function leaveRoom(notify = true) {
@@ -1286,14 +1355,18 @@ export function mountStudyRooms(container, user) {
     if (!currentRoom && !disposed && !document.hidden) void loadRooms();
   }, 5000);
 
+  let pageHideHandled = false;
   const onPageHide = () => {
+    if (pageHideHandled) return;
+    pageHideHandled = true;
     const oldRoom = currentRoom;
     const oldToken = participantToken;
-    for (const track of localStream?.getTracks() || []) {
-      try {
-        track.enabled = false;
-        track.stop();
-      } catch {}
+    // pagehide also fires when navigating away from the app, including BFCache navigation.
+    // Stop all local/sender tracks immediately; do not wait for the network leave request.
+    void stopLocalMedia();
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
     }
     if (oldRoom && oldToken) {
       try {
@@ -1308,11 +1381,23 @@ export function mountStudyRooms(container, user) {
     }
   };
 
+  function onPageShow(event) {
+    if (!event.persisted || disposed) return;
+    pageHideHandled = false;
+    if (!currentRoom && !localStream) return;
+    // A page restored from the browser's back/forward cache must not look joined
+    // after pagehide has already stopped media and sent a best-effort leave request.
+    void leaveRoom(false).then(() => {
+      if (!disposed) showError("Bạn đã quay lại trang; camera và microphone vẫn đang tắt.", true);
+    });
+  }
+
   function onVisibilityChange() {
     if (!document.hidden && !currentRoom && !disposed) void loadRooms();
   }
 
   window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
   window.addEventListener("beforeunload", onPageHide);
   document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -1322,6 +1407,7 @@ export function mountStudyRooms(container, user) {
     clearInterval(roomRefreshTimer);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     window.removeEventListener("pagehide", onPageHide);
+    window.removeEventListener("pageshow", onPageShow);
     window.removeEventListener("beforeunload", onPageHide);
     setExpandedRoomMode(false);
     await leaveRoom(true);

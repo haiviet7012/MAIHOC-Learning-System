@@ -747,8 +747,16 @@ function renderOnlineUsersList() {
 
   listNode.innerHTML = filtered.map(u => {
     const isSelf = activeUser && Number(u.id) === Number(activeUser.id);
-    const isAdmin = u.role === "admin";
-    const roleLabel = !isAdmin ? "Học sinh" : Number(u.adminLevel) >= 2 ? "Quản lý MAIHOC" : "Giáo viên";
+    const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
+    const isTeacher = u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2);
+    const isAdmin = isSuper || isTeacher;
+    const roleLabel = isSuper
+      ? "Quản trị MAI HỌC"
+      : isTeacher
+        ? (u.homeroomClass ? `GVCN ${u.homeroomClass}` : "Giáo viên")
+        : u.classCode
+          ? `Học sinh (${u.classCode})`
+          : "Học sinh";
     const initial = esc(String(u.name || "?").trim().slice(0, 1).toLocaleUpperCase("vi"));
     return `
       <article class="online-user-row ${isSelf ? "is-self" : ""} ${isAdmin ? "is-admin" : ""} ${isSelf ? "" : "is-clickable"}"
@@ -973,7 +981,7 @@ function documentCategoryLabel(category) {
 async function loadApprovedDocuments(){
   const box=$("#approved-documents");if(!box)return;
   try{
-    const data=await request("/api/documents");
+    const data=await request("/api/documents?scope=manage");
     const documents=Array.isArray(data)?data:[];
     if(!documents.length){box.innerHTML='<p class="muted">Chưa có tài liệu đã duyệt.</p>';return;}
     box.innerHTML='<div class="admin-table-wrap admin-approved-documents-scroll" role="region" aria-label="Danh sách tài liệu đã duyệt" tabindex="0"><table class="admin-table"><thead><tr><th>Tài liệu</th><th>Danh mục</th><th>Dung lượng</th><th>Thao tác</th></tr></thead><tbody>'+documents.map(d=>'<tr><td><strong>'+esc(d.title)+'</strong><br><span class="muted tiny">'+esc(d.originalName||d.filename)+'</span></td><td>'+esc(d.subject)+' / Lớp '+esc(d.grade)+' / '+esc(documentCategoryLabel(d.category))+'</td><td>'+Math.ceil((Number(d.size)||0)/1024)+' KB</td><td><button class="button secondary small" data-delete-document="'+esc(d.id)+'">Xóa</button></td></tr>').join('')+'</tbody></table></div>';

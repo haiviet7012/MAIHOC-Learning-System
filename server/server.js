@@ -44,7 +44,7 @@ import {
   hashPassword,
   initAuthDatabase
 } from "./auth.js";
-import { initSchoolSystemDatabase, installSchoolSystemRoutes, saveTeacherAssignments } from "./school-system.js";
+import { initSchoolSystemDatabase, installSchoolSystemRoutes, saveTeacherAssignments, validateTeacherProfile } from "./school-system.js";
 
 const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__earlyDir, ".env"), override: true });
@@ -286,14 +286,14 @@ async function notifyUser(userId, type, title, message, link = null) {
 }
 
 async function notifyAdmins(type, title, message, link = null) {
-  const admins = await db.prepare("SELECT id FROM users WHERE role='admin'").all();
+  const admins = await db.prepare("SELECT id FROM users WHERE role='admin' AND admin_level>=2").all();
   for (const a of admins) {
     await notifyUser(a.id, type, title, message, link);
   }
 }
 
 async function notifyAdminsOnce(type, title, message, link = null) {
-  const admins = await db.prepare("SELECT id FROM users WHERE role='admin'").all();
+  const admins = await db.prepare("SELECT id FROM users WHERE role='admin' AND admin_level>=2").all();
   for (const admin of admins) {
     const existing = await db.prepare(
       "SELECT id FROM notifications WHERE user_id=? AND type=? AND message=? " +
@@ -964,7 +964,7 @@ app.post(
       });
       await db.prepare("UPDATE users SET email=? WHERE id=?").run(newEmail, req.user.id);
       const updated = await db
-        .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
+        .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?")
         .get(req.user.id);
       await notifyUser(
         req.user.id,
@@ -974,7 +974,7 @@ app.post(
       );
       return res.json({
         ok: true,
-        user: { ...publicUser(updated), teacherProfile: savedTeacherProfile },
+        user: publicUser(updated),
         message: `Đã cập nhật Email thành ${newEmail}.`
       });
     } catch (error) {
@@ -1055,7 +1055,9 @@ async function cleanPresenceAndListOnline(now = Date.now()) {
   await db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
   return await db
     .prepare(`
-      SELECT u.id, u.name, u.role, u.admin_level AS adminLevel,
+      SELECT u.id, u.name, u.role, u.admin_level AS adminLevel, u.account_type AS accountType,
+             (SELECT a.class_code FROM school_teacher_assignments a WHERE a.teacher_id = u.id AND a.assignment_type = 'homeroom' LIMIT 1) AS homeroomClass,
+             (SELECT m.class_code FROM school_class_members m WHERE m.user_id = u.id ORDER BY m.created_at DESC LIMIT 1) AS classCode,
              p.last_seen_at AS lastSeenAt, p.activity
       FROM user_presence p
       JOIN users u ON u.id = p.user_id
@@ -1127,28 +1129,48 @@ async function deleteAccountPermanently(id) {
 
 app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
-    .prepare("SELECT id,name,email,role,admin_level,created_at,(SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class FROM users ORDER BY id DESC LIMIT 500")
+    .prepare(`
+      SELECT id,name,email,role,admin_level,account_type,created_at,
+        (SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class,
+        (SELECT class_code FROM school_class_members m WHERE m.user_id=users.id ORDER BY m.created_at DESC LIMIT 1) AS student_class
+      FROM users ORDER BY id DESC LIMIT 500
+    `)
     .all();
-  const teacherAssignments = await db.prepare("SELECT teacher_id,class_code,subject,assignment_type FROM school_teacher_assignments ORDER BY class_code,subject").all();
+  const teacherAssignments = await db
+    .prepare("SELECT teacher_id,class_code,subject,assignment_type FROM school_teacher_assignments ORDER BY class_code,subject")
+    .all();
   const assignmentsByTeacher = new Map();
   for (const assignment of teacherAssignments) {
     const key = Number(assignment.teacher_id);
     const entry = assignmentsByTeacher.get(key) || { teachingClasses: [], subjects: [], homeroomClass: null };
     if (!entry.teachingClasses.includes(assignment.class_code)) entry.teachingClasses.push(assignment.class_code);
     if (assignment.assignment_type === "homeroom") entry.homeroomClass = assignment.class_code;
-    if (assignment.assignment_type === "subject" && assignment.subject && !entry.subjects.includes(assignment.subject)) entry.subjects.push(assignment.subject);
+    if (assignment.assignment_type === "subject" && assignment.subject && !entry.subjects.includes(assignment.subject)) {
+      entry.subjects.push(assignment.subject);
+    }
     assignmentsByTeacher.set(key, entry);
   }
   const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
   const total = Number(totalRow?.count || 0);
   const formattedUsers = users.map(user => {
-    const publicAccount = publicUser(user);
+    const teacherEntry = assignmentsByTeacher.get(Number(user.id));
+    const homeroomClass = user.homeroom_class || teacherEntry?.homeroomClass || null;
+    const studentClass = user.student_class || null;
+    const teacherKind = homeroomClass ? "homeroom" : (teacherEntry ? "subject" : null);
+    const publicAccount = publicUser({
+      ...user,
+      homeroom_class: homeroomClass,
+      student_class: studentClass,
+      teacher_kind: teacherKind
+    });
     const createdAt = user.created_at ?? user.createdAt ?? null;
     return {
       ...publicAccount,
-      homeroomClass: user.homeroom_class || assignmentsByTeacher.get(Number(user.id))?.homeroomClass || null,
-      teachingClasses: assignmentsByTeacher.get(Number(user.id))?.teachingClasses || [],
-      subjects: assignmentsByTeacher.get(Number(user.id))?.subjects || [],
+      homeroomClass,
+      classCode: studentClass,
+      teacherKind: publicAccount.teacherKind || teacherKind,
+      teachingClasses: teacherEntry?.teachingClasses || [],
+      subjects: teacherEntry?.subjects || [],
       createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
     };
   });
@@ -1161,8 +1183,7 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   });
 });
 
-// Only the configured super admin can appoint subordinate admins.
-// Existing user accounts are promoted in place; the account password and learning data remain unchanged.
+// Only the configured super admin can appoint or update teachers.
 app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const name = String(req.body?.name || "").trim();
@@ -1178,38 +1199,42 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
   }
 
   const existing = await db
-    .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE email=? COLLATE NOCASE")
+    .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE email=? COLLATE NOCASE")
     .get(email);
   if (existing) {
     if (Number(existing.admin_level) >= 2) {
-      return res.status(409).json({ error: "Email này thuộc Admin cấp cao nhất; không thể thêm lại." });
+      return res.status(409).json({ error: "Email này thuộc Quản trị MAI HỌC; không thể chuyển thành giáo viên." });
     }
-    if (existing.role === "admin" && Number(existing.admin_level) >= 1) {
-      return res.status(409).json({ error: "Tài khoản này đã là Admin cấp dưới." });
-    }
-    const savedTeacherProfile = await saveTeacherAssignments(db, existing.id, teacherProfile);
+    await validateTeacherProfile(db, teacherProfile, existing.id);
+    let savedTeacherProfile = null;
     const promote = db.transaction(async () => {
       await db
         .prepare("UPDATE users SET role='admin',admin_level=1,account_type='school' WHERE id=? AND admin_level<2")
         .run(existing.id);
+      savedTeacherProfile = await saveTeacherAssignments(db, existing.id, teacherProfile);
       const updated = await db
-        .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
+        .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?")
         .get(existing.id);
       await notifyAdmins(
         "admin_promoted",
-        "Đã nâng quyền tài khoản thành Admin cấp dưới",
-        `Tài khoản ${updated.name} (${updated.email}) đã được nâng quyền; mật khẩu và dữ liệu hiện có được giữ nguyên.`,
+        "Đã phân công tài khoản giáo viên",
+        `Tài khoản ${updated.name} (${updated.email}) đã được cập nhật phân công giáo viên.`,
         "admin"
       );
       return updated;
     });
     const updated = await promote();
+    const formatted = publicUser({
+      ...updated,
+      account_type: "school",
+      homeroom_class: savedTeacherProfile?.homeroomClass || null,
+      teacher_kind: savedTeacherProfile?.teacherKind || "subject"
+    });
     return res.json({
       ok: true,
       action: "promoted",
-      user: { ...publicUser(updated), teacherProfile: savedTeacherProfile },
-      message:
-        "Đã nâng quyền tài khoản hiện có thành Admin cấp dưới. Mật khẩu và dữ liệu học tập được giữ nguyên."
+      user: { ...formatted, teacherProfile: savedTeacherProfile },
+      message: "Đã cập nhật quyền và phân công lớp cho giáo viên."
     });
   }
 
@@ -1221,12 +1246,22 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
       .status(400)
       .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
   }
+  await validateTeacherProfile(db, teacherProfile, null);
   const passwordHash = await hashPassword(password);
-  let result;
+  let created = null;
+  let savedTeacherProfile = null;
   try {
-    result = await db
-      .prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'admin',1,'school')")
-      .run(name, email, passwordHash);
+    const createTx = db.transaction(async () => {
+      const result = await db
+        .prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'admin',1,'school')")
+        .run(name, email, passwordHash);
+      const row = await db
+        .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?")
+        .get(result.lastInsertRowid);
+      savedTeacherProfile = await saveTeacherAssignments(db, row.id, teacherProfile);
+      return row;
+    });
+    created = await createTx();
   } catch (error) {
     if (String(error.code || "").includes("CONSTRAINT") || error.pgCode === "23505") {
       return res
@@ -1235,21 +1270,25 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
     }
     throw error;
   }
-  const created = await db
-    .prepare("SELECT id,name,email,role,admin_level,created_at FROM users WHERE id=?")
-    .get(result.lastInsertRowid);
-  const savedTeacherProfile = await saveTeacherAssignments(db, created.id, teacherProfile);
   await notifyAdmins(
     "admin_created",
     "Đã tạo tài khoản giáo viên",
-    `Tài khoản ${name} (${email}) đã được tạo mới.`,
+    `Tài khoản giáo viên ${name} (${email}) đã được tạo mới.`,
     "admin"
   );
+  const formattedCreated = publicUser({
+    ...created,
+    account_type: "school",
+    homeroom_class: savedTeacherProfile?.homeroomClass || null,
+    teacher_kind: savedTeacherProfile?.teacherKind || "subject"
+  });
   res.status(201).json({
     ok: true,
     action: "created",
-    user: { ...publicUser(created), teacherProfile: savedTeacherProfile },
-    message: "Đã tạo tài khoản giáo viên mới."
+    user: { ...formattedCreated, teacherProfile: savedTeacherProfile },
+    message: savedTeacherProfile?.teacherKind === "homeroom"
+      ? `Đã tạo tài khoản Giáo viên chủ nhiệm lớp ${savedTeacherProfile.homeroomClass}.`
+      : "Đã tạo tài khoản Giáo viên bộ môn mới."
   });
 });
 
@@ -2320,14 +2359,15 @@ app.post(
 
 app.get("/api/documents", async (req, res) => {
   const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
+  const filterOwnOnly = isSubordinateAdmin && req.query.scope === "manage";
   const sql = `
     SELECT d.id,d.subject,d.grade,d.category,d.title,d.filename,d.original_name,d.size,d.content_type,
       d.uploaded_by,d.uploaded_at,ak.original_name AS answer_key_original_name,ak.question_ids AS answer_key_question_ids
     FROM documents d LEFT JOIN answer_keys ak ON ak.document_id=d.id
-    ${isSubordinateAdmin ? "WHERE d.uploaded_by=?" : ""}
+    ${filterOwnOnly ? "WHERE d.uploaded_by=?" : ""}
     ORDER BY d.uploaded_at DESC
   `;
-  const documents = isSubordinateAdmin
+  const documents = filterOwnOnly
     ? await db.prepare(sql).all(req.user.id)
     : await db.prepare(sql).all();
   res.setHeader("Cache-Control", "private, no-store");
@@ -2733,10 +2773,7 @@ app.delete("/api/admin/documents/:id", requireSameOrigin, requireAdmin, async (r
 
 app.get("/api/documents/:id/file", async (req, res, next) => {
   try {
-    const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
-    const doc = await db.prepare(
-      "SELECT * FROM documents WHERE id=? " + (isSubordinateAdmin ? "AND uploaded_by=?" : "")
-    ).get(...(isSubordinateAdmin ? [req.params.id, req.user.id] : [req.params.id]));
+    const doc = await db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);
     if (!doc) return res.sendStatus(404);
     const bytes = await getDocumentBuffer(doc);
     if (!bytes) return res.status(410).json({ error: "File tài liệu không còn trong R2 hoặc kho cũ." });
@@ -2775,24 +2812,40 @@ app.get("/api/documents/:id/file", async (req, res, next) => {
 });
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
-  const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
-  const rows = await db
-    .prepare(`
-      SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
-        s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
-        u.name AS userName,u.email AS userEmail,r.class_code AS classCode,r.class_code AS classCode
-      FROM document_submissions s JOIN users u ON u.id=s.user_id
-      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
-      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
-      WHERE s.status='pending'
-        ${isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : ""}
-        AND (r.submission_id IS NULL OR ? >= 2 OR EXISTS (
-          SELECT 1 FROM school_teacher_assignments a
-          WHERE a.teacher_id=? AND a.class_code=r.class_code AND a.assignment_type='homeroom'
-        ))
-      ORDER BY s.id ASC
-    `)
-    .all(...(isSubordinateAdmin ? [req.user.id, Number(req.user.adminLevel), req.user.id] : [Number(req.user.adminLevel), req.user.id]));
+  const isSuper = Number(req.user.adminLevel) >= 2;
+  const rows = isSuper
+    ? await db.prepare(`
+        SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
+          s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
+          u.name AS userName,u.email AS userEmail,r.class_code AS classCode
+        FROM document_submissions s
+        JOIN users u ON u.id=s.user_id
+        LEFT JOIN school_document_reviews r ON r.submission_id=s.id
+        WHERE s.status='pending'
+        ORDER BY s.id ASC
+      `).all()
+    : await db.prepare(`
+        SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
+          s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
+          u.name AS userName,u.email AS userEmail,r.class_code AS classCode
+        FROM document_submissions s
+        JOIN users u ON u.id=s.user_id
+        LEFT JOIN school_document_reviews r ON r.submission_id=s.id
+        WHERE s.status='pending'
+          AND EXISTS (
+            SELECT 1 FROM school_teacher_assignments a
+            WHERE a.teacher_id=?
+              AND a.assignment_type='homeroom'
+              AND (
+                a.class_code = r.class_code
+                OR EXISTS (
+                  SELECT 1 FROM school_class_members m
+                  WHERE m.user_id = s.user_id AND m.class_code = a.class_code
+                )
+              )
+          )
+        ORDER BY s.id ASC
+      `).all(req.user.id);
   res.json({ submissions: rows });
 });
 
@@ -2804,15 +2857,13 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     if (!Number.isInteger(id) || !["approved", "rejected"].includes(decision)) {
       return res.status(400).json({ error: "Invalid review decision." });
     }
-    const isSubordinateAdmin = Number(req.user.adminLevel) < 2;
     const sub = await db
       .prepare(
         "SELECT s.*,r.class_code AS review_class_code FROM document_submissions s JOIN users u ON u.id=s.user_id " +
         "LEFT JOIN school_document_reviews r ON r.submission_id=s.id " +
-        "WHERE s.id=? AND s.status='pending' " +
-        (isSubordinateAdmin ? "AND s.user_id=? AND u.role='admin' AND u.admin_level<2" : "")
+        "WHERE s.id=? AND s.status='pending'"
       )
-      .get(...(isSubordinateAdmin ? [id, req.user.id] : [id]));
+      .get(id);
     if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
     if (sub.review_class_code) {
       const authorized = Number(req.user.adminLevel) >= 2 || Boolean(await db.prepare(
@@ -2991,6 +3042,7 @@ testsModule = installTestsModule({
   notifyAdmins
 });
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
+installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
 
 app.use((err, _req, res, _next) => {
   console.error(err.message);
@@ -3001,7 +3053,6 @@ app.use((err, _req, res, _next) => {
 export async function initializeApplicationRuntime() {
   await initAuthDatabase();
   await initSchoolSystemDatabase(db);
-  installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
   await initChatDatabase();
   if (testsModule?.initTestsModuleDatabase) {
     await testsModule.initTestsModuleDatabase();

@@ -1963,3 +1963,22 @@ body.test-open #online-dashboard-launcher {
 .teacher-check-option input{width:16px;height:16px;flex:0 0 16px;accent-color:var(--primary)}
 .teacher-check-option:has(input:checked){border-color:var(--primary);background:var(--surface-2);font-weight:700}
 @media(max-width:760px){.teacher-class-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.teacher-create-toggle-row{align-items:flex-start;flex-direction:column}}
+
+
+/* Homeroom add-student & Student join-class styles */
+#join-class-open { position: relative; }
+.school-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.school-homeroom-add-section { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--accent); border-radius: 14px; background: linear-gradient(145deg, var(--surface), var(--surface-2)); }
+.school-homeroom-add-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.school-homeroom-add-bar h3 { margin: 6px 0 2px; font-size: 18px; }
+.school-homeroom-add-bar p { margin: 0; }
+.homeroom-add-student-form { margin-top: 4px; background: var(--surface); }
+.homeroom-add-student-form h4 { margin: 0; font-size: 14px; color: var(--primary); }
+.homeroom-add-input-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.homeroom-add-input-row button { height: 40px; white-space: nowrap; }
+.school-person-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.school-class-card.is-homeroom-card { border-color: var(--primary); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+@media(max-width:620px) {
+  .homeroom-add-input-row { flex-direction: column; align-items: stretch; }
+  .homeroom-add-input-row button { width: 100%; }
+}

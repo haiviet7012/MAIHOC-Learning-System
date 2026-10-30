@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { publicUser, isSuperAdminUser, isTeacherUser } from "./auth.js";
 
 export const SCHOOL_CLASSES = [
   ...Array.from({ length: 9 }, (_, i) => `10A${i + 1}`),
@@ -7,21 +8,13 @@ export const SCHOOL_CLASSES = [
 ];
 
 const CLASS_SET = new Set(SCHOOL_CLASSES);
-const isClassCode = value => CLASS_SET.has(String(value || "").trim());
-const parseJsonArray = value => {
-  try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
+const isClassCode = value => CLASS_SET.has(String(value || "").trim().toUpperCase());
 
 export async function initSchoolSystemDatabase(db) {
   try {
     await db.exec("ALTER TABLE users ADD COLUMN account_type TEXT NOT NULL DEFAULT 'external'");
   } catch {
-    // The column already exists on upgraded deployments.
+    // Column already exists on upgraded deployments.
   }
 
   await db.exec(`
@@ -78,43 +71,71 @@ export async function initSchoolSystemDatabase(db) {
     CREATE INDEX IF NOT EXISTS school_teacher_messages_status_idx
       ON school_teacher_messages(status, created_at DESC);
   `);
+
+  try {
+    await db.prepare(`
+      UPDATE users SET account_type='school'
+      WHERE account_type <> 'school'
+        AND (
+          EXISTS (SELECT 1 FROM school_class_members m WHERE m.user_id = users.id)
+          OR EXISTS (SELECT 1 FROM school_teacher_assignments a WHERE a.teacher_id = users.id)
+        )
+    `).run();
+  } catch {
+    // Ignore backfill errors on minimal test schemas.
+  }
 }
 
-export async function saveTeacherAssignments(db, teacherId, profile = {}) {
+export async function validateTeacherProfile(db, profile = {}, excludeTeacherId = null) {
   const teacherKind = profile.teacherKind === "homeroom" ? "homeroom" : "subject";
   const subjects = [...new Set((Array.isArray(profile.subjects) ? profile.subjects : [])
     .map(value => String(value || "").trim()).filter(Boolean))].slice(0, 20);
   const teachingClasses = [...new Set((Array.isArray(profile.teachingClasses) ? profile.teachingClasses : [])
-    .map(value => String(value || "").trim()).filter(isClassCode))];
-  const homeroomClass = String(profile.homeroomClass || "").trim();
-
-  if (!subjects.length) throw new Error("Giáo viên cần được phân công ít nhất một bộ môn.");
-  if (!teachingClasses.length && teacherKind !== "homeroom") {
-    throw new Error("Vui lòng chọn ít nhất một lớp giáo viên sẽ giảng dạy.");
-  }
-  if (teacherKind === "homeroom" && !isClassCode(homeroomClass)) {
-    throw new Error("Vui lòng chọn lớp chủ nhiệm hợp lệ.");
-  }
+    .map(value => String(value || "").trim().toUpperCase()).filter(isClassCode))];
+  const homeroomClass = String(profile.homeroomClass || "").trim().toUpperCase();
 
   if (teacherKind === "homeroom") {
-    const occupied = await db.prepare(
-      "SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' AND teacher_id<>?"
-    ).get(homeroomClass, teacherId);
-    if (occupied) throw new Error(`Lớp ${homeroomClass} đã có giáo viên chủ nhiệm.`);
+    if (!isClassCode(homeroomClass)) {
+      throw new Error("Vui lòng chọn lớp chủ nhiệm hợp lệ (10A1–12C9).");
+    }
+    const occupied = excludeTeacherId != null
+      ? await db.prepare(
+          "SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' AND teacher_id<>?"
+        ).get(homeroomClass, excludeTeacherId)
+      : await db.prepare(
+          "SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom'"
+        ).get(homeroomClass);
+    if (occupied) {
+      throw new Error(`Lớp ${homeroomClass} đã có giáo viên chủ nhiệm.`);
+    }
+  } else {
+    if (!subjects.length) {
+      throw new Error("Giáo viên bộ môn cần được phân công ít nhất một bộ môn.");
+    }
+    if (!teachingClasses.length) {
+      throw new Error("Vui lòng chọn ít nhất một lớp giáo viên sẽ giảng dạy.");
+    }
   }
+
+  return { teacherKind, homeroomClass: teacherKind === "homeroom" ? homeroomClass : null, subjects, teachingClasses };
+}
+
+export async function saveTeacherAssignments(db, teacherId, profile = {}) {
+  const validated = await validateTeacherProfile(db, profile, teacherId);
+  const { teacherKind, homeroomClass, subjects, teachingClasses } = validated;
 
   await db.prepare("DELETE FROM school_teacher_assignments WHERE teacher_id=?").run(teacherId);
   const insert = db.prepare(
     "INSERT INTO school_teacher_assignments(id,teacher_id,class_code,subject,assignment_type) VALUES(?,?,?,?,?)"
   );
-  if (teacherKind === "homeroom") {
+  if (teacherKind === "homeroom" && homeroomClass) {
     await insert.run(crypto.randomUUID(), teacherId, homeroomClass, "Chủ nhiệm", "homeroom");
   }
 
   const classesToTeach = teachingClasses.length
-    ? teachingClasses
-    : (teacherKind === "homeroom" ? [homeroomClass] : []);
-  if (teacherKind === "homeroom" && !classesToTeach.includes(homeroomClass)) {
+    ? [...teachingClasses]
+    : (teacherKind === "homeroom" && homeroomClass ? [homeroomClass] : []);
+  if (teacherKind === "homeroom" && homeroomClass && !classesToTeach.includes(homeroomClass)) {
     classesToTeach.push(homeroomClass);
   }
   for (const classCode of classesToTeach) {
@@ -124,109 +145,318 @@ export async function saveTeacherAssignments(db, teacherId, profile = {}) {
   }
 
   await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(teacherId);
-  return { teacherKind, homeroomClass: teacherKind === "homeroom" ? homeroomClass : null, subjects, teachingClasses: classesToTeach };
+  return {
+    teacherKind,
+    homeroomClass: teacherKind === "homeroom" ? homeroomClass : null,
+    subjects,
+    teachingClasses: classesToTeach
+  };
 }
 
 export function installSchoolSystemRoutes(app, deps) {
   const { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins } = deps;
 
-  async function accountType(userId) {
-    const row = await db.prepare("SELECT account_type FROM users WHERE id=?").get(userId);
-    return String(row?.account_type || "external");
-  }
-
   async function canAccessClass(user, classCode) {
-    if (!isClassCode(classCode)) return false;
-    if (user?.role === "admin" && Number(user.adminLevel) >= 2) return true;
-    if (await accountType(user.id) !== "school") return false;
-    if (user.role === "admin") {
+    const normalized = String(classCode || "").trim().toUpperCase();
+    if (!isClassCode(normalized) || !user) return false;
+    if (isSuperAdminUser(user)) return true;
+    if (isTeacherUser(user)) {
       return Boolean(await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
-      ).get(user.id, classCode));
+      ).get(user.id, normalized));
     }
     return Boolean(await db.prepare(
       "SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?"
-    ).get(user.id, classCode));
+    ).get(user.id, normalized));
+  }
+
+  async function isHomeroomTeacherOfClass(user, classCode) {
+    const normalized = String(classCode || "").trim().toUpperCase();
+    if (!user || !isClassCode(normalized)) return false;
+    if (isSuperAdminUser(user)) return true;
+    if (!isTeacherUser(user)) return false;
+    const assigned = await db.prepare(
+      "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? AND assignment_type='homeroom' LIMIT 1"
+    ).get(user.id, normalized);
+    return Boolean(assigned);
   }
 
   async function requireHomeroom(req, res, classCode) {
-    if (req.user?.role === "admin" && Number(req.user.adminLevel) >= 2) return true;
-    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 1 ||
-        await accountType(req.user.id) !== "school") {
-      res.status(403).json({ error: "Chỉ giáo viên chủ nhiệm lớp này mới được thực hiện thao tác." });
-      return false;
-    }
-    const assigned = await db.prepare(
-      "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? AND assignment_type='homeroom' LIMIT 1"
-    ).get(req.user.id, classCode);
-    if (!assigned) {
-      res.status(403).json({ error: "Bạn không phải giáo viên chủ nhiệm của lớp này." });
-      return false;
-    }
-    return true;
+    if (await isHomeroomTeacherOfClass(req.user, classCode)) return true;
+    res.status(403).json({ error: "Chỉ giáo viên chủ nhiệm của lớp này mới được thực hiện thao tác." });
+    return false;
   }
 
-  app.get("/api/school/classes", requireAuth, async (req, res) => {
-    const isSuper = req.user.role === "admin" && Number(req.user.adminLevel) >= 2;
-    if (!isSuper && await accountType(req.user.id) !== "school") {
-      return res.status(403).json({ error: "Tính năng lớp học chỉ dành cho học sinh và giáo viên của trường." });
-    }
-    let classes = [];
-    if (isSuper) {
-      classes = SCHOOL_CLASSES.map(classCode => ({ classCode, role: "admin", isHomeroom: false }));
-    } else if (req.user.role === "admin") {
-      classes = await db.prepare(`
-        SELECT class_code AS classCode,
-          MAX(CASE WHEN assignment_type='homeroom' THEN 1 ELSE 0 END) AS isHomeroom,
-          'teacher' AS role
-        FROM school_teacher_assignments WHERE teacher_id=?
-        GROUP BY class_code
-        ORDER BY MAX(CASE WHEN assignment_type='homeroom' THEN 0 ELSE 1 END), class_code
-      `).all(req.user.id);
-    } else {
-      classes = await db.prepare(
-        "SELECT class_code AS classCode,'student' AS role,0 AS isHomeroom FROM school_class_members WHERE user_id=? ORDER BY class_code"
-      ).all(req.user.id);
-    }
-    const formatted = [];
-    for (const item of classes) {
-      const count = await db.prepare("SELECT COUNT(*) AS total FROM school_class_members WHERE class_code=?").get(item.classCode);
-      const homeroom = await db.prepare(`
-        SELECT u.name FROM school_teacher_assignments a JOIN users u ON u.id=a.teacher_id
-        WHERE a.class_code=? AND a.assignment_type='homeroom' LIMIT 1
-      `).get(item.classCode);
-      formatted.push({ ...item, studentCount: Number(count?.total || 0), homeroomTeacher: homeroom?.name || null });
-    }
-    res.setHeader("Cache-Control", "private, no-store");
-    res.json({ classes: formatted, allClasses: isSuper });
-  });
-
-  app.get("/api/school/classes/:classCode", requireAuth, async (req, res) => {
-    const classCode = String(req.params.classCode || "").toUpperCase();
-    if (!await canAccessClass(req.user, classCode)) {
-      return res.status(403).json({ error: "Bạn không có quyền xem lớp này." });
-    }
+  async function buildClassDetailPayload(user, rawClassCode) {
+    const classCode = String(rawClassCode || "").trim().toUpperCase();
     const assignments = await db.prepare(`
-      SELECT u.id,u.name,a.subject,a.assignment_type AS assignmentType
+      SELECT u.id,u.name,u.email,a.subject,a.assignment_type AS assignmentType
       FROM school_teacher_assignments a JOIN users u ON u.id=a.teacher_id
       WHERE a.class_code=? ORDER BY CASE WHEN a.assignment_type='homeroom' THEN 0 ELSE 1 END,u.name
     `).all(classCode);
     const teacherMap = new Map();
     for (const row of assignments) {
-      if (!teacherMap.has(Number(row.id))) teacherMap.set(Number(row.id), {
-        id: Number(row.id), name: row.name, isHomeroom: false, subjects: []
-      });
+      if (!teacherMap.has(Number(row.id))) {
+        teacherMap.set(Number(row.id), {
+          id: Number(row.id),
+          name: row.name,
+          email: row.email,
+          isHomeroom: false,
+          subjects: []
+        });
+      }
       const teacher = teacherMap.get(Number(row.id));
       if (row.assignmentType === "homeroom") teacher.isHomeroom = true;
       else if (row.subject && !teacher.subjects.includes(row.subject)) teacher.subjects.push(row.subject);
     }
     const students = await db.prepare(`
-      SELECT u.id,u.name,u.email FROM school_class_members m
-      JOIN users u ON u.id=m.user_id WHERE m.class_code=? ORDER BY u.name
+      SELECT u.id,u.name,u.email,m.created_at AS joinedAt
+      FROM school_class_members m
+      JOIN users u ON u.id=m.user_id
+      WHERE m.class_code=?
+      ORDER BY u.name, u.id
     `).all(classCode);
-    const canManageMembers = await requireHomeroom(req, { status: () => ({ json: () => {} }) }, classCode).catch(() => false);
+    const canManageMembers = await isHomeroomTeacherOfClass(user, classCode);
+    const isHomeroomTeacher = Boolean(
+      isTeacherUser(user) &&
+      assignments.some(row => Number(row.id) === Number(user.id) && row.assignmentType === "homeroom")
+    );
+    return {
+      classCode,
+      canManageMembers,
+      isHomeroomTeacher,
+      teachers: [...teacherMap.values()].sort((a, b) => Number(b.isHomeroom) - Number(a.isHomeroom)),
+      students: students.map(s => ({
+        id: Number(s.id),
+        name: s.name,
+        email: s.email,
+        joinedAt: s.joinedAt || null
+      }))
+    };
+  }
+
+  app.get("/api/school/classes", requireAuth, async (req, res) => {
+    const isSuper = isSuperAdminUser(req.user);
+    const isTeacher = isTeacherUser(req.user);
+
+    const [countRows, homeroomRows] = await Promise.all([
+      db.prepare("SELECT class_code AS classCode, COUNT(*) AS total FROM school_class_members GROUP BY class_code").all(),
+      db.prepare(`
+        SELECT a.class_code AS classCode, u.id AS teacherId, u.name AS teacherName
+        FROM school_teacher_assignments a
+        JOIN users u ON u.id=a.teacher_id
+        WHERE a.assignment_type='homeroom'
+      `).all()
+    ]);
+
+    const countByClass = new Map(countRows.map(r => [String(r.classCode).toUpperCase(), Number(r.total || 0)]));
+    const homeroomByClass = new Map(homeroomRows.map(r => [String(r.classCode).toUpperCase(), r.teacherName || null]));
+
+    const availableClasses = SCHOOL_CLASSES.map(classCode => ({
+      classCode,
+      studentCount: countByClass.get(classCode) || 0,
+      homeroomTeacher: homeroomByClass.get(classCode) || null
+    }));
+
+    let classes = [];
+    if (isSuper) {
+      classes = SCHOOL_CLASSES.map(classCode => ({ classCode, role: "admin", isHomeroom: false }));
+    } else if (isTeacher) {
+      const assignedRows = await db.prepare(`
+        SELECT class_code AS classCode,
+          MAX(CASE WHEN assignment_type='homeroom' THEN 1 ELSE 0 END) AS isHomeroom
+        FROM school_teacher_assignments WHERE teacher_id=?
+        GROUP BY class_code
+        ORDER BY MAX(CASE WHEN assignment_type='homeroom' THEN 0 ELSE 1 END), class_code
+      `).all(req.user.id);
+      classes = assignedRows.map(row => ({
+        classCode: String(row.classCode).toUpperCase(),
+        isHomeroom: Boolean(Number(row.isHomeroom)),
+        role: "teacher"
+      }));
+    } else {
+      const memberRows = await db.prepare(
+        "SELECT class_code AS classCode FROM school_class_members WHERE user_id=? ORDER BY class_code"
+      ).all(req.user.id);
+      classes = memberRows.map(row => ({
+        classCode: String(row.classCode).toUpperCase(),
+        isHomeroom: false,
+        role: "student"
+      }));
+    }
+
+    const formatted = classes.map(item => ({
+      ...item,
+      studentCount: countByClass.get(item.classCode) || 0,
+      homeroomTeacher: homeroomByClass.get(item.classCode) || null
+    }));
+
+    let homeroomDetail = null;
+    const homeroomItem = formatted.find(item => item.isHomeroom);
+    if (homeroomItem) {
+      homeroomDetail = await buildClassDetailPayload(req.user, homeroomItem.classCode);
+    }
+
+    let studentClassDetail = null;
+    if (!isSuper && !isTeacher && formatted.length > 0) {
+      studentClassDetail = await buildClassDetailPayload(req.user, formatted[0].classCode);
+    }
+
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ classCode, canManageMembers: Boolean(canManageMembers), teachers: [...teacherMap.values()].sort((a,b) => Number(b.isHomeroom)-Number(a.isHomeroom)), students: students.map(s => ({ id:Number(s.id),name:s.name,email:s.email })) });
+    res.json({
+      classes: formatted,
+      availableClasses,
+      allClasses: isSuper,
+      homeroomClass: homeroomItem?.classCode || null,
+      homeroomDetail,
+      currentClassCode: !isSuper && !isTeacher && formatted.length > 0 ? formatted[0].classCode : null,
+      studentClassDetail
+    });
+  });
+
+  app.get("/api/school/classes/:classCode", requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (!await canAccessClass(req.user, classCode)) {
+      return res.status(403).json({ error: "Bạn không có quyền xem lớp này." });
+    }
+    const payload = await buildClassDetailPayload(req.user, classCode);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(payload);
+  });
+
+  // Giáo viên chủ nhiệm thêm trực tiếp học sinh vào lớp bằng email học sinh (Ảnh 1)
+  app.post("/api/school/classes/:classCode/students", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    if (!isClassCode(classCode)) {
+      return res.status(400).json({ error: "Mã lớp không hợp lệ." });
+    }
+    if (!await requireHomeroom(req, res, classCode)) return;
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Vui lòng nhập địa chỉ email học sinh hợp lệ." });
+    }
+
+    const target = await db
+      .prepare("SELECT id,name,email,role,admin_level,account_type FROM users WHERE LOWER(email)=?")
+      .get(email);
+    if (!target) {
+      return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh với email này. Học sinh cần đăng ký tài khoản trước." });
+    }
+    if (target.role === "admin" || target.role === "teacher" || Number(target.admin_level) >= 1) {
+      return res.status(400).json({ error: "Email này thuộc tài khoản Giáo viên / Quản trị, không phải tài khoản học sinh." });
+    }
+
+    const alreadyMember = await db
+      .prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?")
+      .get(target.id, classCode);
+    if (alreadyMember) {
+      return res.status(409).json({ error: `Học sinh ${target.name} (${target.email}) đã có trong danh sách lớp ${classCode}.` });
+    }
+
+    const addTx = db.transaction(async () => {
+      await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(target.id);
+      await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(target.id);
+      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(target.id, classCode);
+    });
+    await addTx();
+
+    await notifyUser?.(
+      target.id,
+      "school_class_membership",
+      `Đã được thêm vào lớp ${classCode}`,
+      `Giáo viên chủ nhiệm ${req.user.name} đã thêm bạn vào lớp ${classCode}.`,
+      "/"
+    );
+
+    return res.status(201).json({
+      ok: true,
+      classCode,
+      student: {
+        id: Number(target.id),
+        name: target.name,
+        email: target.email
+      },
+      message: `Đã thêm học sinh ${target.name} (${target.email}) vào lớp ${classCode}.`
+    });
+  });
+
+  // Giáo viên chủ nhiệm xóa học sinh khỏi lớp chủ nhiệm
+  app.delete("/api/school/classes/:classCode/students/:studentId", requireSameOrigin, requireAuth, async (req, res) => {
+    const classCode = String(req.params.classCode || "").trim().toUpperCase();
+    const studentId = Number(req.params.studentId);
+    if (!isClassCode(classCode) || !Number.isInteger(studentId) || studentId < 1) {
+      return res.status(400).json({ error: "Thông tin lớp hoặc học sinh không hợp lệ." });
+    }
+    if (!await requireHomeroom(req, res, classCode)) return;
+
+    const existing = await db
+      .prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?")
+      .get(studentId, classCode);
+    if (!existing) {
+      return res.status(404).json({ error: "Học sinh không thuộc lớp này." });
+    }
+
+    await db.prepare("DELETE FROM school_class_members WHERE user_id=? AND class_code=?").run(studentId, classCode);
+    await notifyUser?.(
+      studentId,
+      "school_class_membership",
+      `Cập nhật lớp học ${classCode}`,
+      `Bạn đã được giáo viên chủ nhiệm chuyển khỏi danh sách lớp ${classCode}.`,
+      "/"
+    );
+    return res.json({ ok: true, classCode, removedStudentId: studentId });
+  });
+
+  // Học sinh tự bấm nút "Tham gia lớp" để vào lớp của giáo viên (Ảnh 2)
+  app.post("/api/school/join-class", requireSameOrigin, requireAuth, async (req, res) => {
+    if (isSuperAdminUser(req.user) || isTeacherUser(req.user)) {
+      return res.status(403).json({ error: "Chức năng Tham gia lớp chỉ dành cho tài khoản Học sinh." });
+    }
+    const classCode = String(req.body?.classCode || "").trim().toUpperCase();
+    if (!isClassCode(classCode)) {
+      return res.status(400).json({ error: "Vui lòng chọn lớp hợp lệ (từ 10A1 đến 12C9)." });
+    }
+
+    const joinTx = db.transaction(async () => {
+      await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(req.user.id);
+      await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(req.user.id);
+      await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(req.user.id, classCode);
+    });
+    await joinTx();
+
+    const homeroom = await db.prepare(`
+      SELECT a.teacher_id AS teacherId, u.name AS teacherName
+      FROM school_teacher_assignments a
+      JOIN users u ON u.id=a.teacher_id
+      WHERE a.class_code=? AND a.assignment_type='homeroom'
+      LIMIT 1
+    `).get(classCode);
+
+    if (homeroom?.teacherId) {
+      await notifyUser?.(
+        homeroom.teacherId,
+        "student_joined_class",
+        `Học sinh mới vào lớp ${classCode}`,
+        `Học sinh ${req.user.name} (${req.user.email}) vừa tham gia lớp ${classCode} của bạn.`,
+        "/"
+      );
+    }
+
+    const updatedRow = await db.prepare("SELECT * FROM users WHERE id=?").get(req.user.id);
+    const updatedUser = publicUser({
+      ...updatedRow,
+      account_type: "school",
+      student_class: classCode
+    });
+
+    return res.json({
+      ok: true,
+      classCode,
+      homeroomTeacher: homeroom?.teacherName || null,
+      user: updatedUser,
+      message: `Đã tham gia Lớp ${classCode} thành công!`
+    });
   });
 
   app.get("/api/school/classes/:classCode/students/:studentId/progress", requireAuth, async (req, res) => {
@@ -235,7 +465,7 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!Number.isInteger(studentId) || !await canAccessClass(req.user, classCode)) {
       return res.status(403).json({ error: "Bạn không có quyền xem tiến trình học sinh này." });
     }
-    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 2) {
+    if (!isSuperAdminUser(req.user)) {
       const assigned = await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
       ).get(req.user.id, classCode);
@@ -262,9 +492,9 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!["add", "remove"].includes(action) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: "Vui lòng nhập email hợp lệ và chọn thao tác thêm/xóa." });
     }
-    const target = await db.prepare("SELECT id,name,account_type FROM users WHERE LOWER(email)=?").get(email);
-    if (!target || target.account_type !== "school") {
-      return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh của trường với email này." });
+    const target = await db.prepare("SELECT id,name,role,admin_level,account_type FROM users WHERE LOWER(email)=?").get(email);
+    if (!target || target.role === "admin" || target.role === "teacher" || Number(target.admin_level) >= 1) {
+      return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh với email này." });
     }
     const alreadyMember = await db.prepare(
       "SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?"
@@ -281,8 +511,8 @@ export function installSchoolSystemRoutes(app, deps) {
   });
 
   app.get("/api/school/admin/class-change-requests", requireAuth, async (req, res) => {
-    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 2) {
-      return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới xem được yêu cầu này." });
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: "Chỉ Quản trị viên (Admin) mới xem được yêu cầu này." });
     }
     const requests = await db.prepare(`
       SELECT r.id,r.class_code AS classCode,r.action,r.note,r.status,r.created_at AS createdAt,
@@ -302,6 +532,7 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!request) return res.status(404).json({ error: "Yêu cầu không tồn tại hoặc đã xử lý." });
     if (decision === "approve") {
       if (request.action === "add") {
+        await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(request.target_user_id);
         const existing = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(request.target_user_id, request.class_code);
         if (!existing) await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(request.target_user_id, request.class_code);
       } else {
@@ -315,7 +546,7 @@ export function installSchoolSystemRoutes(app, deps) {
   });
 
   app.post("/api/school/teacher-messages", requireSameOrigin, requireAuth, async (req, res) => {
-    if (req.user.role !== "admin" || Number(req.user.adminLevel) < 1 || await accountType(req.user.id) !== "school") {
+    if (!isTeacherUser(req.user)) {
       return res.status(403).json({ error: "Chỉ giáo viên của trường mới gửi được thông báo." });
     }
     const title = String(req.body?.title || "").trim().slice(0, 120);
@@ -328,8 +559,8 @@ export function installSchoolSystemRoutes(app, deps) {
   });
 
   app.get("/api/school/admin/teacher-messages", requireAuth, async (req, res) => {
-    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 2) {
-      return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới xem được thông báo này." });
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: "Chỉ Quản trị viên (Admin) mới xem được thông báo này." });
     }
     const messages = await db.prepare(`
       SELECT m.id,m.title,m.message,m.status,m.created_at AS createdAt,u.name AS teacherName
