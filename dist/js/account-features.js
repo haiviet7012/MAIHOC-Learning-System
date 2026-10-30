@@ -695,15 +695,15 @@ function formatNotificationDate(value) {
   let date;
   if (value instanceof Date) {
     date = value;
-  } else if (typeof value === "number" || /^\\d{10,13}$/.test(String(value).trim())) {
+  } else if (typeof value === "number" || /^[0-9]{10,13}$/.test(String(value).trim())) {
     const timestamp = Number(value);
     date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
   } else {
     const raw = String(value).trim();
-    const hasTimezone = /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw);
+    const hasTimezone = /(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(raw);
     const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
     date = new Date(
-      !hasTimezone && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}/.test(normalized)
+      !hasTimezone && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}/.test(normalized)
         ? normalized + "Z"
         : normalized
     );
@@ -717,7 +717,7 @@ function notificationDisplayContent(notification) {
   const message = String(notification?.message || "");
   const providerError = title + " " + message;
   const isRawGeminiError =
-    /GoogleGenerativeAI Error|generativelanguage\\.googleapis\\.com|gemini-[^\\s:]+:generateContent/i.test(providerError);
+    /GoogleGenerativeAI Error|generativelanguage[.]googleapis[.]com|gemini-[^ :]+:generateContent/i.test(providerError);
   const isTemporaryUnavailable =
     /503|502|504|high demand|overloaded|temporarily unavailable|service unavailable/i.test(providerError);
   if (isRawGeminiError && isTemporaryUnavailable) {
