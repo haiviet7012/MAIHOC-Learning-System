@@ -731,7 +731,7 @@ function renderOnlineUsersList() {
   if (!listNode) return;
 
   const filtered = latestOnlineUsers.filter(u => {
-    if (onlineFilter === "admin") return u.role === "admin";
+    if (onlineFilter === "admin") return ["admin", "teacher"].includes(u.role);
     if (onlineFilter === "user") return u.role === "student";
     return true;
   });

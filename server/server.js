@@ -2772,12 +2772,11 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
     .prepare(`
       SELECT s.id,s.subject,s.grade,s.category,s.title,s.original_name AS originalName,s.size,s.status,
         s.created_at AS createdAt,s.answer_key_original_name AS answerKeyOriginalName,
-        u.name AS userName,u.email AS userEmail,r.class_code AS classCode,r.class_code AS classCode
+        u.name AS userName,u.email AS userEmail,r.class_code AS classCode
       FROM document_submissions s JOIN users u ON u.id=s.user_id
       LEFT JOIN school_document_reviews r ON r.submission_id=s.id
-      LEFT JOIN school_document_reviews r ON r.submission_id=s.id
       WHERE s.status='pending'
-        ${isSubordinateAdmin ? "AND r.submission_id IS NOT NULL" : ""}
+        ${isSubordinateAdmin ? "AND r.class_code IS NOT NULL" : ""}
         AND (r.submission_id IS NULL OR ? >= 2 OR EXISTS (
           SELECT 1 FROM school_teacher_assignments a
           WHERE a.teacher_id=? AND a.class_code=r.class_code AND a.assignment_type='homeroom'
@@ -2802,7 +2801,7 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
         "SELECT s.*,r.class_code AS review_class_code FROM document_submissions s JOIN users u ON u.id=s.user_id " +
         "LEFT JOIN school_document_reviews r ON r.submission_id=s.id " +
         "WHERE s.id=? AND s.status='pending' " +
-        (isSubordinateAdmin ? "AND r.submission_id IS NOT NULL" : "")
+        (isSubordinateAdmin ? "AND r.class_code IS NOT NULL" : "")
       )
       .get(id);
     if (!sub) return res.status(404).json({ error: "Không tìm thấy tài liệu chờ duyệt hoặc bạn không có quyền xử lý tài liệu này." });
