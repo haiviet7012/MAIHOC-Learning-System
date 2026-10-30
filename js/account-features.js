@@ -790,6 +790,51 @@ async function loadUser() {
   }
 
 }
+function formatNotificationDate(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  let date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "number" || /^\\d{10,13}$/.test(String(value).trim())) {
+    const timestamp = Number(value);
+    date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  } else {
+    const raw = String(value).trim();
+    const hasTimezone = /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw);
+    const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+    date = new Date(
+      !hasTimezone && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}/.test(normalized)
+        ? normalized + "Z"
+        : normalized
+    );
+  }
+  if (!date || !Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+}
+
+function notificationDisplayContent(notification) {
+  const title = String(notification?.title || "Thông báo");
+  const message = String(notification?.message || "");
+  const providerError = title + " " + message;
+  const isRawGeminiError =
+    /GoogleGenerativeAI Error|generativelanguage\\.googleapis\\.com|gemini-[^\\s:]+:generateContent/i.test(providerError);
+  const isTemporaryUnavailable =
+    /503|502|504|high demand|overloaded|temporarily unavailable|service unavailable/i.test(providerError);
+  if (isRawGeminiError && isTemporaryUnavailable) {
+    return {
+      title: "AI tạm thời quá tải",
+      message: "Gemini đang bận hoặc tạm thời không khả dụng. Hệ thống đã tự thử lại và thử model dự phòng nhưng chưa thành công. Vui lòng thử lại sau ít phút trong mục quản lý đáp án."
+    };
+  }
+  if (isRawGeminiError) {
+    return {
+      title: "Không thể xử lý yêu cầu AI",
+      message: "Dịch vụ AI tạm thời gặp sự cố. Vui lòng thử lại sau ít phút hoặc liên hệ Admin nếu lỗi tiếp tục xảy ra."
+    };
+  }
+  return { title, message };
+}
+
 async function refreshNotifications() {
   if(!activeUser)return;
   try {
@@ -798,8 +843,9 @@ async function refreshNotifications() {
     if(badge){badge.hidden=!(data.unread>0);badge.textContent=data.unread>99?"99+":String(data.unread);}
     const list=$("#notifications-list");
     if(list)list.innerHTML=(data.items||[]).length?data.items.map(n=>{
-      const date=new Date(String(n.createdAt).replace(" ","T")+"Z").toLocaleString("vi-VN");
-      return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(n.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(n.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
+      const date=formatNotificationDate(n.createdAt);
+      const display=notificationDisplayContent(n);
+      return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(display.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(display.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
     }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
   } catch(e) { console.warn("Notifications:",e.message); }
 }
