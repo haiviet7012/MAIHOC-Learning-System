@@ -1699,8 +1699,7 @@ document.addEventListener("change", e => {
   const field = document.getElementById("homeroom-class-field");
   const select = field?.querySelector("select");
   const isHomeroom = e.target.value === "homeroom";
-  if (field) field.hidden = !isHomeroom;
-  const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
+  if (field) field.hidden = !isHomeroom;  
   const teachingClasses = document.querySelector('#create-subadmin-form [name="teachingClasses"]');
   if (select) select.required = isHomeroom;
   if (teachingClasses) teachingClasses.required = !isHomeroom;
