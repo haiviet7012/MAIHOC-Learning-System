@@ -9,7 +9,7 @@ import {
 import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
-import "./account-features.js?v=20261030roles1";
+import "./account-features.js?v=20261030review2";
 import { mountStudyRooms } from "../study-rooms/client.js";
 import {
     refreshTestsQueue,
@@ -469,6 +469,45 @@ function examPage() {
         : "90:00";
     return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : isTest ? "B\u00e0i ki\u1ec3m tra" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${instructionText}</div></div><div id="timer" class="timer" ${showTimer ? "" : "hidden"}>${initialTimerLabel}</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
 }
+function formatResultAnswer(value, emptyLabel = "Chưa trả lời") {
+    const values = Array.isArray(value) ? value : value == null ? [] : [value];
+    const cleaned = values.map(answer => {
+        if (typeof answer === "boolean") return answer ? "Đúng" : "Sai";
+        const text = String(answer ?? "").trim();
+        if (/^true$/i.test(text)) return "Đúng";
+        if (/^false$/i.test(text)) return "Sai";
+        return text;
+    }).filter(Boolean);
+    return cleaned.length ? [...new Set(cleaned)].join(" / ") : emptyLabel;
+}
+
+function renderResultDetail(item) {
+    const question = escapeHTML(item.question ?? "—");
+    const isCorrect = Boolean(item.correct);
+    const status = isCorrect ? "Đúng" : "Chưa đúng";
+    const points = `${item.earnedPoints ?? 0}/${item.totalPoints ?? 0}`;
+    const answerRows = Array.isArray(item.statements) && item.statements.length
+        ? item.statements.map(statement => `
+            <div class="grade-detail-answer-line">
+                <strong>Mệnh đề ${escapeHTML(statement.statement ?? "")}</strong>
+                <span><b>Bạn chọn:</b> ${escapeHTML(formatResultAnswer(statement.userAnswer))}</span>
+                <span><b>Đáp án đúng:</b> ${escapeHTML(formatResultAnswer(statement.expectedAnswer, "Chưa có đáp án chuẩn"))}</span>
+            </div>`).join("")
+        : `
+            <div class="grade-detail-answer-line">
+                <span><b>Bạn chọn:</b> ${escapeHTML(formatResultAnswer(item.userAnswer))}</span>
+                <span><b>Đáp án đúng:</b> ${escapeHTML(formatResultAnswer(item.expectedAnswer, "Chưa có đáp án chuẩn"))}</span>
+            </div>`;
+    return `
+        <article class="grade-detail">
+            <div class="grade-detail-head">
+                <span>Câu ${question}</span>
+                <strong class="${isCorrect ? "is-correct" : "is-wrong"}">${status} · ${escapeHTML(points)}</strong>
+            </div>
+            <div class="grade-detail-answers">${answerRows}</div>
+        </article>`;
+}
+
 function resultPage() {
     const saved = state.route === "saved-result" ? state.savedExamResult : null;
     const d = saved ? { title: saved.title, subject: saved.subject, grade: saved.grade, category: saved.category } : findDoc(state.examDocId);
@@ -481,7 +520,7 @@ function resultPage() {
     const owner = saved?.userName ? `<p class="muted tiny">Bài làm của ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` · ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
     const isPendingGrade = result?.gradingStatus === "pending_grade" || (d?.category === "test" && !result?.graded);
     const details = result?.graded
-        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details">${rows.map(item => `<div class="grade-detail"><span>Câu ${escapeHTML(item.question)}</span><strong class="${item.correct ? "is-correct" : "is-wrong"}">${item.correct ? "Đúng" : "Chưa đúng"} · ${item.earnedPoints ?? 0}/${item.totalPoints ?? 0}</strong></div>`).join("")}</div>`
+        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><div class="grade-details">${rows.map(renderResultDetail).join("")}</div>`
         : isPendingGrade
           ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giảng viên chấm điểm.")}</p>`
           : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
@@ -672,7 +711,7 @@ async function loadAdminUsers() { if (state.route !== "admin")
     if(payload.isSuperAdmin){
       extra = `<section class="admin-submissions" style="margin-top:20px"><h2>Thêm Giảng viên</h2><p class="muted">Chỉ bạn (Admin cao nhất) mới có thể cấp quyền Giảng viên.</p><form id="create-subadmin-form" class="admin-form-grid"><label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label><label>Họ và tên <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label><label>Mật khẩu tạm thời <span class="muted tiny">(chỉ bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><button class="button primary" type="submit">Cấp quyền / Tạo Giảng viên</button></form><p class="muted tiny">Nếu email đã có tài khoản MAIHOC, hệ thống sẽ nâng quyền tài khoản đó và giữ nguyên mật khẩu, tiến độ học tập, lịch sử làm bài. Chỉ cần nhập tên và mật khẩu cho email chưa đăng ký.</p></section><section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
-    container.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
+    container.innerHTML = `<div class="admin-table-wrap admin-users-scroll"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     if(payload.isSuperAdmin) await loadAccountDeletionRequests();
 }
 catch (error) {
