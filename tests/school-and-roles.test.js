@@ -84,7 +84,8 @@ test("Homeroom teacher can add student by email and Student can join class via /
     [14, { id: 14, name: "hai viet", email: "haiviet701@gmail.com", role: "admin", admin_level: 1, account_type: "school" }],
     [15, { id: 15, name: "GV Bo Mon", email: "gvbm@gmail.com", role: "admin", admin_level: 1, account_type: "school" }],
     [12, { id: 12, name: "Hải Nguyễn Đức", email: "hainguyenduc2409@gmail.com", role: "user", admin_level: 0, account_type: "external" }],
-    [13, { id: 13, name: "hai viet 1", email: "hainguyenviet231@gmail.com", role: "user", admin_level: 0, account_type: "school" }]
+    [13, { id: 13, name: "hai viet 1", email: "hainguyenviet231@gmail.com", role: "user", admin_level: 0, account_type: "school" }],
+    [17, { id: 17, name: "External Student", email: "external@student.test", role: "user", admin_level: 0, account_type: "external" }]
   ]);
   const classMembers = []; // { user_id, class_code, created_at }
   const joinLocks = []; // permanent one-time class selection by user
@@ -271,6 +272,13 @@ test("Homeroom teacher can add student by email and Student can join class via /
   const homeroomUser = publicUser({ ...users.get(14), homeroom_class: "10A1" });
   const subjectTeacherUser = publicUser(users.get(15));
   const student1User = publicUser(users.get(13));
+  const externalStudentUser = publicUser(users.get(17));
+
+  const externalCannotJoinSchoolClass = await callRoute("POST /api/school/join-class", {
+    user: externalStudentUser,
+    body: { classCode: "10A1" }
+  });
+  assert.equal(externalCannotJoinSchoolClass.status, 403);
 
   // Subject teacher (not homeroom) CANNOT add student by email
   const forbiddenAdd = await callRoute("POST /api/school/classes/:classCode/students", {
