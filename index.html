@@ -44,7 +44,8 @@
         </div>
         <div class="inline-actions" id="user-actions" hidden>
           <button class="icon-button" id="upload-open" title="Gửi tài liệu để Admin duyệt" aria-label="Gửi tài liệu" hidden>＋ <span class="button-label">Gửi tài liệu</span></button>
-          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span></button>
+          <button class="icon-button" id="tests-open" data-route="tests" title="Danh sách Bài kiểm tra" aria-label="Bài kiểm tra">📝 <span class="button-label">Bài kiểm tra</span><span class="notification-count tests-new-count" id="tests-new-count" hidden>0</span></button>
+          <button class="icon-button" id="school-classes-open" data-route="school" hidden>👥 <span class="button-label">Lớp của bạn</span></button>
           <button class="icon-button" id="account-center-open" data-route="account-center">Trung tâm tài khoản</button>
           <button class="icon-button" id="admin-open" data-action="admin-dashboard" hidden>Quản trị</button>
           <button class="icon-button" id="logout-button">Đăng xuất</button>
@@ -107,6 +108,9 @@
       <p class="muted">Tài liệu bạn gửi sẽ được Admin kiểm tra trước khi xuất hiện trong thư viện. Admin có thể tải lên trực tiếp.</p>
       <div id="upload-dialog-columns" class="upload-dialog-columns">
       <section class="upload-document-column">
+      <label id="upload-school-class-field" hidden>Lớp của bạn
+        <select name="classCode"><option value="">Chọn lớp</option><option value="10A1">10A1</option><option value="10A2">10A2</option><option value="10A3">10A3</option><option value="10A4">10A4</option><option value="10A5">10A5</option><option value="10A6">10A6</option><option value="10A7">10A7</option><option value="10A8">10A8</option><option value="10A9">10A9</option><option value="11B1">11B1</option><option value="11B2">11B2</option><option value="11B3">11B3</option><option value="11B4">11B4</option><option value="11B5">11B5</option><option value="11B6">11B6</option><option value="11B7">11B7</option><option value="11B8">11B8</option><option value="11B9">11B9</option><option value="12C1">12C1</option><option value="12C2">12C2</option><option value="12C3">12C3</option><option value="12C4">12C4</option><option value="12C5">12C5</option><option value="12C6">12C6</option><option value="12C7">12C7</option><option value="12C8">12C8</option><option value="12C9">12C9</option></select>
+      </label>
       <label>Môn học<select name="subject" required><option>Toán</option><option>Tiếng Anh</option><option>Vật lý</option><option>Hóa học</option><option>Ngữ văn</option><option>Sinh học</option><option>IELTS</option></select></label>
       <label>Lớp<select name="grade" required><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></label>
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="test" id="upload-category-test-opt" hidden>Bài kiểm tra (Giảng viên / Admin)</option></select></label>
@@ -221,7 +225,15 @@
   <dialog id="register-dialog" class="modal compact">
     <form id="register-form">
       <div class="modal-heading"><div><p class="eyebrow">BẮT ĐẦU HÀNH TRÌNH</p><h2>Tạo tài khoản</h2></div><button type="button" class="close-button" data-close="register-dialog" aria-label="Đóng">×</button></div>
-      <p class="muted">Tài khoản mới mặc định là Học sinh. Quyền Giảng viên chỉ được cấp qua cấu hình quản trị phía máy chủ.</p>
+      <p class="muted">Chọn loại tài khoản phù hợp. Các tính năng lớp học chỉ áp dụng cho học sinh của trường.</p>
+      <fieldset class="account-type-choice">
+        <legend>Loại tài khoản</legend>
+        <label><input type="radio" name="accountType" value="external" checked> Học sinh bên ngoài</label>
+        <label><input type="radio" name="accountType" value="school"> Học sinh của trường</label>
+      </fieldset>
+      <label id="register-school-class-field" hidden>Lớp của bạn
+        <select name="classCode"><option value="">Chọn lớp</option><option value="10A1">10A1</option><option value="10A2">10A2</option><option value="10A3">10A3</option><option value="10A4">10A4</option><option value="10A5">10A5</option><option value="10A6">10A6</option><option value="10A7">10A7</option><option value="10A8">10A8</option><option value="10A9">10A9</option><option value="11B1">11B1</option><option value="11B2">11B2</option><option value="11B3">11B3</option><option value="11B4">11B4</option><option value="11B5">11B5</option><option value="11B6">11B6</option><option value="11B7">11B7</option><option value="11B8">11B8</option><option value="11B9">11B9</option><option value="12C1">12C1</option><option value="12C2">12C2</option><option value="12C3">12C3</option><option value="12C4">12C4</option><option value="12C5">12C5</option><option value="12C6">12C6</option><option value="12C7">12C7</option><option value="12C8">12C8</option><option value="12C9">12C9</option></select>
+      </label>
       <label>Họ và tên<input name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Tên của bạn"></label>
       <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="ban@example.com"></label>
       <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="Ít nhất 8 ký tự"></label>
@@ -309,6 +321,11 @@
             <option value="10">Lớp 10</option>
             <option value="11">Lớp 11</option>
             <option value="12">Lớp 12</option>
+          </select>
+        </label>
+        <label>Lớp nhận bài kiểm tra
+          <select name="classCode" required>
+            <option value="">Đang tải danh sách lớp…</option>
           </select>
         </label>
       </div>
