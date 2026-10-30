@@ -335,6 +335,10 @@ export function installSchoolSystemRoutes(app, deps) {
       homeroomTeacher: homeroomByClass.get(item.classCode) || null
     }));
 
+    const joinLock = !isSuper && !isTeacher
+      ? await db.prepare("SELECT class_code AS classCode FROM school_class_join_locks WHERE user_id=?").get(req.user.id)
+      : null;
+
     let homeroomDetail = null;
     const homeroomItem = formatted.find(item => item.isHomeroom);
     if (homeroomItem) {
@@ -354,6 +358,8 @@ export function installSchoolSystemRoutes(app, deps) {
       homeroomClass: homeroomItem?.classCode || null,
       homeroomDetail,
       currentClassCode: !isSuper && !isTeacher && formatted.length > 0 ? formatted[0].classCode : null,
+      hasJoinedClass: Boolean(joinLock || formatted.length > 0),
+      joinedClassCode: joinLock?.classCode || formatted[0]?.classCode || null,
       studentClassDetail
     });
   });
