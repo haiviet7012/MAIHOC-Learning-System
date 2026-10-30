@@ -401,39 +401,51 @@ function queueExamSolution(documentId) {
         "admin"
       );
     } catch (error) {
+      const errorText = String(error?.message || "");
       const insufficient =
           error?.code === "insufficient_balance" ||
-          /insufficient balance/i.test(String(error?.message || "")),
+          /insufficient balance/i.test(errorText),
         quota = isAIQuotaError(error) && !insufficient,
-        network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(
-          String(error?.message || "")
+        network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(errorText),
+        transientUnavailable = /(^|\\D)(500|502|503|504)(\\D|$)|high demand|overloaded|temporarily unavailable|service unavailable|deadline exceeded/i.test(
+          `${error?.status || ""} ${errorText}`
         );
+      const providerName = solver.provider === "gemini" ? "Gemini" : String(solver.provider || "AI");
       const message = quota
-        ? `${solver.provider} đã hết quota hoặc bị giới hạn lượt gọi.`
+        ? `${providerName} đã hết quota hoặc bị giới hạn lượt gọi. Vui lòng kiểm tra hạn mức API rồi thử lại.`
         : insufficient
-          ? `Số dư API ${solver.provider} không đủ; hãy nạp số dư và thử lại.`
-          : network
-            ? `Không kết nối được ${solver.provider} API. Kiểm tra Internet/DNS/HTTPS cổng 443. Chi tiết: ${String(
-                error?.message || ""
-              ).slice(0, 500)}`
-            : String(error?.message || "Không thể tạo lời giải AI.").slice(0, 1000);
+          ? `Số dư API ${providerName} không đủ; hãy nạp số dư và thử lại.`
+          : transientUnavailable
+            ? `${providerName} đang quá tải hoặc tạm thời không khả dụng (HTTP ${error?.status || 503}). Hệ thống đã tự thử lại và thử model dự phòng nhưng chưa thành công. Vui lòng thử lại sau ít phút.`
+            : network
+              ? `Không kết nối được ${providerName} API. Hãy kiểm tra kết nối máy chủ rồi thử lại.`
+              : /GoogleGenerativeAI Error|generativelanguage\\.googleapis\\.com/i.test(errorText)
+                ? `Dịch vụ ${providerName} tạm thời gặp sự cố. Vui lòng thử lại sau ít phút.`
+                : errorText.slice(0, 1000) || "Không thể tạo lời giải AI.";
       await updateSolutionJob(id, {
         status: "failed",
         progress: 0,
         phase: quota
-          ? `${solver.provider} hết quota`
+          ? `${providerName} hết quota`
           : insufficient
-            ? `${solver.provider} thiếu số dư`
-            : network
-              ? `Mất kết nối ${solver.provider}`
-              : "Không tạo được lời giải",
-        error_code: error?.code || (quota ? "quota_exhausted" : "solution_generation_failed"),
+            ? `${providerName} thiếu số dư`
+            : transientUnavailable
+              ? `${providerName} tạm thời quá tải`
+              : network
+                ? `Mất kết nối ${providerName}`
+                : "Không tạo được lời giải",
+        error_code: error?.code || (quota ? "quota_exhausted" : transientUnavailable ? "ai_temporarily_unavailable" : "solution_generation_failed"),
         error_message: message
       }).catch(() => {});
+      const notificationTitle = transientUnavailable
+        ? `${providerName} tạm thời quá tải`
+        : quota || insufficient
+          ? `${providerName} cần kiểm tra hạn mức API`
+          : "Không thể tạo lời giải AI";
       await notifyAdmins(
-        quota || insufficient ? "ai_quota_exhausted" : "exam_solution_failed",
-        message,
-        `${id}: ${message}`,
+        quota || insufficient ? "ai_quota_exhausted" : transientUnavailable ? "ai_service_unavailable" : "exam_solution_failed",
+        notificationTitle,
+        `${doc?.title || id}: ${message}`,
         "admin"
       ).catch(() => {});
       if (quota || insufficient) {
