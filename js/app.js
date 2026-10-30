@@ -715,7 +715,7 @@ function formatAdminCreatedAt(value) {
     });
 }
 
-function adminPage() { if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return `${pageHeading("Khu vực giảng viên", "Quản lý tài liệu và bài kiểm tra; quyền quản lý tài khoản chỉ dành cho Admin cao nhất.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Quản lý nội dung học tập</h2></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
+function adminPage() { if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return `${pageHeading("Khu vực giảng viên", "Quản lý tài liệu và bài kiểm tra; quyền quản lý tài khoản chỉ dành cho Admin cao nhất.")}<div class="admin-toolbar"><div><span class="pill">GIẢNG VIÊN</span><h2 style="margin:10px 0 2px">Khu vực dành cho giáo viên</h2></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div id="admin-users-table"></div>`; return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và kiểm tra quyền truy cập.")}<div class="admin-toolbar"><div><span class="pill">ADMIN</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Danh sách do máy chủ trả về; quyền không lấy từ dữ liệu trình duyệt.</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Quyền truy cập</span><strong>3 vai trò</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`; }
 async function loadAdminUsers() {
   if (state.route !== "admin") return;
   if (currentUser?.role === "admin" && Number(currentUser.adminLevel) < 2) return;
@@ -1571,8 +1571,18 @@ function applyAuthUI() {
     if ($("#tests-open")) $("#tests-open").hidden = !signedIn;
     if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || currentUser?.role === "admin";
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = currentUser?.role !== "admin";
-    $("#admin-open").hidden = currentUser?.role !== "admin";
-    if ($("#school-classes-open")) $("#school-classes-open").hidden = !signedIn || !(currentUser?.accountType === "school" || (currentUser?.role === "admin" && Number(currentUser.adminLevel) >= 2));
+    const isTeacherAccount = currentUser?.role === "admin" && Number(currentUser.adminLevel) >= 1 && Number(currentUser.adminLevel) < 2;
+    const adminButton = $("#admin-open");
+    if (adminButton) {
+        adminButton.hidden = currentUser?.role !== "admin";
+        adminButton.textContent = isTeacherAccount ? "Khu vực giáo viên" : "Quản trị";
+    }
+    if ($("#school-classes-open")) {
+        const canOpenSchoolClasses = currentUser?.role === "admin"
+            ? Number(currentUser.adminLevel) >= 2 || (isTeacherAccount && currentUser.accountType === "school")
+            : currentUser?.accountType === "school";
+        $("#school-classes-open").hidden = !signedIn || !canOpenSchoolClasses;
+    }
     if ($("#register-school-class-field")) {
         const schoolChoice = document.querySelector('#register-form [name="accountType"]:checked')?.value === "school";
         $("#register-school-class-field").hidden = !schoolChoice;
@@ -1584,7 +1594,16 @@ function applyAuthUI() {
         $("#upload-school-class-field").querySelector("select").required = schoolStudent;
     }
     $("#user-greeting").hidden = !signedIn;
-    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? (Number(currentUser.adminLevel) >= 2 ? " · Admin" : " · Giáo viên") : ""}` : "";
+    const greetingRole = !currentUser
+        ? ""
+        : currentUser.role !== "admin"
+            ? " · Học sinh"
+            : Number(currentUser.adminLevel) >= 2
+                ? " · Admin"
+                : currentUser.homeroomClass
+                    ? " · Giáo viên chủ nhiệm"
+                    : " · Giáo viên bộ môn";
+    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${greetingRole}` : "";
 }
 async function refreshAuthUI() {
     try {
