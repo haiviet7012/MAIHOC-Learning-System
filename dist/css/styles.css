@@ -538,7 +538,6 @@ body.exam-open{overflow:hidden}
 .grade-details-table .is-correct{color:#16815c}
 .grade-details-table .is-wrong{color:var(--danger)}
 @media(max-width:760px){.grade-details-table-wrap{max-width:100%}.grade-details-table th,.grade-details-table td{padding:9px 10px}}
-.pdf-reader-toolbar a,.pdf-reader-toolbar a:visited,.pdf-reader-toolbar a:hover,.pdf-reader-toolbar a:focus-visible{color:#fff!important;text-decoration:underline;text-underline-offset:2px;font-weight:700}
 
 /* Prevent default browser focus ring on the main view container upon reload/navigation. */
 .view:focus,
