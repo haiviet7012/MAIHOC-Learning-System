@@ -45,9 +45,10 @@ async function renderClass(view, user, classCode) {
       (teacher.isHomeroom ? '<span class="school-homeroom-tag">Chủ nhiệm</span>' : '') + '</article>';
   }).join("");
   const isTeacher = user?.role === "admin" && Number(user.adminLevel) < 2;
+  const canViewProgress = isTeacher || (user?.role === "admin" && Number(user.adminLevel) >= 2);
   const studentCards = students.map(student => '<article class="school-person-card"><span class="school-person-avatar">HS</span>' +
     '<span class="school-person-info"><strong>' + esc(student.name) + '</strong><small>Học sinh</small></span>' +
-    (isTeacher || (user?.role === "admin" && Number(user.adminLevel) >= 2)
+    (canViewProgress
       ? '<a href="#" class="school-progress-link" data-school-progress="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '">Tiến trình học tập ↗</a>'
       : '') + '</article>').join("");
   const membersForm = data.canManageMembers
