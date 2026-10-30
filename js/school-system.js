@@ -23,14 +23,23 @@ export async function mountSchoolPage(view, user, classCode = "") {
         '<span class="school-class-card-meta"><strong>' + Number(item.studentCount || 0) + '</strong><small>học sinh</small></span>' +
         '<span class="school-class-card-arrow">›</span></button>';
     }).join("");
+    const studentJoin = user?.role === "student" && user.accountType === "school" ? await renderStudentJoinClasses() : "";
     const adminTools = data.allClasses ? await renderAdminTools() : "";
-    const teacherNotice = user?.role === "admin" && Number(user.adminLevel) < 2 ? renderTeacherMessageForm() : "";
+    const teacherNotice = user?.role === "teacher" ? renderTeacherMessageForm() : "";
     view.innerHTML = '<section class="school-page"><header class="school-page-header"><div><p class="eyebrow">MAI HỌC · CỘNG ĐỒNG TRƯỜNG</p><h1>Lớp của bạn</h1><p>Chọn một lớp để xem giáo viên và danh sách thành viên.</p></div></header>' +
-      (cards ? '<div class="school-class-grid">' + cards + '</div>' : '<div class="empty-state"><h3>Chưa có lớp được phân công</h3><p>Liên hệ Admin cao nhất để cập nhật lớp học của tài khoản.</p></div>') +
-      teacherNotice + adminTools + '</section>';
+      (cards ? '<div class="school-class-grid">' + cards + '</div>' : '<div class="empty-state"><h3>Chưa có lớp được phân công</h3><p>Bạn chưa tham gia lớp nào. Chọn “Tham gia lớp” để gửi yêu cầu đến giáo viên chủ nhiệm.</p></div>') +
+      studentJoin + teacherNotice + adminTools + '</section>';
   } catch (error) {
     view.innerHTML = '<div class="empty-state"><h3>Không thể mở Lớp của bạn</h3><p>' + esc(error.message) + '</p></div>';
   }
+}
+
+async function renderStudentJoinClasses() {
+  const data = await request("/api/school/available-classes");
+  const choices = (data.classes || []).filter(item => !item.joined && !item.pending && item.homeroomTeacher);
+  const options = choices.map(item => '<option value="' + esc(item.classCode) + '">' + esc(item.classCode) + ' · GVCN: ' + esc(item.homeroomTeacher) + ' · ' + Number(item.studentCount || 0) + ' học sinh</option>').join("");
+  const pending = (data.classes || []).filter(item => item.pending).map(item => esc(item.classCode)).join(", ");
+  return '<section class="school-inline-form"><h3>Tham gia lớp</h3><p class="muted">Chọn lớp phù hợp. Giáo viên chủ nhiệm sẽ duyệt yêu cầu trước khi bạn được xem danh sách lớp.</p><form id="school-join-class-form"><label>Lớp muốn tham gia<select name="classCode" required><option value="">Chọn lớp</option>' + options + '</select></label><button class="button primary" type="submit" ' + (!choices.length ? 'disabled' : '') + '>Tham gia lớp</button></form>' + (pending ? '<p class="muted tiny">Đang chờ xác nhận: ' + pending + '</p>' : '') + '</section>';
 }
 
 async function renderClass(view, user, classCode) {
@@ -44,20 +53,23 @@ async function renderClass(view, user, classCode) {
       '<span class="school-person-avatar">GV</span><span class="school-person-info"><strong>' + esc(teacher.name) + '</strong><small>' + label + (subjects ? " · " + esc(subjects) : "") + '</small></span>' +
       (teacher.isHomeroom ? '<span class="school-homeroom-tag">Chủ nhiệm</span>' : '') + '</article>';
   }).join("");
-  const isTeacher = user?.role === "admin" && Number(user.adminLevel) < 2;
-  const canViewProgress = isTeacher || (user?.role === "admin" && Number(user.adminLevel) >= 2);
+  const isTeacher = user?.role === "teacher";
+  const canViewProgress = Boolean(data.canViewProgress) || (user?.role === "admin" && Number(user.adminLevel) >= 2);
   const studentCards = students.map(student => '<article class="school-person-card"><span class="school-person-avatar">HS</span>' +
-    '<span class="school-person-info"><strong>' + esc(student.name) + '</strong><small>Học sinh</small></span>' +
-    (canViewProgress
-      ? '<a href="#" class="school-progress-link" data-school-progress="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '">Tiến trình học tập ↗</a>'
-      : '') + '</article>').join("");
+    '<span class="school-person-info"><strong>' + esc(student.name) + '</strong><small>' + esc(student.email) + '</small></span>' +
+    (canViewProgress ? '<a href="#" class="school-progress-link" data-school-progress="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '">Tiến trình học tập ↗</a>' : '') +
+    (data.canManageMembers ? '<button type="button" class="button secondary small" data-remove-school-student="' + Number(student.id) + '" data-class-code="' + esc(classCode) + '">Xóa khỏi lớp</button>' : '') + '</article>').join("");
+  const pendingCards = (data.pendingJoinRequests || []).map(item =>
+    '<article class="school-person-card"><span class="school-person-avatar">HS</span><span class="school-person-info"><strong>' + esc(item.studentName) + '</strong><small>' + esc(item.studentEmail) + ' · Xin tham gia lớp</small></span><button type="button" class="button primary small" data-review-join-request="' + esc(item.id) + '" data-class-code="' + esc(classCode) + '" data-decision="approve">Duyệt</button><button type="button" class="button secondary small" data-review-join-request="' + esc(item.id) + '" data-class-code="' + esc(classCode) + '" data-decision="reject">Từ chối</button></article>'
+  ).join("");
   const membersForm = data.canManageMembers
-    ? '<form id="school-member-request-form" class="school-inline-form"><h3>Đề nghị thay đổi thành viên</h3><label>Email tài khoản học sinh<input name="email" type="email" required placeholder="hoc sinh@example.com"></label><label>Thao tác<select name="action"><option value="add">Đề nghị thêm vào lớp</option><option value="remove">Đề nghị xóa khỏi lớp</option></select></label><label>Ghi chú (không bắt buộc)<input name="note" maxlength="500"></label><button class="button primary" type="submit">Gửi Admin cao nhất duyệt</button></form>'
+    ? '<form id="school-add-student-form" class="school-inline-form" data-class-code="' + esc(classCode) + '"><h3>Thêm học sinh</h3><label>Email tài khoản học sinh<input name="email" type="email" required maxlength="254" placeholder="hocsinh@example.com"></label><button class="button primary" type="submit">＋ Thêm học sinh</button></form>'
     : "";
   view.innerHTML = '<section class="school-page"><div class="school-page-toolbar"><button class="button secondary" type="button" data-school-back>← Danh sách lớp</button><span class="pill">' + classLabel(classCode) + '</span></div>' +
     '<header class="school-page-header"><div><p class="eyebrow">DANH SÁCH LỚP</p><h1>' + classLabel(classCode) + '</h1><p>' + students.length + ' học sinh · ' + teachers.length + ' giáo viên</p></div></header>' +
     '<section class="school-roster-section"><h2>Giáo viên phụ trách</h2><div class="school-roster-list">' + (teacherCards || '<p class="muted">Chưa có giáo viên được phân công.</p>') + '</div></section>' +
     '<section class="school-roster-section"><div class="school-section-heading"><h2>Thành viên lớp</h2><span class="pill">' + students.length + ' học sinh</span></div><div class="school-roster-list">' + (studentCards || '<p class="muted">Lớp chưa có học sinh.</p>') + '</div></section>' +
+    (data.canManageMembers ? '<section class="school-roster-section"><h2>Yêu cầu tham gia lớp</h2><div class="school-roster-list">' + (pendingCards || '<p class="muted">Không có yêu cầu đang chờ.</p>') + '</div></section>' : '') +
     '<div id="school-student-progress-panel"></div>' + membersForm + '</section>';
 }
 
@@ -111,6 +123,29 @@ export function wireSchoolEvents(onNavigate) {
       }
       return;
     }
+    const removeStudent = event.target.closest("[data-remove-school-student]");
+    if (removeStudent) {
+      const id = removeStudent.dataset.removeSchoolStudent;
+      const code = removeStudent.dataset.classCode;
+      if (!confirm("Xóa học sinh này khỏi lớp?")) return;
+      removeStudent.disabled = true;
+      try {
+        await request("/api/school/classes/" + encodeURIComponent(code) + "/students/" + encodeURIComponent(id), { method: "DELETE" });
+        await mountSchoolPage(document.getElementById("view"), window.__maihocCurrentUser || {}, code);
+      } catch (error) { alert(error.message); removeStudent.disabled = false; }
+      return;
+    }
+    const reviewJoin = event.target.closest("[data-review-join-request]");
+    if (reviewJoin) {
+      reviewJoin.disabled = true;
+      try {
+        await request("/api/school/classes/" + encodeURIComponent(reviewJoin.dataset.classCode) + "/join-requests/" + encodeURIComponent(reviewJoin.dataset.reviewJoinRequest) + "/review", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: reviewJoin.dataset.decision })
+        });
+        await mountSchoolPage(document.getElementById("view"), window.__maihocCurrentUser || {}, reviewJoin.dataset.classCode);
+      } catch (error) { alert(error.message); reviewJoin.disabled = false; }
+      return;
+    }
     const review = event.target.closest("[data-school-review-request]");
     if (review) {
       review.disabled = true;
@@ -127,20 +162,30 @@ export function wireSchoolEvents(onNavigate) {
   });
 
   document.addEventListener("submit", async event => {
-    if (event.target.id === "school-member-request-form") {
+    if (event.target.id === "school-add-student-form") {
       event.preventDefault();
       const form = event.target;
-      const classCode = document.querySelector("[data-school-class-current]")?.dataset.schoolClassCurrent;
-      const page = document.querySelector(".school-page .school-page-toolbar .pill");
-      const code = page?.textContent.replace(/^Lớp\s*/i, "").trim();
-      if (!code) return;
-      const body = Object.fromEntries(new FormData(form).entries());
+      const classCode = form.dataset.classCode;
+      const email = String(new FormData(form).get("email") || "").trim();
       try {
-        await request("/api/school/classes/" + encodeURIComponent(code) + "/change-requests", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        await request("/api/school/classes/" + encodeURIComponent(classCode) + "/students", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email })
         });
-        form.reset();
-        alert("Đã gửi yêu cầu đến Admin cao nhất.");
+        await mountSchoolPage(document.getElementById("view"), window.__maihocCurrentUser || {}, classCode);
+      } catch (error) { alert(error.message); }
+      return;
+    }
+    if (event.target.id === "school-join-class-form") {
+      event.preventDefault();
+      const form = event.target;
+      const classCode = String(new FormData(form).get("classCode") || "");
+      if (!classCode) return;
+      try {
+        const result = await request("/api/school/classes/" + encodeURIComponent(classCode) + "/join-requests", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({})
+        });
+        alert(result.message || "Đã gửi yêu cầu tham gia lớp.");
+        await mountSchoolPage(document.getElementById("view"), window.__maihocCurrentUser || {}, "");
       } catch (error) { alert(error.message); }
       return;
     }
