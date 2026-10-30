@@ -1290,7 +1290,7 @@ document.addEventListener("click",async e=>{
       await loadAnswerKeySections();
       window.dispatchEvent(new Event("maihoc-tests-rerender"));
       window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
-      toastNotice("Đã chuyển sang chế độ AI giải đề -> Giảng viên duyệt lại.","success");
+      toastNotice("Đã chuyển sang chế độ AI giải đề -> Giáo viên duyệt lại.","success");
     }catch(error){
       const node=$("[data-solution-error]");if(node){node.hidden=false;node.textContent=error.message;}
     }
