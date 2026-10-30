@@ -268,12 +268,16 @@ body.exam-open{overflow:hidden}
 .answer-key-modal{width:calc(100vw - 36px);max-width:none;height:calc(100vh - 36px);max-height:calc(100vh - 36px);margin:auto;padding:26px;overflow:auto}
 .answer-key-modal::backdrop{background:#07172be0;backdrop-filter:blur(4px)}
 @media(max-width:900px){.answer-key-modal{width:calc(100vw - 20px);height:calc(100vh - 20px);max-height:calc(100vh - 20px);padding:18px}}
-/* The approved-document library stays compact and scrolls within its own panel. */
-#approved-documents .admin-approved-documents-scroll{max-height:clamp(390px,68vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+/* Account and approved-document tables show at most five rows; additional rows scroll inside the panel. */
+.admin-users-scroll{max-height:min(334px,55vh);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.admin-users-scroll .admin-table{min-width:780px}
+.admin-users-scroll .admin-table thead th{position:sticky;top:0;z-index:2}
+.admin-users-scroll .admin-table tbody tr{height:58px}
+.admin-users-scroll .admin-table td{white-space:nowrap}
+#approved-documents .admin-approved-documents-scroll{max-height:min(334px,55vh);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 #approved-documents .admin-approved-documents-scroll .admin-table{min-width:760px}
 #approved-documents .admin-approved-documents-scroll .admin-table thead th{position:sticky;top:0;z-index:2}
 #approved-documents .admin-approved-documents-scroll .admin-table tbody tr{height:58px}
-@media(max-width:620px){#approved-documents .admin-approved-documents-scroll{max-height:65vh}#approved-documents .admin-approved-documents-scroll .admin-table tbody tr{height:auto;min-height:52px}}
 /* Keep the admin progress table to about ten rows; scroll within the panel for more. */
 .admin-progress-scroll{max-height:clamp(390px,68vh,760px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .admin-progress-scroll .admin-table{min-width:980px}
@@ -340,6 +344,7 @@ body.exam-open{overflow:hidden}
 .pdf-reader{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;border:1px solid var(--border);border-radius:9px;background:#242424}
 .pdf-reader-toolbar{display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:8px 14px;background:#323232;color:#f5f5f5;font-size:12px}
 .pdf-reader-toolbar span{color:#c4c4c4}
+.pdf-reader-toolbar a,.pdf-reader-toolbar a:visited,.pdf-reader-toolbar a:hover,.pdf-reader-toolbar a:focus-visible{color:#fff!important;text-decoration:underline;text-underline-offset:2px;font-weight:700}
 .pdf-document-scroll{flex:1;min-height:260px;overflow:auto;overscroll-behavior:contain;padding:14px 0;background:#525659;scrollbar-gutter:stable}
 .pdf-page-slot{max-width:calc(100% - 24px);margin:0 auto 14px;overflow:hidden;background:#fff;box-shadow:0 2px 8px #0006}
 .pdf-page-slot canvas{display:block;max-width:100%}
@@ -523,9 +528,9 @@ body.exam-open{overflow:hidden}
   .hero-logo{transition:none}
 }
 
-/* Saved exam results: compare the learner's answer with the answer key in a readable table. */
-.grade-details-table-wrap{width:100%;overflow:auto;border:1px solid var(--border);margin:14px 0 20px}
-.grade-details-table{width:100%;border-collapse:collapse;min-width:760px;background:var(--surface)}
+/* Saved exam results: keep the answer comparison readable on desktop and mobile. */
+.grade-details-table-wrap{width:100%;overflow:auto;border:1px solid var(--border);margin:14px 0 20px;overscroll-behavior:contain}
+.grade-details-table{width:100%;border-collapse:collapse;min-width:900px;background:var(--surface)}
 .grade-details-table th,.grade-details-table td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}
 .grade-details-table th{background:var(--surface-2);color:var(--muted);font-size:12px;font-weight:700}
 .grade-details-table tbody tr:last-child td{border-bottom:0}
@@ -533,6 +538,7 @@ body.exam-open{overflow:hidden}
 .grade-details-table .is-correct{color:#16815c}
 .grade-details-table .is-wrong{color:var(--danger)}
 @media(max-width:760px){.grade-details-table-wrap{max-width:100%}.grade-details-table th,.grade-details-table td{padding:9px 10px}}
+.pdf-reader-toolbar a,.pdf-reader-toolbar a:visited,.pdf-reader-toolbar a:hover,.pdf-reader-toolbar a:focus-visible{color:#fff!important;text-decoration:underline;text-underline-offset:2px;font-weight:700}
 
 /* Prevent default browser focus ring on the main view container upon reload/navigation. */
 .view:focus,
