@@ -1396,6 +1396,11 @@ $("#upload-form").addEventListener("submit", async (e) => {
     try {
         const fd = new FormData(form);
         fd.delete("answerKey");
+        const schoolStudentUpload = currentUser?.role !== "admin" && currentUser?.accountType === "school";
+        const schoolClassSelect = form.elements.classCode;
+        if (schoolStudentUpload && !String(schoolClassSelect?.value || "").trim()) {
+            throw new Error("Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu.");
+        }
         if (form.elements.category?.value === "test") {
             const response = await fetch("/api/admin/tests", {
                 method: "POST",
