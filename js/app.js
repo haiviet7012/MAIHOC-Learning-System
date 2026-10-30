@@ -1562,6 +1562,7 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
+    window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     if (state.route === "study-rooms" || state.route === "account-center" || state.route === "tests") render();
 }
