@@ -27,13 +27,6 @@ export async function refreshTestsQueue() {
       badge.textContent = String(unread);
       badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
     }
-    const badge = document.getElementById("tests-new-count");
-    if (badge) {
-      const unread = Number(data.newCount || 0);
-      const user = window.maihocCurrentUser;
-      badge.textContent = String(unread);
-      badge.hidden = unread <= 0 || !user?.id || user.accountType !== "school" || user.role === "admin";
-    }
     cachedSummary = data.summary || {
       total: cachedTests.length,
       incompleteCount: cachedTests.filter(t => !t.completed).length,
