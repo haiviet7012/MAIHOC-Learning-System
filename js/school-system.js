@@ -23,11 +23,11 @@ export async function mountSchoolPage(view, user, classCode = "") {
         '<span class="school-class-card-meta"><strong>' + Number(item.studentCount || 0) + '</strong><small>học sinh</small></span>' +
         '<span class="school-class-card-arrow">›</span></button>';
     }).join("");
-    const studentJoin = user?.role === "student" && user.accountType === "school" ? await renderStudentJoinClasses() : "";
-    const adminTools = data.allClasses ? await renderAdminTools() : "";
+      const adminTools = data.allClasses ? await renderAdminTools() : "";
     const teacherNotice = user?.role === "teacher" ? renderTeacherMessageForm() : "";
     view.innerHTML = '<section class="school-page"><header class="school-page-header"><div><p class="eyebrow">MAI HỌC · CỘNG ĐỒNG TRƯỜNG</p><h1>Lớp của bạn</h1><p>Chọn một lớp để xem giáo viên và danh sách thành viên.</p></div></header>' +
       (cards ? '<div class="school-class-grid">' + cards + '</div>' : '<div class="empty-state"><h3>Chưa có lớp được phân công</h3><p>Bạn chưa tham gia lớp nào. Chọn “Tham gia lớp” để gửi yêu cầu đến giáo viên chủ nhiệm.</p></div>') +
+      (user?.role === "student" && user.accountType === "school" ? await renderStudentJoinClasses() : "") +
       studentJoin + teacherNotice + adminTools + '</section>';
   } catch (error) {
     view.innerHTML = '<div class="empty-state"><h3>Không thể mở Lớp của bạn</h3><p>' + esc(error.message) + '</p></div>';
