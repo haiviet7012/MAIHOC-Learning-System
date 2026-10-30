@@ -20,7 +20,7 @@ import {
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
-import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js";
+import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");
 const progressTabParams = new URLSearchParams(window.location.search);
 const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "student-progress";
