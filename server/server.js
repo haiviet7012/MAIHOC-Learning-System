@@ -2103,18 +2103,6 @@ app.post(
         schoolHomeroom = await db.prepare("SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' LIMIT 1").get(schoolClassCode);
         if (!schoolHomeroom) return res.status(409).json({ error: "Lớp chưa có giáo viên chủ nhiệm để duyệt tài liệu." });
       }
-      const schoolClassCode = String(b.classCode || "").trim().toUpperCase();
-      const isSchoolStudent = req.user?.role !== "admin" && req.user?.accountType === "school";
-      let schoolHomeroom = null;
-      if (isSchoolStudent) {
-        if (!/^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(schoolClassCode)) {
-          return res.status(400).json({ error: "Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu." });
-        }
-        const member = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(req.user.id, schoolClassCode);
-        if (!member) return res.status(403).json({ error: "Bạn không thuộc lớp đã chọn." });
-        schoolHomeroom = await db.prepare("SELECT teacher_id FROM school_teacher_assignments WHERE class_code=? AND assignment_type='homeroom' LIMIT 1").get(schoolClassCode);
-        if (!schoolHomeroom) return res.status(409).json({ error: "Lớp chưa có giáo viên chủ nhiệm để duyệt tài liệu." });
-      }
       if (!new Set(["theory", "practice", "exam", "exercise", "answer"]).has(cat)) {
         return res.status(400).json({ error: "Choose a valid document category." });
       }
