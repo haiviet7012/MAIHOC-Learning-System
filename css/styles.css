@@ -1868,3 +1868,31 @@ body.test-open #online-dashboard-launcher {
   .ai-history-dialog { width:calc(100vw - 18px); max-height:92vh; padding:17px; }
   .ai-history-dialog-answer { max-height:62vh; }
 }
+
+
+/* Reader related documents: each document is an independent stacked card. */
+.reader-side{display:flex;flex-direction:column;min-width:0}
+.reader-side-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.reader-side-heading h3{margin:0}
+.reader-side-count{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--surface-2);color:var(--primary);font-size:11px;font-weight:700}
+.reader-related-list{display:grid;gap:9px;align-content:start;max-height:min(68vh,760px);overflow-y:auto;overscroll-behavior:contain;padding:1px 3px 4px 1px;scrollbar-gutter:stable}
+.reader-related-item{width:100%;min-width:0;display:grid;grid-template-columns:34px minmax(0,1fr) 16px;align-items:center;gap:10px;padding:11px 10px;margin:0;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);text-align:left;cursor:pointer;transition:border-color .16s,background .16s,transform .16s}
+.reader-related-item:hover:not(:disabled){border-color:var(--accent);background:var(--surface-2);transform:translateY(-1px)}
+.reader-related-item:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.reader-related-item.is-current{border-color:var(--accent);background:var(--surface-2);cursor:default}
+.reader-related-item:disabled{opacity:1}
+.reader-related-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--surface-2);color:var(--primary);font-size:16px}
+.reader-related-copy{display:grid;gap:4px;min-width:0}
+.reader-related-copy strong{font-size:11px;line-height:1.45;font-weight:700;overflow-wrap:anywhere}
+.reader-related-copy small{font-size:10px;line-height:1.35;color:var(--muted)}
+.reader-related-current{color:var(--primary);font-size:15px;font-weight:700;text-align:center}
+.reader-related-arrow{color:var(--muted);font-size:20px;text-align:center}
+.reader-related-empty{margin:12px 0 0;color:var(--muted);font-size:11px}
+.brand-system{letter-spacing:.025em}
+@media(max-width:900px){
+  .reader-related-list{max-height:26vh;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  .reader-related-list{grid-template-columns:1fr;max-height:30vh}
+  .reader-related-item{padding:10px}
+}
