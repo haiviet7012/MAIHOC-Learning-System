@@ -291,6 +291,17 @@ async function notifyAdmins(type, title, message, link = null) {
   }
 }
 
+async function notifyAdminsOnce(type, title, message, link = null) {
+  const admins = await db.prepare("SELECT id FROM users WHERE role='admin'").all();
+  for (const admin of admins) {
+    const existing = await db.prepare(
+      "SELECT id FROM notifications WHERE user_id=? AND type=? AND message=? " +
+      "AND created_at >= datetime('now','-10 minutes') LIMIT 1"
+    ).get(admin.id, type, message);
+    if (!existing) await notifyUser(admin.id, type, title, message, link);
+  }
+}
+
 let testsModule = null;
 const activeSolutionJobs = new Set();
 
@@ -401,45 +412,59 @@ function queueExamSolution(documentId) {
         "admin"
       );
     } catch (error) {
+      const rawErrorMessage = String(error?.message || "");
       const insufficient =
           error?.code === "insufficient_balance" ||
-          /insufficient balance/i.test(String(error?.message || "")),
-        quota = isAIQuotaError(error) && !insufficient,
-        network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(
-          String(error?.message || "")
-        );
-      const message = quota
-        ? `${solver.provider} đã hết quota hoặc bị giới hạn lượt gọi.`
-        : insufficient
-          ? `Số dư API ${solver.provider} không đủ; hãy nạp số dư và thử lại.`
-          : network
-            ? `Không kết nối được ${solver.provider} API. Kiểm tra Internet/DNS/HTTPS cổng 443. Chi tiết: ${String(
-                error?.message || ""
-              ).slice(0, 500)}`
-            : String(error?.message || "Không thể tạo lời giải AI.").slice(0, 1000);
+          /insufficient balance/i.test(rawErrorMessage),
+        serviceUnavailable =
+          /\\b503\\b|service unavailable|high demand|temporarily unavailable|temporarily overloaded/i.test(rawErrorMessage) ||
+          Number(error?.status || error?.statusCode) === 503,
+        quota = isAIQuotaError(error) && !insufficient && !serviceUnavailable,
+        network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(rawErrorMessage);
+      const message = serviceUnavailable
+        ? `${solver.provider} đang quá tải tạm thời (HTTP 503). Vui lòng thử lại sau ít phút.`
+        : quota
+          ? `${solver.provider} đã hết quota hoặc bị giới hạn lượt gọi.`
+          : insufficient
+            ? `Số dư API ${solver.provider} không đủ; hãy nạp số dư và thử lại.`
+            : network
+              ? `Không kết nối được ${solver.provider} API. Hãy kiểm tra kết nối và thử lại sau.`
+              : String(rawErrorMessage || "Không thể tạo lời giải AI.").slice(0, 400);
+      const notificationType = serviceUnavailable
+        ? "ai_provider_unavailable"
+        : quota || insufficient ? "ai_quota_exhausted" : "exam_solution_failed";
+      const notificationTitle = serviceUnavailable
+        ? `${solver.provider} tạm thời quá tải`
+        : quota || insufficient
+          ? `${solver.provider} cần kiểm tra hạn mức API`
+          : "Không thể tạo lời giải AI";
+      const notificationMessage = `${doc?.title || id}: ${message}`;
       await updateSolutionJob(id, {
         status: "failed",
         progress: 0,
-        phase: quota
-          ? `${solver.provider} hết quota`
-          : insufficient
-            ? `${solver.provider} thiếu số dư`
-            : network
-              ? `Mất kết nối ${solver.provider}`
-              : "Không tạo được lời giải",
-        error_code: error?.code || (quota ? "quota_exhausted" : "solution_generation_failed"),
+        phase: serviceUnavailable
+          ? `${solver.provider} tạm thời quá tải`
+          : quota
+            ? `${solver.provider} hết quota`
+            : insufficient
+              ? `${solver.provider} thiếu số dư`
+              : network
+                ? `Mất kết nối ${solver.provider}`
+                : "Không tạo được lời giải",
+        error_code: error?.code || (serviceUnavailable ? "provider_unavailable" : quota ? "quota_exhausted" : "solution_generation_failed"),
         error_message: message
       }).catch(() => {});
-      await notifyAdmins(
-        quota || insufficient ? "ai_quota_exhausted" : "exam_solution_failed",
-        message,
-        `${id}: ${message}`,
+      await notifyAdminsOnce(
+        notificationType,
+        notificationTitle,
+        notificationMessage,
         "admin"
       ).catch(() => {});
-      if (quota || insufficient) {
+      if ((quota || insufficient) && !serviceUnavailable) {
         emailAdmins(`MAI HOC: ${solver.provider} cần kiểm tra API`, `${id}: ${message}`).catch(() => {});
       }
-      console.error("[ExamSolution] Failed:", error?.message || error);
+      // Keep raw provider diagnostics in server logs, not in user-facing notifications.
+      console.error("[ExamSolution] Failed:", rawErrorMessage || error);
     } finally {
       activeSolutionJobs.delete(id);
     }
