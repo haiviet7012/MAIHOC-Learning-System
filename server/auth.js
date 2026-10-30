@@ -59,6 +59,7 @@ export function publicUser(user) {
     role: user.role,
     adminLevel: Number(user.admin_level ?? user.adminLevel ?? 0),
     accountType: String(user.account_type ?? user.accountType ?? "external"),
+    ...((user.homeroom_class ?? user.homeroomClass) ? { homeroomClass: user.homeroom_class ?? user.homeroomClass } : {}),
     createdAt
   };
 }
@@ -138,7 +139,18 @@ export async function authenticateUser(email, password) {
   if (!(await verifyPassword(String(password || ""), user.password_hash))) {
     return null;
   }
-  return publicUser(user);
+  let homeroomClass = null;
+  if (user.role === "admin" && Number(user.admin_level) >= 1 && Number(user.admin_level) < 2) {
+    try {
+      const assignment = await db.prepare(
+        "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
+      ).get(user.id);
+      homeroomClass = assignment?.class_code || null;
+    } catch {
+      // Teacher assignment tables may not exist in isolated auth tests.
+    }
+  }
+  return publicUser({ ...user, homeroom_class: homeroomClass });
 }
 
 export async function createSession(userId, res) {
@@ -183,13 +195,24 @@ export async function loadCurrentUser(req, res, next) {
     if (token && /^[a-f0-9]{64}$/i.test(token)) {
       const session = await db
         .prepare(`
-          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.created_at,s.expires_at
+          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.account_type,u.created_at,s.expires_at
           FROM sessions s JOIN users u ON u.id=s.user_id
           WHERE s.token_hash=?
         `)
         .get(hashToken(token));
       if (session && Number(session.expires_at) > Date.now()) {
-        req.user = publicUser(session);
+        let homeroomClass = null;
+        if (session.role === "admin" && Number(session.admin_level) >= 1 && Number(session.admin_level) < 2) {
+          try {
+            const assignment = await db.prepare(
+              "SELECT class_code FROM school_teacher_assignments WHERE teacher_id=? AND assignment_type='homeroom' LIMIT 1"
+            ).get(session.id);
+            homeroomClass = assignment?.class_code || null;
+          } catch {
+            // Teacher assignment tables may not exist in isolated auth tests.
+          }
+        }
+        req.user = publicUser({ ...session, homeroom_class: homeroomClass });
         req.sessionTokenHash = hashToken(token);
 
         const nowMs = Date.now();
