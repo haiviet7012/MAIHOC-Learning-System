@@ -20,6 +20,8 @@ jobs:
         run: |
           node --check server/server.js
           node --check server/auth.js
+          node --check server/school-system.js
+          node --test tests/school-and-roles.test.js
           node --check server/postgres.js
           node --check server/check-postgres-auth.js
           node --check server/tests-module/index.js
@@ -31,6 +33,8 @@ jobs:
       - name: Check browser modules
         run: |
           node --input-type=module --check < js/app.js
+          node --input-type=module --check < js/school-system.js
+          node --input-type=module --check < dist/js/school-system.js
           node --input-type=module --check < js/account-features.js
           node --input-type=module --check < dist/js/app.js
           node --input-type=module --check < dist/js/account-features.js
