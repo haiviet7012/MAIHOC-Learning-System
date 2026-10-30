@@ -33,6 +33,8 @@ jobs:
           node --input-type=module --check < js/account-features.js
           node --input-type=module --check < dist/js/app.js
           node --input-type=module --check < dist/js/account-features.js
+          node --input-type=module --check < js/pdf-reader.js
+          node --input-type=module --check < dist/js/pdf-reader.js
           node --input-type=module --check < study-rooms/client.js
           node --input-type=module --check < js/tests/index.js
           node --input-type=module --check < dist/js/tests/index.js
