@@ -723,13 +723,16 @@ export function installSchoolSystemRoutes(app, deps) {
       if (request.action === "add") {
         const priorJoin = await db.prepare("SELECT class_code FROM school_class_join_locks WHERE user_id=?").get(request.target_user_id);
         const priorMember = await db.prepare("SELECT class_code FROM school_class_members WHERE user_id=? LIMIT 1").get(request.target_user_id);
-        if ((priorJoin && priorJoin.class_code !== request.class_code) || (priorMember && priorMember.class_code !== request.class_code)) {
-          return res.status(409).json({ error: "Học sinh đã được ghi nhận tham gia một lớp khác." });
+        const existing = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(request.target_user_id, request.class_code);
+        if (
+          (priorJoin && (priorJoin.class_code !== request.class_code || !existing)) ||
+          (priorMember && priorMember.class_code !== request.class_code)
+        ) {
+          return res.status(409).json({ error: "Học sinh đã sử dụng lượt tham gia lớp và không thể được thêm lại hoặc chuyển sang lớp khác." });
         }
         await db.prepare("INSERT INTO school_class_join_locks(user_id,class_code) VALUES(?,?) ON CONFLICT(user_id) DO NOTHING")
           .run(request.target_user_id, request.class_code);
         await db.prepare("UPDATE users SET account_type='school' WHERE id=?").run(request.target_user_id);
-        const existing = await db.prepare("SELECT user_id FROM school_class_members WHERE user_id=? AND class_code=?").get(request.target_user_id, request.class_code);
         if (!existing) await db.prepare("INSERT INTO school_class_members(user_id,class_code) VALUES(?,?)").run(request.target_user_id, request.class_code);
       } else {
         await db.prepare("DELETE FROM school_class_members WHERE user_id=? AND class_code=?").run(request.target_user_id, request.class_code);
