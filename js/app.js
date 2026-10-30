@@ -259,10 +259,15 @@ function readerPage() {
     const d = findDoc(state.docId);
     if (!d) return subjectPage();
 
+    // Include every document from the same subject and grade, regardless of category.
+    const categoryOrder = ["theory", "practice", "exercise", "exam"];
     const related = docs().filter(item => item.subject === d.subject
         && String(item.grade) === String(d.grade)
-        && item.category === d.category
-        && String(item.id) !== String(d.id));
+        && String(item.id) !== String(d.id))
+        .sort((a, b) => {
+            const categoryDiff = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+            return (categoryDiff || 0) || String(a.title || "").localeCompare(String(b.title || ""), "vi");
+        });
     const candidateUrl = d.fileUrl || d.fileURL || d.url || d.downloadUrl || d.downloadURL || "";
     let fileUrl = "";
     try {
@@ -297,7 +302,22 @@ function readerPage() {
           ${documentContent}
           <div class="modal-actions"><button class="button secondary" data-route="${backRoute}">← Quay lại danh sách</button>${d.category === "exam" ? `<button class="button primary" data-action="start-exam" data-id="${escapeHTML(d.id)}">Bắt đầu thi thử</button>` : ""}</div>
         </section>
-        <aside class="reader-side"><h3>Tài liệu cùng lớp</h3>${related.length ? related.map(item => `<button class="button ghost small" data-action="read-doc" data-id="${escapeHTML(item.id)}">${escapeHTML(item.title)}</button>`).join("") : `<p class="muted">Chưa có tài liệu liên quan.</p>`}</aside>
+        <aside class="reader-side">
+          <div class="reader-side-heading"><h3>Tài liệu cùng lớp</h3><span class="reader-side-count">${related.length + 1}</span></div>
+          <div class="reader-related-list">
+            <button class="reader-related-item is-current" type="button" aria-current="page" disabled>
+              <span class="reader-related-icon">${CATEGORIES[d.category]?.icon || "▤"}</span>
+              <span class="reader-related-copy"><strong>${escapeHTML(d.title)}</strong><small>Đang đọc · ${escapeHTML(categoryName(d.category))}</small></span>
+              <span class="reader-related-current" aria-label="Tài liệu hiện tại">✓</span>
+            </button>
+            ${related.map(item => `<button class="reader-related-item" type="button" data-action="read-doc" data-id="${escapeHTML(item.id)}">
+              <span class="reader-related-icon">${CATEGORIES[item.category]?.icon || "▤"}</span>
+              <span class="reader-related-copy"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(categoryName(item.category))} · Lớp ${escapeHTML(item.grade)}</small></span>
+              <span class="reader-related-arrow" aria-hidden="true">›</span>
+            </button>`).join("")}
+          </div>
+          ${!related.length ? `<p class="reader-related-empty">Chưa có tài liệu khác trong cùng môn và khối lớp.</p>` : ""}
+        </aside>
       </div>`;
 }
 function questionsFromTestTargets(targets = []) {
