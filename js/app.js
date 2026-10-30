@@ -20,6 +20,7 @@ import {
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
+import { mountSchoolPage, wireSchoolEvents } from "./school-system.js";
 const view = $("#view");
 const state = { route: "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 let currentUser = null;
@@ -760,6 +761,7 @@ function render() {
     if (onlineDashboard) onlineDashboard.hidden = !isMainLobby;
     if (onlineLauncher) onlineLauncher.hidden = !isMainLobby;
     $("#tests-open")?.classList.toggle("is-active-route", state.route === "tests");
+    $("#school-classes-open")?.classList.toggle("is-active-route", state.route === "school" || state.route === "school-class");
     $("#admin-open")?.classList.toggle("is-active-route", state.route === "admin");
     $("#account-center-open")?.classList.toggle("is-active-route", state.route === "account-center");
 
@@ -817,6 +819,10 @@ function render() {
         view.innerHTML = accountCenterPage();
     else if (state.route === "tests")
         view.innerHTML = renderTestsQueuePage(currentUser);
+    else if (state.route === "school")
+        mountSchoolPage(view, currentUser);
+    else if (state.route === "school-class")
+        mountSchoolPage(view, currentUser, state.classCode || "");
     else if (state.route === "study-rooms") {
         view.innerHTML = "";
         activeStudyRoomsCleanup = mountStudyRooms(view, currentUser);
@@ -1511,8 +1517,19 @@ function applyAuthUI() {
     if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || currentUser?.role === "admin";
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = currentUser?.role !== "admin";
     $("#admin-open").hidden = currentUser?.role !== "admin";
+    if ($("#school-classes-open")) $("#school-classes-open").hidden = !signedIn || !(currentUser?.accountType === "school" || (currentUser?.role === "admin" && Number(currentUser.adminLevel) >= 2));
+    if ($("#register-school-class-field")) {
+        const schoolChoice = document.querySelector('#register-form [name="accountType"]:checked')?.value === "school";
+        $("#register-school-class-field").hidden = !schoolChoice;
+        $("#register-school-class-field").querySelector("select").required = schoolChoice;
+    }
+    if ($("#upload-school-class-field")) {
+        const schoolStudent = currentUser?.role !== "admin" && currentUser?.accountType === "school";
+        $("#upload-school-class-field").hidden = !schoolStudent;
+        $("#upload-school-class-field").querySelector("select").required = schoolStudent;
+    }
     $("#user-greeting").hidden = !signedIn;
-    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? (Number(currentUser.adminLevel) >= 2 ? " · Admin" : " · Giảng viên") : ""}` : "";
+    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${currentUser.role === "admin" ? (Number(currentUser.adminLevel) >= 2 ? " · Admin" : " · Giáo viên") : ""}` : "";
 }
 async function refreshAuthUI() {
     try {
@@ -1703,6 +1720,8 @@ function syncUploadDialogCategoryFields() {
 }
 uploadCategorySelect?.addEventListener("change", syncUploadDialogCategoryFields);
 syncUploadDialogCategoryFields();
+
+wireSchoolEvents((route, params) => go(route, params));
 
 wireTestsEvents({
     onNavigate: (route, params) => go(route, params),
