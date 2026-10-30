@@ -417,7 +417,7 @@ function queueExamSolution(documentId) {
           error?.code === "insufficient_balance" ||
           /insufficient balance/i.test(rawErrorMessage),
         serviceUnavailable =
-          /\\b503\\b|service unavailable|high demand|temporarily unavailable|temporarily overloaded/i.test(rawErrorMessage) ||
+          /\b503\b|service unavailable|high demand|temporarily unavailable|temporarily overloaded/i.test(rawErrorMessage) ||
           Number(error?.status || error?.statusCode) === 503,
         quota = isAIQuotaError(error) && !insufficient && !serviceUnavailable,
         network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(rawErrorMessage);
