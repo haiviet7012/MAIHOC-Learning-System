@@ -70,6 +70,12 @@ function defaultDateTimeInputs() {
   return { openAt: toLocalInput(now), closeAt: toLocalInput(close) };
 }
 
+const FALLBACK_SCHOOL_CLASSES = [
+  ...Array.from({ length: 9 }, (_, i) => `10A${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `11B${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `12C${i + 1}`)
+];
+
 export async function openCreateTestDialog() {
   const dialog = document.getElementById("create-test-dialog");
   if (!dialog) return;
@@ -80,34 +86,42 @@ export async function openCreateTestDialog() {
     if (!form.elements.closeAt.value) form.elements.closeAt.value = defaults.closeAt;
     const classSelect = form.elements.classCode;
     if (classSelect) {
-      classSelect.innerHTML = '<option value="">Đang tải danh sách lớp…</option>';
+      const currentVal = classSelect.value || "";
+      const activeUser = window.maihocCurrentUser;
+      classSelect.required =
+        activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
+      const label = classSelect.closest("label");
+      if (label) {
+        label.hidden = !(
+          activeUser?.role === "admin" &&
+          (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school")
+        );
+      }
+      classSelect.innerHTML =
+        '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
+        '<option value="ALL">Cả khối</option>' +
+        FALLBACK_SCHOOL_CLASSES.map(code => `<option value="${code}">${code}</option>`).join("");
+      if (currentVal) classSelect.value = currentVal;
+
+      openDialog("create-test-dialog");
+
       try {
         const response = await fetch("/api/school/classes", { credentials: "same-origin", cache: "no-store" });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Không tải được danh sách lớp.");
-        const classes = data.classes || [];
-        classSelect.innerHTML =
-          '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
-          '<option value="ALL">Cả khối</option>' +
-          classes
-            .map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + "</option>")
-            .join("");
-        const activeUser = window.maihocCurrentUser;
-        classSelect.required =
-          activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school";
-        const label = classSelect.closest("label");
-        if (label) {
-          label.hidden = !(
-            activeUser?.role === "admin" &&
-            (Number(activeUser.adminLevel) >= 2 || activeUser.accountType === "school")
-          );
+        if (response.ok && Array.isArray(data.classes) && data.classes.length) {
+          const prevSelected = classSelect.value;
+          classSelect.innerHTML =
+            '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
+            '<option value="ALL">Cả khối</option>' +
+            data.classes
+              .map(item => '<option value="' + escapeHTML(item.classCode) + '">' + escapeHTML(item.classCode) + "</option>")
+              .join("");
+          if (prevSelected) classSelect.value = prevSelected;
         }
-      } catch (error) {
-        classSelect.innerHTML =
-          '<option value="">Chọn lớp nhận bài kiểm tra</option>' +
-          '<option value="ALL">Cả khối</option>';
-        toast(error.message || "Không tải được danh sách lớp.", "error");
+      } catch {
+        // Keep fallback options silently without showing a Failed to fetch error toast on dialog open
       }
+      return;
     }
   }
   openDialog("create-test-dialog");
@@ -1099,9 +1113,12 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
     }
   });
 
+  let createTestInProgress = false;
   const createForm = document.getElementById("create-test-form");
   createForm?.addEventListener("submit", async event => {
     event.preventDefault();
+    if (createTestInProgress) return;
+    createTestInProgress = true;
     const submitBtn = createForm.querySelector('button[type="submit"]');
     const origText = submitBtn?.textContent;
     if (submitBtn) {
@@ -1109,21 +1126,43 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
       submitBtn.textContent = "Đang tải lên…";
     }
     try {
+      const fileInput = createForm.querySelector('input[name="document"]');
+      const docFile = fileInput?.files?.[0];
+      if (!docFile) {
+        throw new Error("Vui lòng chọn tệp đề bài kiểm tra trước khi tạo.");
+      }
       const fd = new FormData(createForm);
       const activeUser = window.maihocCurrentUser;
       if (activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school" && !fd.get("classCode")) {
         throw new Error("Vui lòng chọn lớp nhận bài kiểm tra (hoặc chọn Cả khối).");
       }
-      const response = await fetch("/api/admin/tests", {
-        method: "POST",
-        credentials: "same-origin",
-        body: fd
-      });
+
+      let response;
+      try {
+        response = await fetch("/api/admin/tests", {
+          method: "POST",
+          credentials: "same-origin",
+          body: fd
+        });
+      } catch (networkErr) {
+        // Retry once after 600ms in case backend connection reset or cold start occurred
+        await new Promise(r => setTimeout(r, 600));
+        response = await fetch("/api/admin/tests", {
+          method: "POST",
+          credentials: "same-origin",
+          body: new FormData(createForm)
+        });
+      }
+
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Không thể tạo bài kiểm tra.");
+      if (!response.ok) throw new Error(result.error || `Không thể tạo bài kiểm tra (HTTP ${response.status}).`);
 
       closeDialog("create-test-dialog");
       createForm.reset();
+      const dropName = createForm.querySelector("[data-file-name]");
+      if (dropName) dropName.textContent = "Chưa chọn tệp";
+      createForm.querySelector("[data-file-drop-zone]")?.classList.remove("has-file");
+
       await refreshTestsQueue();
       window.dispatchEvent(new Event("maihoc-documents-changed"));
       window.dispatchEvent(new Event("maihoc-tests-rerender"));
@@ -1134,8 +1173,12 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
         window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job", { detail: result.solutionJob }));
       }
     } catch (error) {
-      toast(error.message || "Không thể tạo bài kiểm tra.", "error");
+      const msg = /failed to fetch|networkerror|load failed/i.test(String(error?.message || ""))
+        ? "Không kết nối được máy chủ khi tải đề lên (Failed to fetch). Hãy kiểm tra server Node.js đang chạy và không mở bằng Live Server tĩnh."
+        : (error?.message || "Không thể tạo bài kiểm tra.");
+      toast(msg, "error");
     } finally {
+      createTestInProgress = false;
       if (submitBtn) {
         submitBtn.disabled = false;
         if (origText) submitBtn.textContent = origText;

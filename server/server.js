@@ -79,7 +79,7 @@ async function ensureR2Columns() {
 
 function getLocalFallbackBuffer(row, blobColumn = "file_data") {
   if (!row) return null;
-  if (row[blobColumn]) return Buffer.from(row[blobColumn]);
+  if (row[blobColumn] && Buffer.from(row[blobColumn]).length > 0) return Buffer.from(row[blobColumn]);
   if (row.filename) {
     for (const dir of [documentsDir, pendingDir]) {
       const candidate = path.join(dir, path.basename(row.filename));

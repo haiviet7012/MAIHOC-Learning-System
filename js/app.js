@@ -1457,13 +1457,25 @@ $("#upload-form").addEventListener("submit", async (e) => {
             throw new Error("Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu.");
         }
         if (form.elements.category?.value === "test") {
-            const response = await fetch("/api/admin/tests", {
-                method: "POST",
-                credentials: "same-origin",
-                body: fd
-            });
+            let response;
+            try {
+                response = await fetch("/api/admin/tests", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    body: fd
+                });
+            } catch (netErr) {
+                await new Promise((r) => setTimeout(r, 600));
+                const retryFd = new FormData(form);
+                retryFd.delete("answerKey");
+                response = await fetch("/api/admin/tests", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    body: retryFd
+                });
+            }
             const testRes = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(testRes.error || "Không thể tạo bài kiểm tra.");
+            if (!response.ok) throw new Error(testRes.error || `Không thể tạo bài kiểm tra (HTTP ${response.status}).`);
             uploadedFileKeys.add(fileKey);
             closeDialog("upload-dialog");
             form.reset();

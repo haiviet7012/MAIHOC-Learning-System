@@ -65,27 +65,37 @@ async function extractRawTextFromBuffer(buffer, filename = "") {
       return extractDocxText(Buffer.from(buffer));
     }
     if (ext === ".pdf") {
-      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      const loadingTask = pdfjs.getDocument({
-        data: new Uint8Array(buffer),
-        useSystemFonts: true,
-        isEvalSupported: false,
-        verbosity: 0
-      });
-      const pdf = await loadingTask.promise;
-      const pages = [];
-      try {
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const text = content.items.map((item) => `${item.str || ""}${item.hasEOL ? "\n" : " "}`).join("");
-          pages.push(text);
-          page.cleanup?.();
-        }
-      } finally {
-        await loadingTask.destroy();
+      // Skip synchronous heavy PDF parsing on oversized files (> 8 MB) to avoid OOM/timeouts during upload
+      if (buffer.length > 8 * 1024 * 1024) {
+        return "";
       }
-      return pages.join("\n\n").trim();
+      const parsePdfPromise = (async () => {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const loadingTask = pdfjs.getDocument({
+          data: Uint8Array.from(buffer),
+          useSystemFonts: true,
+          isEvalSupported: false,
+          disableFontFace: true,
+          verbosity: 0
+        });
+        const pdf = await loadingTask.promise;
+        const pages = [];
+        try {
+          const maxPages = Math.min(pdf.numPages || 0, 15);
+          for (let i = 1; i <= maxPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const text = content.items.map((item) => `${item.str || ""}${item.hasEOL ? "\n" : " "}`).join("");
+            pages.push(text);
+            page.cleanup?.();
+          }
+        } finally {
+          await loadingTask.destroy().catch(() => {});
+        }
+        return pages.join("\n\n").trim();
+      })();
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(""), 6000));
+      return await Promise.race([parsePdfPromise, timeoutPromise]);
     }
   } catch (error) {
     console.warn("Could not extract text from test file:", error.message);
@@ -517,33 +527,41 @@ export function installTestsModule({
     await syncFromMainDatabase(db);
   }
 
-  async function initManualSolutionForDocument(documentId) {
-    const doc = await db
-      .prepare(`
-        SELECT d.*, t.raw_text_cache AS testRawText, t.questions_json AS testQuestionsJson,
-               ak.normalized_json AS referenceAnswerJson
-        FROM documents d
-        LEFT JOIN tests t ON t.id = d.id
-        LEFT JOIN answer_keys ak ON ak.document_id = d.id
-        WHERE d.id = ?
-      `)
-      .get(String(documentId));
+  async function initManualSolutionForDocument(documentId, precomputed = null) {
+    let doc = precomputed?.doc || null;
+    if (!doc) {
+      doc = await db
+        .prepare(`
+          SELECT d.id, d.subject, d.grade, d.category, d.title, d.filename, d.original_name, d.r2_key,
+                 t.raw_text_cache AS testRawText, t.questions_json AS testQuestionsJson,
+                 ak.normalized_json AS referenceAnswerJson
+          FROM documents d
+          LEFT JOIN tests t ON t.id = d.id
+          LEFT JOIN answer_keys ak ON ak.document_id = d.id
+          WHERE d.id = ?
+        `)
+        .get(String(documentId));
+    }
 
     if (!doc) throw new Error("Không tìm thấy đề bài.");
 
     const config = assessmentConfigFor(doc.subject, doc.category === "test" ? "exam" : doc.category);
-    const sourceBuffer = getDocumentBuffer ? await getDocumentBuffer(doc) : Buffer.from(doc.file_data || []);
-    const rawText = doc.testRawText || (await extractRawTextFromBuffer(sourceBuffer, doc.original_name));
-    const parsedQuestions = parseQuestionsFromRawText(rawText);
 
-    let targets = [];
-    if (doc.testQuestionsJson) {
+    let targets = Array.isArray(precomputed?.targets) && precomputed.targets.length ? precomputed.targets : [];
+    if (!targets.length && doc.testQuestionsJson) {
       try {
         const cached = JSON.parse(doc.testQuestionsJson);
         if (Array.isArray(cached) && cached.length) targets = cached;
       } catch {}
     }
     if (!targets.length) {
+      let rawText = doc.testRawText || "";
+      if (!rawText) {
+        const fullDoc = await db.prepare("SELECT id, filename, original_name, r2_key, file_data FROM documents WHERE id = ?").get(String(documentId));
+        const sourceBuffer = getDocumentBuffer ? await getDocumentBuffer(fullDoc) : Buffer.from(fullDoc?.file_data || []);
+        rawText = await extractRawTextFromBuffer(sourceBuffer, doc.original_name);
+      }
+      const parsedQuestions = parseQuestionsFromRawText(rawText);
       targets = buildQuestionTargetsForTest({
         parsedQuestions,
         layout: config?.layout
@@ -1353,62 +1371,52 @@ export function installTestsModule({
         const filename = storedFilename(documentFile.originalname);
         const contentType = contentTypeFor(documentFile.originalname);
 
-        if (typeof saveFileToR2 !== "function") {
-          const error = new Error(
-            "Dịch vụ lưu trữ R2 chưa được khởi tạo. Vui lòng thử lại sau hoặc liên hệ quản trị viên."
-          );
-          error.code = "R2_NOT_CONFIGURED";
-          error.statusCode = 503;
-          throw error;
+        let documentR2Key = null;
+        if (typeof saveFileToR2 === "function") {
+          try {
+            const key = await saveFileToR2("tests", id, documentFile);
+            if (typeof key === "string" && key.trim()) {
+              documentR2Key = key.trim();
+              uploadedR2Keys.push(documentR2Key);
+              console.info(
+                "[R2] test document uploaded",
+                JSON.stringify({
+                  testId: id,
+                  objectKey: documentR2Key,
+                  bytes: documentFile.size
+                })
+              );
+            }
+          } catch (r2Error) {
+            console.warn("[R2] test document upload fallback to DB/local storage:", r2Error.message);
+          }
         }
-
-        const documentR2Key = await saveFileToR2("tests", id, documentFile);
-        if (typeof documentR2Key !== "string" || !documentR2Key.trim()) {
-          const error = new Error(
-            "R2 không trả về Object Key cho file đề. Bài kiểm tra chưa được tạo."
-          );
-          error.code = "R2_UPLOAD_NO_KEY";
-          error.statusCode = 502;
-          throw error;
-        }
-        uploadedR2Keys.push(documentR2Key);
-        console.info(
-          "[R2] test document uploaded",
-          JSON.stringify({
-            testId: id,
-            objectKey: documentR2Key,
-            bytes: documentFile.size
-          })
-        );
 
         let answerKeyR2Key = null;
-        if (answerKeyFile) {
-          answerKeyR2Key = await saveFileToR2("answer-keys", id, answerKeyFile);
-          if (typeof answerKeyR2Key !== "string" || !answerKeyR2Key.trim()) {
-            const error = new Error(
-              "R2 không trả về Object Key cho file đáp án. Bài kiểm tra chưa được tạo."
-            );
-            error.code = "R2_UPLOAD_NO_KEY";
-            error.statusCode = 502;
-            throw error;
+        if (answerKeyFile && typeof saveFileToR2 === "function") {
+          try {
+            const key = await saveFileToR2("answer-keys", id, answerKeyFile);
+            if (typeof key === "string" && key.trim()) {
+              answerKeyR2Key = key.trim();
+              uploadedR2Keys.push(answerKeyR2Key);
+            }
+          } catch (r2Error) {
+            console.warn("[R2] test answer key upload fallback to DB storage:", r2Error.message);
           }
-          uploadedR2Keys.push(answerKeyR2Key);
-          console.info(
-            "[R2] test answer key uploaded",
-            JSON.stringify({
-              testId: id,
-              objectKey: answerKeyR2Key,
-              bytes: answerKeyFile.size
-            })
-          );
         }
 
-        if (documentsDir) {
+        // Only write to local documentsDir if R2 upload was not used (avoids triggering file watchers mid-request)
+        if (!documentR2Key && documentsDir) {
           createdLocalPath = path.join(documentsDir, filename);
           fs.writeFileSync(createdLocalPath, documentFile.buffer, { flag: "wx" });
         }
 
         const hasImmediateKey = Boolean(parsedAnswerKey && answerMode === "immediate");
+        // Avoid sending multi-megabyte BYTEA into PostgreSQL when R2 already holds the object
+        const dbFileBuffer =
+          documentR2Key && documentFile.buffer && documentFile.buffer.length > 256 * 1024
+            ? Buffer.alloc(0)
+            : documentFile.buffer;
 
         const saveTx = db.transaction(async () => {
           await db
@@ -1426,7 +1434,7 @@ export function installTestsModule({
               documentFile.originalname,
               documentFile.size,
               contentType,
-              documentFile.buffer,
+              dbFileBuffer,
               documentR2Key,
               req.user.id
             );
@@ -1457,31 +1465,32 @@ export function installTestsModule({
         });
         await saveTx();
 
-        if (isAllGrade) {
-          const allStudents = await db.prepare(`
-            SELECT id AS user_id FROM users
-            WHERE role NOT IN ('admin', 'teacher') AND COALESCE(admin_level, 0) < 1
-          `).all();
-          await Promise.all(allStudents.map(student => notifyUser?.(
-            student.user_id,
-            "new_class_test",
-            `Bài kiểm tra mới: ${title}`,
-            `Khối ${grade} (Cả khối) có bài kiểm tra môn ${subject} mới.`,
-            "/"
-          )));
-        } else if (isValidSpecificClass) {
-          const members = await db.prepare(`
-            SELECT m.user_id FROM school_class_members m
-            JOIN users u ON u.id=m.user_id
-            WHERE m.class_code=? AND u.account_type='school'
-          `).all(classCode);
-          await Promise.all(members.map(member => notifyUser?.(
-            member.user_id,
-            "new_class_test",
-            `Bài kiểm tra mới: ${title}`,
-            `Lớp ${classCode} có bài kiểm tra môn ${subject} mới.`,
-            "/"
-          )));
+        try {
+          if (isAllGrade) {
+            await db.prepare(`
+              INSERT INTO notifications (user_id, type, title, message, link)
+              SELECT id, 'new_class_test', ?, ?, '/'
+              FROM users
+              WHERE role NOT IN ('admin', 'teacher') AND COALESCE(admin_level, 0) < 1
+            `).run(
+              `Bài kiểm tra mới: ${title}`,
+              `Khối ${grade} (Cả khối) có bài kiểm tra môn ${subject} mới.`
+            );
+          } else if (isValidSpecificClass) {
+            await db.prepare(`
+              INSERT INTO notifications (user_id, type, title, message, link)
+              SELECT m.user_id, 'new_class_test', ?, ?, '/'
+              FROM school_class_members m
+              JOIN users u ON u.id = m.user_id
+              WHERE m.class_code = ? AND u.account_type = 'school'
+            `).run(
+              `Bài kiểm tra mới: ${title}`,
+              `Lớp ${classCode} có bài kiểm tra môn ${subject} mới.`,
+              classCode
+            );
+          }
+        } catch (notifyErr) {
+          console.warn("Could not insert test notifications:", notifyErr.message);
         }
 
         if (answerKeyFile) {
@@ -1494,7 +1503,22 @@ export function installTestsModule({
             await createExamSolutionJob(id);
             solutionJob = { id, status: "queued", mode: "ai", phase: "AI đang giải đề kiểm tra" };
           } else {
-            await initManualSolutionForDocument(id);
+            await initManualSolutionForDocument(id, {
+              doc: {
+                id,
+                subject,
+                grade,
+                category: "test",
+                title,
+                filename,
+                original_name: documentFile.originalname,
+                r2_key: documentR2Key,
+                testRawText: rawText || null,
+                testQuestionsJson: JSON.stringify(targets),
+                referenceAnswerJson: parsedAnswerKey ? JSON.stringify(parsedAnswerKey) : null
+              },
+              targets
+            });
             solutionJob = { id, status: "review", mode: "manual", phase: "Nhập và xác nhận đáp án chuẩn" };
           }
         }
