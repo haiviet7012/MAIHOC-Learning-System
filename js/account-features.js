@@ -953,9 +953,9 @@ window.addEventListener("pagehide",()=>{
 function addAdminReviewPanel() {
   if(!activeUser||activeUser.role!=="admin"||!$("#admin-users-table")||$("#admin-review-panel"))return;
   const panel=document.createElement("section");panel.id="admin-review-panel";panel.className="admin-submissions";
-  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div><button type="button" class="button primary" data-answer-key-open>Quản lý đáp án</button></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tiến trình học tập</h2></div></div><div id="admin-progress-list"><p class="muted">Loading...</p></div>';
+  panel.innerHTML='<div class="section-head"><div><h2>Tài liệu đã duyệt</h2><p class="muted">Xóa tài liệu khỏi thư viện.</p></div><button type="button" class="button primary" data-answer-key-open>Quản lý đáp án</button></div><div id="approved-documents"><p class="muted">Loading...</p></div><div class="section-head"><div><h2>Tài liệu chờ duyệt</h2></div></div><div id="pending-submissions"><p class="muted">Loading...</p></div>';
 
-  $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();loadAdminProgress();
+  $("#admin-users-table").after(panel);loadApprovedDocuments();loadSubmissions();
   window.dispatchEvent(new Event("maihoc-admin-panel-mounted"));
 }
 function documentCategoryLabel(category) {
