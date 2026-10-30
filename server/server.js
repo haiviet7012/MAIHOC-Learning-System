@@ -1172,7 +1172,7 @@ app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, 
     homeroomClass: String(req.body?.homeroomClass || ""),
     teachingClasses: Array.isArray(req.body?.teachingClasses) ? req.body.teachingClasses : []
   };
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({ error: "Email không hợp lệ." });
   }
 

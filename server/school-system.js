@@ -234,10 +234,11 @@ export function installSchoolSystemRoutes(app, deps) {
     if (!Number.isInteger(studentId) || !await canAccessClass(req.user, classCode)) {
       return res.status(403).json({ error: "Bạn không có quyền xem tiến trình học sinh này." });
     }
-    if (req.user.role !== "teacher") {
+    const isSuperAdmin = req.user.role === "admin" && Number(req.user.adminLevel) >= 2;
+    if (!isSuperAdmin && req.user.role !== "teacher") {
       return res.status(403).json({ error: "Chỉ giáo viên được phân công hoặc Admin mới xem được tiến trình học sinh." });
     }
-    {
+    if (!isSuperAdmin) {
       const assigned = await db.prepare(
         "SELECT id FROM school_teacher_assignments WHERE teacher_id=? AND class_code=? LIMIT 1"
       ).get(req.user.id, classCode);
