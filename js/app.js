@@ -534,7 +534,7 @@ function resultPage() {
         : saved
           ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
           : `<button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button>`;
-    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ĐANG CHỜ CHẤM" : "ĐÃ NỘP BÀI"}</span>${owner}${details}<h2>${result?.graded ? "Chi tiết chấm điểm" : "Tình trạng bài làm"}</h2>${result?.graded ? "" : `<p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
+    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ĐANG CHỜ CHẤM" : "ĐÃ NỘP BÀI"}</span>${owner}${details}${result?.graded ? "" : `<h2>Tình trạng bài làm</h2><p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
 }
 
 async function openSavedExamResult(id) {
