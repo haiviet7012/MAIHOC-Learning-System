@@ -1662,15 +1662,6 @@ async function postJson(url, body) {
 }
 $("#login-open").addEventListener("click", () => { $("#login-error").hidden = true; openDialog("login-dialog"); });
 $("#register-open").addEventListener("click", () => { $("#register-error").hidden = true; openDialog("register-dialog"); });
-document.querySelectorAll('#register-form [name="accountType"]').forEach(input => {
-    input.addEventListener("change", () => {
-        const field = $("#register-school-class-field");
-        const select = field?.querySelector("select");
-        const isSchool = input.checked && input.value === "school";
-        if (field) field.hidden = !isSchool;
-        if (select) select.required = isSchool;
-    });
-});
 $("#switch-to-register").addEventListener("click", () => { closeDialog("login-dialog"); openDialog("register-dialog"); });
 $("#switch-to-login").addEventListener("click", () => { closeDialog("register-dialog"); openDialog("login-dialog"); });
 $("#login-form").addEventListener("submit", async (event) => {
