@@ -523,10 +523,23 @@ document.addEventListener("submit", async event => {
 });
 
 function formatVietnameseDate(value) {
-  if (!value) return "—";
-  const normalized = String(value).includes("T") ? String(value) : String(value).replace(" ", "T") + "Z";
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (value === null || value === undefined || value === "") return "—";
+  let date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "number" || /^\d{10,13}$/.test(String(value).trim())) {
+    const timestamp = Number(value);
+    date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  } else {
+    const raw = String(value).trim();
+    const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+    const utcValue = !hasTimezone && /^\d{4}-\d{2}-\d{2}/.test(normalized)
+      ? (normalized.includes("T") ? normalized + "Z" : normalized + "T00:00:00Z")
+      : normalized;
+    date = new Date(utcValue);
+  }
+  if (!date || !Number.isFinite(date.getTime())) return "—";
   return date.toLocaleString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
@@ -790,6 +803,20 @@ async function loadUser() {
   }
 
 }
+function notificationDisplayContent(notification) {
+  const title = String(notification.title || "Thông báo");
+  const message = String(notification.message || "");
+  const isRawGeminiFailure = /GoogleGenerativeAI Error|generativelanguage\.googleapis\.com|503 Service Unavailable/i.test(title + " " + message);
+  if (!isRawGeminiFailure) return { title, message, dedupeKey: "" };
+
+  const sourceId = message.match(/^([^:\n]{1,120}):/)?.[1]?.trim() || "";
+  return {
+    title: "AI tạm thời quá tải",
+    message: `${sourceId ? sourceId + ": " : ""}Dịch vụ Gemini đang quá tải hoặc gián đoạn tạm thời. Vui lòng thử lại sau ít phút.`,
+    dedupeKey: sourceId ? "gemini-503:" + sourceId : ""
+  };
+}
+
 async function refreshNotifications() {
   if(!activeUser)return;
   try {
@@ -797,10 +824,21 @@ async function refreshNotifications() {
     const badge=$("#notification-count");
     if(badge){badge.hidden=!(data.unread>0);badge.textContent=data.unread>99?"99+":String(data.unread);}
     const list=$("#notifications-list");
-    if(list)list.innerHTML=(data.items||[]).length?data.items.map(n=>{
-      const date=new Date(String(n.createdAt).replace(" ","T")+"Z").toLocaleString("vi-VN");
-      return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(n.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(n.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
-    }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
+    if(list) {
+      const seenTransientAlerts = new Set();
+      const items = (data.items || []).filter(notification => {
+        const display = notificationDisplayContent(notification);
+        if (!display.dedupeKey) return true;
+        if (seenTransientAlerts.has(display.dedupeKey)) return false;
+        seenTransientAlerts.add(display.dedupeKey);
+        return true;
+      });
+      list.innerHTML=items.length?items.map(n=>{
+        const display = notificationDisplayContent(n);
+        const date = formatVietnameseDate(n.createdAt);
+        return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(display.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(display.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
+      }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
+    }
   } catch(e) { console.warn("Notifications:",e.message); }
 }
 async function saveProgress(payload) {
@@ -989,7 +1027,7 @@ function solutionMathText(value){
   let text=String(value??"")
     .replace(/\\\\/g,"\n")
     .replace(/\\\(|\\\)|\\\[|\\\]|\$\$?/g,"")
-    .replace(/\\begin\{(?:aligned|align\*?|gathered|array)\}(?:\{[^}]*\})?/g,"")
+    .replace(/\begin\{(?:aligned|align\*?|gathered|array)\}(?:\{[^}]*\})?/g,"")
     .replace(/\\end\{(?:aligned|align\*?|gathered|array)\}/g,"")
     .replace(/\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle|left|right|quad|qquad)\b/g,"")
     .replace(/\\(?:,|;|:|!)/g," ");
@@ -1018,14 +1056,14 @@ function solutionMathText(value){
     if(text===previous)break;
   }
   return text
-    .replace(/\\times\b/g,"×").replace(/\\cdot\b/g,"·").replace(/\\div\b/g,"÷")
+    .replace(/\\times\b/g,"×").replace(/\\cdot\b/g,"·").replace(/\div\b/g,"÷")
     .replace(/\\pm\b/g,"±").replace(/\\mp\b/g,"∓").replace(/\\infty\b/g,"∞")
     .replace(/\\sum\b/g,"∑").replace(/\\prod\b/g,"∏").replace(/\\int\b/g,"∫").replace(/\\oint\b/g,"∮")
-    .replace(/\\pi\b/g,"π").replace(/\\alpha\b/g,"α").replace(/\\beta\b/g,"β").replace(/\\gamma\b/g,"γ")
+    .replace(/\\pi\b/g,"π").replace(/\\alpha\b/g,"α").replace(/\beta\b/g,"β").replace(/\\gamma\b/g,"γ")
     .replace(/\\theta\b/g,"θ").replace(/\\lambda\b/g,"λ").replace(/\\mu\b/g,"μ").replace(/\\sigma\b/g,"σ").replace(/\\omega\b/g,"ω")
     .replace(/\\Delta\b/g,"Δ").replace(/\\Omega\b/g,"Ω").replace(/\\phi\b|\\varphi\b/g,"φ")
-    .replace(/\\leq?\b/g,"≤").replace(/\\geq?\b/g,"≥").replace(/\\neq\b/g,"≠").replace(/\\approx\b/g,"≈").replace(/\\equiv\b/g,"≡")
-    .replace(/\\in\b/g,"∈").replace(/\\notin\b/g,"∉").replace(/\\subseteq\b/g,"⊆").replace(/\\cup\b/g,"∪").replace(/\\cap\b/g,"∩")
+    .replace(/\\leq?\b/g,"≤").replace(/\\geq?\b/g,"≥").replace(/\neq\b/g,"≠").replace(/\\approx\b/g,"≈").replace(/\\equiv\b/g,"≡")
+    .replace(/\\in\b/g,"∈").replace(/\notin\b/g,"∉").replace(/\\subseteq\b/g,"⊆").replace(/\\cup\b/g,"∪").replace(/\\cap\b/g,"∩")
     .replace(/\\Rightarrow\b|\\Longrightarrow\b/g,"⇒").replace(/\\rightarrow\b|\\to\b/g,"→").replace(/\\leftarrow\b/g,"←")
     .replace(/\\leftrightarrow\b/g,"↔").replace(/\\mapsto\b/g,"↦").replace(/\\circ\b/g,"°").replace(/\\angle\b/g,"∠").replace(/\\perp\b/g,"⊥")
     .replace(/\\log\b/g,"log").replace(/\\ln\b/g,"ln").replace(/\\(?:sin|cos|tan|cot|sec|csc)\b/g,m=>m.slice(1))
