@@ -219,8 +219,9 @@ export function installSchoolSystemRoutes(app, deps) {
       SELECT u.id,u.name,u.email FROM school_class_members m
       JOIN users u ON u.id=m.user_id WHERE m.class_code=? ORDER BY u.name
     `).all(classCode);
+    const canManageMembers = await requireHomeroom(req, { status: () => ({ json: () => {} }) }, classCode).catch(() => false);
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ classCode, teachers: [...teacherMap.values()].sort((a,b) => Number(b.isHomeroom)-Number(a.isHomeroom)), students: students.map(s => ({ id:Number(s.id),name:s.name,email:s.email })) });
+    res.json({ classCode, canManageMembers: Boolean(canManageMembers), teachers: [...teacherMap.values()].sort((a,b) => Number(b.isHomeroom)-Number(a.isHomeroom)), students: students.map(s => ({ id:Number(s.id),name:s.name,email:s.email })) });
   });
 
   app.get("/api/school/classes/:classCode/students/:studentId/progress", requireAuth, async (req, res) => {
