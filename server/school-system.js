@@ -280,7 +280,10 @@ export function installSchoolSystemRoutes(app, deps) {
     res.status(201).json({ ok: true, id });
   });
 
-  app.get("/api/school/admin/class-change-requests", requireAuth, requireSuperAdmin, async (req, res) => {
+  app.get("/api/school/admin/class-change-requests", requireAuth, async (req, res) => {
+    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 2) {
+      return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới xem được yêu cầu này." });
+    }
     const requests = await db.prepare(`
       SELECT r.id,r.class_code AS classCode,r.action,r.note,r.status,r.created_at AS createdAt,
         u.name AS studentName,u.email AS studentEmail,t.name AS teacherName
@@ -324,7 +327,10 @@ export function installSchoolSystemRoutes(app, deps) {
     res.status(201).json({ ok: true, id });
   });
 
-  app.get("/api/school/admin/teacher-messages", requireAuth, requireSuperAdmin, async (req, res) => {
+  app.get("/api/school/admin/teacher-messages", requireAuth, async (req, res) => {
+    if (req.user?.role !== "admin" || Number(req.user.adminLevel) < 2) {
+      return res.status(403).json({ error: "Chỉ Admin cấp cao nhất mới xem được thông báo này." });
+    }
     const messages = await db.prepare(`
       SELECT m.id,m.title,m.message,m.status,m.created_at AS createdAt,u.name AS teacherName
       FROM school_teacher_messages m JOIN users u ON u.id=m.teacher_id ORDER BY m.created_at DESC LIMIT 200
