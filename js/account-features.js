@@ -1582,3 +1582,22 @@ document.addEventListener('visibilitychange', () => {
     throttledRefreshOnlineDashboard();
   }
 });
+// The online list is a dismissible panel, independent of the current route.
+function setOnlineDrawer(open) {
+  const panel = document.getElementById('online-dashboard');
+  const toggle = document.getElementById('online-drawer-toggle');
+  if (!panel || !toggle) return;
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.classList.toggle('active', open);
+  if (open) { panel.focus(); throttledRefreshOnlineDashboard(); }
+  else toggle.focus();
+}
+document.addEventListener('click', event => {
+  if (event.target.closest('#online-drawer-toggle')) {
+    setOnlineDrawer(document.getElementById('online-dashboard')?.hidden);
+  } else if (event.target.closest('#online-drawer-close')) setOnlineDrawer(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.getElementById('online-dashboard')?.hidden) setOnlineDrawer(false);
+});
