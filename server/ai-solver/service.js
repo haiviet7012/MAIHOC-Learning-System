@@ -94,11 +94,9 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
-  const preferred = configuredModel || "gemini-2.5-flash";
-  // Respect an explicit Render override; otherwise use the known project fallback.
-  const models = configuredModel
-    ? [preferred]
-    : ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+  const preferred = configuredModel || "gemini-3.6-flash";
+  // Keep model selection configurable until the provider's live catalog is verified.
+  const models = configuredModel ? [preferred] : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"];
   let lastError;
   for (const modelName of models) {
     try {
