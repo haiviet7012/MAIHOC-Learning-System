@@ -18,7 +18,9 @@
     "test:postgres-cutover-report": "node --test ./tests/postgres-cutover-report.test.js",
     "cleanup:personal-history": "node ./scripts/cleanup-personal-history.js",
     "test:personal-history-cleanup": "node --test ./tests/personal-history-cleanup.test.js",
-    "check:postgres-auth": "node ./check-postgres-auth.js"
+    "check:postgres-auth": "node ./check-postgres-auth.js",
+    "test:platform-foundation": "node --test ./tests/platform-foundation.test.js",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1159.0",

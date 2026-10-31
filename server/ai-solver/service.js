@@ -95,10 +95,8 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
   const genAI = new GoogleGenerativeAI(apiKey);
   const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
   const preferred = configuredModel || "gemini-3.6-flash";
-  // When the operator pins a model in Render, use that exact model instead of silently switching.
-  const models = configuredModel
-    ? [preferred]
-    : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"];
+  // Keep model selection configurable until the provider's live catalog is verified.
+  const models = configuredModel ? [preferred] : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"];
   let lastError;
   for (const modelName of models) {
     try {
