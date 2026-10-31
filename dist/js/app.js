@@ -834,7 +834,7 @@ function render() {
     document.body.classList.toggle("is-home-lobby", isMainLobby);
     const onlineDashboard = $("#online-dashboard");
     const onlineLauncher = $("#online-dashboard-launcher");
-    if (onlineDashboard) onlineDashboard.hidden = !isMainLobby;
+    if (onlineDashboard) onlineDashboard.hidden = false;
     if (onlineLauncher) onlineLauncher.hidden = !isMainLobby;
     $("#tests-open")?.classList.toggle("is-active-route", state.route === "tests");
     $("#school-classes-open")?.classList.toggle("is-active-route", state.route === "school" || state.route === "school-class");

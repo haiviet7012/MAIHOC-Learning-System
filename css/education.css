@@ -1246,3 +1246,22 @@ body.reader-open .app-body {
     max-width: 75%;
   }
 }
+
+/* Presence panel lives inside either workspace's navigation. */
+.education-sidebar #online-dashboard.sidebar-online {
+ display:block !important; position:static; width:100%; min-width:0; max-width:none;
+ margin:24px 0 0; padding:12px 8px; border:1px solid var(--border);
+ border-radius:10px; background:var(--surface); box-shadow:none; flex-shrink:0;
+}
+.sidebar-online .online-dashboard-head h2 {font-size:13px;}
+.sidebar-online .online-dashboard-head .eyebrow {font-size:8px;letter-spacing:1px;}
+.sidebar-online .online-dashboard-list {max-height:240px;overflow-y:auto;}
+.sidebar-online .online-user-row {padding:10px 2px;gap:8px;}
+.sidebar-online .online-user-avatar {width:28px;height:28px;flex-shrink:0;font-size:11px;}
+.sidebar-online .online-user-name-line {display:flex;align-items:flex-start;flex-direction:column;gap:3px;}
+.sidebar-online .online-user-name-line strong {font-size:11px;overflow-wrap:anywhere;}
+.sidebar-online .online-role-badge {font-size:8px;white-space:normal;}
+.sidebar-online .online-user-activity {font-size:9px;}
+.sidebar-online .online-dashboard-filters {gap:3px;}
+.sidebar-online .online-filter-btn {font-size:9px;padding:4px;min-height:32px;}
+.sidebar-online .online-dashboard-foot {font-size:9px;}

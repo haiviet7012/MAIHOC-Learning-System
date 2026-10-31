@@ -731,8 +731,8 @@ function renderOnlineUsersList() {
   if (!listNode) return;
 
   const filtered = latestOnlineUsers.filter(u => {
-    if (onlineFilter === "admin") return u.role === "admin";
-    if (onlineFilter === "user") return u.role !== "admin";
+    if (onlineFilter === "admin") return u.role === "teacher" || u.role === "admin";
+    if (onlineFilter === "user") return u.role !== "admin" && u.role !== "teacher";
     return true;
   });
 
@@ -1573,8 +1573,8 @@ async function throttledRefreshOnlineDashboard() {
   }
 }
 
-// Tăng chu kỳ từ 4 giây (4000) lên 30 giây (30000)
-setInterval(throttledRefreshOnlineDashboard, 30000);
+// Cập nhật nhanh, bỏ qua tab ẩn và request đang chạy.
+setInterval(throttledRefreshOnlineDashboard, 10000);
 
 // Tự động cập nhật ngay khi người dùng mở lại tab
 document.addEventListener('visibilitychange', () => {
