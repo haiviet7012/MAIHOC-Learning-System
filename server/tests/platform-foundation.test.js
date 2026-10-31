@@ -22,7 +22,7 @@ test("password recovery OTP is not logged or delivered in-app", () => {
     "async function issueVerificationCode"
   );
   assert.match(helper, /purpose === "forgot_password"/);
-  assert.match(helper, /if \(!isRecoveryFlow\)/);
+  assert.match(helper, /if \(!isRecoveryFlow && process\.env\.NODE_ENV !== "production"\)/);
   assert.match(helper, /if \(userId && !isRecoveryFlow\)/);
   assert.doesNotMatch(helper, /console\.log\([^\n]*\bcode\b/);
   assert.match(helper, /isRecoveryFlow \|\| process\.env\.NODE_ENV === "production" \? \{\} : \{ devCode: code \}/);
