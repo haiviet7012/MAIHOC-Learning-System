@@ -1,3 +1,4 @@
+import { geminiModels, tutorInstruction } from '../ai-models.js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -85,18 +86,15 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
     ...(subject === AUTO_SUBJECT ? [
       "ĐỊNH DẠNG METADATA: Dòng đầu tiên bắt buộc là [[MAIHOC_SUBJECT: tên môn]], trong đó tên môn phải là một trong: Toán, Tiếng Anh, Vật lý, Hóa học, Ngữ văn, Sinh học, Đề thi THPT quốc gia, IELTS. Dòng này là metadata máy đọc; không lặp lại trong phần lời giải."
     ] : []),
-    `CHẾ ĐỘ: ${mode === "quick" ? "GIẢI NHANH: nêu phương pháp cốt lõi và đáp án, giữ các bước thiết yếu để kiểm chứng." : "GIẢI CHI TIẾT: phân tích dữ kiện, giải từng bước, giải thích tại sao dùng phương pháp đó và kiểm tra kết quả."}`,
-    "Quy tắc: Không bịa dữ kiện. Nếu ảnh/PDF mờ hoặc thiếu nội dung, nói rõ phần không đọc được. Nếu đề có nhiều câu, giữ số thứ tự và giải từng câu. Dùng Markdown dễ đọc. MỌI biểu thức toán học, phân số, số mũ/chỉ số, vector, đơn vị có ký hiệu, phương trình hóa học và công thức vật lý phải viết bằng LaTeX; dùng \\( ... \\) cho công thức trong dòng và \\[ ... \\] cho công thức riêng dòng. Hóa học dùng \\mathrm{H_2O}, \\rightarrow, \\ce{} chỉ khi MathJax mhchem được bật (ưu tiên công thức chỉ số thông thường nếu không). Tránh dùng Unicode ký hiệu làm thay thế công thức như x², H₂O, ->, <=. Với câu trắc nghiệm phải ghi đáp án và giải thích ngắn. Không thêm lời chào dài dòng.",
+    `CHẾ ĐỘ: ${tutorInstruction(mode)}`,
+    "Quy tắc: Không bịa dữ kiện. Nếu ảnh/PDF mờ hoặc thiếu nội dung, nói rõ phần không đọc được. Nếu đề có nhiều câu, giữ số thứ tự và giải từng câu. Dùng Markdown dễ đọc. MỌI biểu thức toán học, phân số, số mũ/chỉ số, vector, đơn vị có ký hiệu, phương trình hóa học và công thức vật lý phải viết bằng LaTeX; dùng \\( ... \\) cho công thức trong dòng và \\[ ... \\] cho công thức riêng dòng. Hóa học dùng \\mathrm{H_2O}, \\rightarrow, \\ce{} chỉ khi MathJax mhchem được bật (ưu tiên công thức chỉ số thông thường nếu không). Tránh dùng Unicode ký hiệu làm thay thế công thức như x², H₂O, ->, <=. Với câu trắc nghiệm chỉ ghi đáp án khi chế độ cho phép; chế độ gợi mở/kiểm tra ưu tiên quy tắc ở trên. Không thêm lời chào dài dòng.",
     image ? "Đọc cả nội dung trong ảnh đính kèm." : "",
     "ĐỀ BÀI:",
     problemText || "(Đề bài được cung cấp trong tệp/ảnh đính kèm.)"
   ].filter(Boolean).join("\n\n");
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
-  const preferred = configuredModel || "gemini-3.6-flash";
-  // Keep model selection configurable until the provider's live catalog is verified.
-  const models = configuredModel ? [preferred] : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash"];
+  const models = geminiModels();
   let lastError;
   for (const modelName of models) {
     try {

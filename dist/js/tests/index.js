@@ -20,6 +20,7 @@ export async function refreshTestsQueue() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     cachedTests = Array.isArray(data.tests) ? data.tests : [];
+    window.__maihocTestsQueue = cachedTests;
     const badge = document.getElementById("tests-new-count");
     if (badge) {
       const unread = Number(data.newCount || 0);

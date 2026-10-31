@@ -14,7 +14,12 @@ export default {
     const incoming = new URL(request.url);
 
     if (!isBackendRequest(incoming.pathname)) {
-      return env.ASSETS.fetch(request);
+      const response = await env.ASSETS.fetch(request);
+      if (response.headers.get('content-type')?.includes('text/html')) {
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-cache');
+        return new Response(response.body, { status: response.status, headers });
+      }
+      return response;
     }
 
     const backend = String(env.BACKEND_ORIGIN || "")

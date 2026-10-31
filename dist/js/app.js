@@ -1,3 +1,6 @@
+import { TestDraft } from './platform/test-draft.js';
+import { routeUrl, parseRoute } from './platform/router.js';
+import { dashboardMarkup, hydrateActivity, mountPortal } from './platform/portal.js';
 import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, setSubjectCatalog, getSubjectConfig, CATEGORIES } from "./data.js";
 import { initTheme } from "./theme.js?v=20261031v1";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
@@ -25,7 +28,11 @@ const view = $("#view");
 const progressTabParams = new URLSearchParams(window.location.search);
 const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "student-progress";
 const state = { route: standaloneStudentProgress ? "student-progress" : "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
+Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
+let activePortalCleanup = null;
+let activeTestDraft = null;
+let testStarting = false;
 let activeStudyRoomsCleanup = null;
 let activeChemistryCleanup = null;
 let activeUniversalAiCleanup = null;
@@ -74,6 +81,7 @@ async function initRemoteData() {
     }
     await Promise.all([refreshDocuments().catch(() => {}), refreshTestsQueue().catch(() => {})]);
     render();
+    resumePendingTest();
 }
 // Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
 const docs = () => getDocuments();
@@ -123,7 +131,7 @@ function go(route, params = {}) {
     Object.assign(state, params);
     state.route = route;
     // Ghi trang mới vào lịch sử điều hướng của Chrome.
-    history.pushState(saveRouteHistory(), "", window.location.href);
+    history.pushState(saveRouteHistory(), "", routeUrl(state));
     render();
     if (route === "tests") {
         refreshTestsQueue().then(() => {
@@ -161,18 +169,8 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
     state.timer = null;
 } }
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
-function homePage() {
-    return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá các môn học theo lộ trình của bạn.</p><div class="hero-actions"><button class="button primary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
-<section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
-<div class="grid four">
- <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
- <article class="card clickable resource-card" data-route="practice"><div class="card-icon">✎</div><span class="pill">LUYỆN TẬP</span><h3>Ôn tập theo đề</h3><p>Thực hành câu hỏi, tự kiểm tra và xem đáp án khi có dữ liệu.</p></article>
- <article class="card clickable resource-card" data-route="exam-select"><div class="card-icon">◷</div><span class="pill">90 PHÚT</span><h3>Phòng thi thử</h3><p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p></article>
- <article class="card clickable resource-card" data-route="tests"><div class="card-icon">📝</div><span class="pill">KIỂM TRA ĐỊNH KỲ</span><h3>Bài kiểm tra</h3><p>Danh sách bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm.</p></article>
-</div>
-<p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
-}
+function homePage() { return dashboardMarkup(currentUser, docs(), window.__maihocTestsQueue || []); }
+
 function subjectPickerPage() {
     const subjects = SUBJECT_CATALOG.map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử"] : ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] }));
     return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">MÔN HỌC THEO CẤU HÌNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
@@ -820,6 +818,12 @@ function render() {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
+    if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
+    document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
+    document.querySelectorAll('[data-space]').forEach(button=>button.classList.toggle('active',button.dataset.space===(['organization','school','school-class','question-bank','admin'].includes(state.route)?'school':'learning')));
+    document.getElementById('education-sidebar')?.classList.remove('is-open');
+    document.getElementById('education-menu')?.setAttribute('aria-expanded','false');
+    const title=document.querySelector('.education-top-title'); if(title)title.textContent=['organization','school','school-class','question-bank','admin'].includes(state.route)?'MAIHOC School':'MAIHOC Learning';
     stopStudyRoomsIfActive();
     stopChemistryIfActive();
     stopUniversalAiIfActive();
@@ -846,6 +850,9 @@ function render() {
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === "home")
         view.innerHTML = homePage();
+    else if (['organization','question-bank','assignments','analytics'].includes(state.route)) {
+        activePortalCleanup = mountPortal(view, state.route, currentUser, go);
+    }
     else if (state.route === "chemistry") {
         view.innerHTML = "";
         activeChemistryCleanup = mountChemistryModule(view, {
@@ -915,6 +922,7 @@ function render() {
             loadTextExamQuestions(examDocument);
         }
     }
+    if (state.route === 'home') hydrateActivity(view, currentUser);
     view.focus({ preventScroll: true });
     if (state.route === "admin")
         loadAdminUsers();
@@ -922,8 +930,12 @@ function render() {
         window.dispatchEvent(new CustomEvent("maihoc-account-center-open"));
     window.dispatchEvent(new CustomEvent("maihoc-route-changed", { detail: { route: state.route, subject: state.subject, grade: state.grade } }));
     if (state.route === "exam") {
+        if (activeTestDraft) {
+            const label=document.createElement('p'); label.dataset.testSaveStatus=''; label.setAttribute('role','status'); label.textContent=activeTestDraft.disabled?'Bản nháp được lưu trên máy này.':'Phiên làm bài và thời hạn được quản lý tại máy chủ.';
+            view.querySelector('.exam-toolbar')?.after(label);
+        }
         wireSplitter();
-        if (state.examStarted && !state.examFinished && ["exam", "test"].includes(findDoc(state.examDocId)?.category))
+        if (state.examStarted && !state.examFinished && !state.submitRetryRequired && ["exam", "test"].includes(findDoc(state.examDocId)?.category))
             startTimer();
     }
 }
@@ -937,7 +949,7 @@ function startTimer() {
             updateTimer();
             return;
         }
-        state.remaining--;
+        state.remaining = state.serverDeadline ? Math.max(0, Math.ceil((new Date(state.serverDeadline).getTime() - Date.now()) / 1000)) : state.remaining - 1;
         updateTimer();
         if (state.remaining === 300 && !state.warningShown) {
             state.warningShown = true;
@@ -1021,6 +1033,7 @@ function wireSplitter() {
 function finishExam(options = {}) {
     if (state.examFinished)
         return;
+    state.submitRetryRequired = false;
     state.examFinished = true;
     state.examStarted = false;
     if (state.timer) {
@@ -1049,7 +1062,7 @@ function finishExam(options = {}) {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || "Không thể nộp bài.");
         return result;
-    }).catch(error => ({ graded: false, message: error.message || "Không thể chấm bài lúc này." }));
+    });
 
     const leaveFullscreen = ["exam", "test"].includes(examDoc?.category) && document.fullscreenElement
         ? document.exitFullscreen().catch((error) => {
@@ -1060,10 +1073,18 @@ function finishExam(options = {}) {
     Promise.all([Promise.resolve(leaveFullscreen), submitPromise]).then(async ([, result]) => {
         state.gradeResult = result;
         if (isTest) {
+            activeTestDraft?.clear();
+            activeTestDraft = null;
             await refreshTestsQueue();
             window.dispatchEvent(new Event("maihoc-auth-changed"));
         }
         go("result");
+    }).catch(error => {
+        state.examFinished = false;
+        state.submitRetryRequired = true;
+        state.examStarted = true;
+        toast(`Chưa nộp được bài: ${error.message}. Bản nháp vẫn được giữ; hãy thử nộp lại.`, 'error');
+        render();
     });
 }
 // PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
@@ -1144,7 +1165,8 @@ function startExam(id) {
         toast("Trình duyệt không hỗ trợ chế độ toàn màn hình.", "error");
     }
 }
-function startTest(id) {
+async function startTest(id) {
+    if (testStarting) return;
     if (!currentUser) {
         toast("Vui lòng đăng nhập để làm bài kiểm tra.", "error");
         openDialog("login-dialog");
@@ -1163,22 +1185,31 @@ function startTest(id) {
             console.error("Không thể bật toàn màn hình:", error);
         }
     }
-    if (state.timer) {
-        clearInterval(state.timer);
-        state.timer = null;
-    }
+    testStarting = true;
+    let draft;
+    try {
+        draft = await new TestDraft(currentUser.id, d.id).start();
+        if (draft.session?.submission_id) { await openSavedTestSubmission(draft.session.submission_id); return; }
+    } catch (error) { toast(error.message, 'error'); return; }
+    finally { testStarting = false; }
+    if (activeTestDraft) activeTestDraft.destroyed = true;
+    activeTestDraft = draft;
+    state.pendingTestId = null;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
     state.examDocId = d.id;
-    state.answers = {};
+    state.answers = { ...draft.answers };
+    state.serverDeadline = draft.session?.deadline_at || null;
     const durationMin = Number(d.durationMinutes) || 0;
-    state.remaining = durationMin > 0 ? durationMin * 60 : 0;
+    state.remaining = state.serverDeadline ? Math.max(0, Math.floor((new Date(state.serverDeadline).getTime() - Date.now()) / 1000)) : durationMin > 0 ? durationMin * 60 : 0;
     state.elapsedSeconds = 0;
     state.timerCountUp = durationMin <= 0;
-    state.examStartedAtMs = Date.now();
+    state.examStartedAtMs = draft.session ? new Date(draft.session.started_at).getTime() : Date.now();
     activeExamQuestions = [];
     activeExamQuestionsFor = null;
     state.warningShown = false;
     state.examStarted = true;
     state.examFinished = false;
+    state.submitRetryRequired = false;
     state.gradeResult = null;
     go("exam");
     if (fullscreenPromise) {
@@ -1522,6 +1553,7 @@ $("#upload-form").addEventListener("submit", async (e) => {
 });
 $("#confirm-yes").addEventListener("click", () => { closeDialog("confirm-dialog"); finishExam(); });
 function notifyExamAnswerProgress() {
+    if (activeTestDraft && String(activeTestDraft.testId) === String(state.examDocId)) activeTestDraft.update(state.answers);
     if (state.route !== "exam" || !state.examDocId) return;
     const d = findDoc(state.examDocId);
     if (!d) return;
@@ -1599,6 +1631,7 @@ function ensureTestsNavButton() {
 }
 
 function applyAuthUI() {
+    const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     ensureTestsNavButton();
     window.maihocCurrentUser = currentUser;
     window.__maihocCurrentUser = currentUser;
@@ -1667,9 +1700,11 @@ async function refreshAuthUI() {
         currentUser = null;
     }
     applyAuthUI();
+    const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
-    if (state.route === "study-rooms" || state.route === "account-center" || state.route === "tests") render();
+    resumePendingTest();
+    if (["home","organization","question-bank","assignments","analytics","study-rooms","account-center","tests"].includes(state.route)) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1699,7 +1734,7 @@ $("#login-form").addEventListener("submit", async (event) => {
         closeDialog("login-dialog");
         form.reset();
         toast("Đăng nhập thành công.", "success");
-        go(currentUser.role === "admin" ? "admin" : "home");
+        go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignments") : "home");
     }
     catch (err) {
         error.textContent = err.message;
@@ -1890,8 +1925,23 @@ window.addEventListener("maihoc-tests-rerender", () => {
 });
 window.addEventListener("maihoc-auth-changed", async () => {
     await refreshTestsQueue();
-    if (state.route === "tests") render();
+    if (["tests","home"].includes(state.route)) render();
 });
 window.addEventListener("maihoc-admin-panel-mounted", () => {
     loadAdminTestsAndPendingGrading();
 });
+
+document.getElementById('education-menu')?.addEventListener('click', () => { const opened=document.getElementById('education-sidebar').classList.toggle('is-open'); document.getElementById('education-menu').setAttribute('aria-expanded',String(opened)); });
+document.addEventListener('keydown', event=>{if(event.key==='Escape'){document.getElementById('education-sidebar')?.classList.remove('is-open');document.getElementById('education-menu')?.setAttribute('aria-expanded','false');}});
+document.addEventListener('click',event=>{if(event.target.closest('[data-portal-login]'))openDialog('login-dialog');const test=event.target.closest('[data-portal-test]');if(test)startTest(test.dataset.portalTest);});
+
+function resumePendingTest() { if (state.pendingTestId && currentUser && findCachedTest(state.pendingTestId)) { const id=state.pendingTestId; state.pendingTestId=null; void startTest(id); } }
+setInterval(() => { if (activeTestDraft && state.route==='exam' && state.examStarted) void activeTestDraft.save(); }, 10000);
+window.addEventListener('online', () => { if(activeTestDraft)void activeTestDraft.save(); });
+
+function syncEducationSidebar() { const sidebar=document.getElementById('education-sidebar'); if(sidebar)sidebar.inert=matchMedia('(max-width:700px)').matches&&!sidebar.classList.contains('is-open'); }
+document.getElementById('education-menu')?.addEventListener('click',syncEducationSidebar);
+window.addEventListener('resize',syncEducationSidebar);
+window.addEventListener('maihoc-route-changed',syncEducationSidebar);
+document.addEventListener('keydown',event=>{if(event.key==='Escape')syncEducationSidebar();});
+syncEducationSidebar();

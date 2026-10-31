@@ -75,6 +75,7 @@ function publicRoom(room, viewerIsAdmin = false) {
     creatorName: room.creatorName,
     creatorId: room.creatorId,
     isFull: students.length >= MAX_STUDENTS,
+    timer: room.timer || null,
     adminObserving: false
   };
   if (viewerIsAdmin) {
@@ -141,7 +142,7 @@ function pruneRooms(now = Date.now()) {
         }
       }
     }
-    if (now - room.lastActivityAt > ROOM_IDLE_TTL && !room.members.size) rooms.delete(id);
+    if (now - room.lastActivityAt > (process.env.MAIHOC_PERSIST_STUDY_ROOMS === '1' ? 24 * 60 * 60 * 1000 : ROOM_IDLE_TTL) && !room.members.size) rooms.delete(id);
   }
 }
 function requireUser(req, res, next) {
@@ -168,6 +169,27 @@ function memberFor(room, req, token, res) {
 export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
   const auth = requireAuth || requireUser;
   const sameOrigin = requireSameOrigin || ((_req, _res, next) => next());
+
+  const persistent = () => process.env.MAIHOC_PERSIST_STUDY_ROOMS === '1';
+  let loading;
+  async function persistRoom(room) {
+    if (!persistent()) return;
+    await db.query('INSERT INTO study_room_metadata(id,creator_id,name,creator_name,password_hash,created_at,last_activity_at,timer) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO UPDATE SET last_activity_at=excluded.last_activity_at,timer=excluded.timer', [room.id,room.creatorId,room.name,room.creatorName,room.passwordHash,room.createdAt,room.lastActivityAt,JSON.stringify(room.timer || {})]);
+  }
+  app.use('/api/study-rooms', (req,res,next) => {
+    if (!persistent()) return next();
+    if (!loading) loading = (async()=>{
+      const stored = (await db.query('SELECT * FROM study_room_metadata WHERE last_activity_at>$1',[Date.now()-24*60*60*1000])).rows;
+      for (const item of stored) if (!rooms.has(item.id)) rooms.set(item.id,{id:item.id,creatorId:Number(item.creator_id),creatorName:item.creator_name,name:item.name,passwordHash:item.password_hash,createdAt:Number(item.created_at),lastActivityAt:Date.now(),timer:item.timer,members:new Map(),events:[],eventSequence:0,eventBytes:0,chatHistory:[],chatHistoryBytes:0});
+    })().catch(error=>{loading=null;throw error;});
+    loading.then(()=>next()).catch(next);
+  });
+  app.post('/api/study-rooms/:roomId/timer', sameOrigin, auth, async(req,res)=>{
+    const room=requireRoom(req.params.roomId,res);if(!room)return;
+    if(Number(room.creatorId)!==Number(req.user.id))return fail(res,403,'Chỉ chủ phòng được điều khiển đồng hồ.');
+    const minutes=Number(req.body?.minutes);if(![0,5,10,25,50].includes(minutes))return fail(res,400,'Chọn dừng, 5, 10, 25 hoặc 50 phút.');
+    room.timer={endsAt:minutes?Date.now()+minutes*60000:null,minutes,phase:minutes>=25?'focus':minutes?'break':'stopped'};room.lastActivityAt=Date.now();await persistRoom(room);res.json({timer:room.timer});
+  });
 
   // Cloudflare Realtime TURN credentials are short-lived and must be generated server-side.
   const turnKeyId = String(process.env.CLOUDFLARE_TURN_KEY_ID || "").trim();
@@ -265,6 +287,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       chatHistoryBytes: 0
     };
     addEvent(room, "system", { message: `${req.user.name} đã tạo phòng học.` }, null);
+    await persistRoom(room);
     rooms.set(id, room);
     res.status(201).json({ room: publicRoom(room, isUserAdmin(req.user)), roomId: id });
   });
@@ -354,6 +377,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
     if (!member) return;
     member.lastSeenAt = Date.now();
     room.lastActivityAt = Date.now();
+    if (persistent() && Date.now() - (room.lastPersistAt || 0) > 30000) { await persistRoom(room); room.lastPersistAt=Date.now(); }
     const since = Math.max(0, Number(req.query.since) || 0);
     const rawEvents = room.events.filter(event => event.id > since);
     const events = filterEventsForMember(rawEvents, member);
@@ -463,6 +487,7 @@ export function installStudyRooms({ app, db, requireAuth, requireSameOrigin }) {
       return fail(res, 403, "Chỉ chủ phòng mới có quyền đóng phòng. Thành viên khác có thể rời phòng.");
     }
     addEvent(room, "room-closed", { message: "Phòng học đã được đóng." }, null);
+    if (persistent()) await db.query("DELETE FROM study_room_metadata WHERE id=$1",[room.id]);
     rooms.delete(room.id);
     res.json({ ok: true });
   };

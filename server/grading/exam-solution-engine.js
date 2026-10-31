@@ -1,3 +1,4 @@
+import { geminiModels } from '../ai-models.js';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { extractDocxText } from "./engine.js";
 
@@ -189,7 +190,7 @@ export async function solveExamDocument({
   ].join("\n\n");
 
   let generated;
-  let resolvedModelName = modelName || "gemini-2.5-flash";
+  let resolvedModelName = selectedProvider === 'gemini' ? geminiModels(modelName)[0] : modelName;
   if(selectedProvider==="deepseek"){
     const source = extension === "docx" ? extractDocxText(Buffer.from(buffer))
       : extension === "txt" ? Buffer.from(buffer).toString("utf8") : "";
@@ -243,11 +244,7 @@ export async function solveExamDocument({
   if(selectedProvider==="gemini"){
     contentParts.push({ text: prompt });
     const client = new GoogleGenerativeAI(apiKey);
-    const tryModels = [modelName || "gemini-3.6-flash"];
-    if (!tryModels.includes("gemini-3.6-flash")) tryModels.push("gemini-3.6-flash");
-    if (!tryModels.includes("gemini-3.8-flash")) tryModels.push("gemini-3.8-flash");
-    if (!tryModels.includes("gemini-2.5-flash")) tryModels.push("gemini-2.5-flash");
-    if (!tryModels.includes("gemini-2.0-flash")) tryModels.push("gemini-2.0-flash");
+    const tryModels = geminiModels(modelName);
 
     let lastErr = null;
     for (const candidateModel of [...new Set(tryModels)]) {

@@ -1,3 +1,4 @@
+import { geminiModels } from '../ai-models.js';
 /**
  * server/chemistry/solver-service.js
  * Dịch vụ xử lý giải bài tập Hóa học với Google Gemini AI
@@ -97,7 +98,7 @@ export async function solveChemistryProblem({ prompt, image, grade, mode, topic 
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+  const configuredModels = geminiModels();
 
   const contents = [];
 
@@ -123,10 +124,7 @@ ${prompt || "(Xem đề bài trong hình ảnh đính kèm)"}
 
   contents.push({ text: userInstruction });
 
-  const tryModels = [preferredModel];
-  if (!tryModels.includes("gemini-3.6-flash")) tryModels.push("gemini-3.6-flash");
-  if (!tryModels.includes("gemini-3.8-flash")) tryModels.push("gemini-3.8-flash");
-  if (!tryModels.includes("gemini-3.5-flash")) tryModels.push("gemini-3.5-flash");
+  const tryModels = configuredModels;
 
   let lastError = null;
 

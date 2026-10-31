@@ -520,7 +520,7 @@ export async function queryTeacherTestScores({
 }
 
 export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters = {}, format = "xlsx") {
-  await syncFromMainDatabase(mainDb);
+  if (process.env.MAIHOC_REBUILD_RESULTS_ON_EXPORT === '1') await syncFromMainDatabase(mainDb);
   const rows = await queryTeacherTestScores(filters);
 
   const creatorScoped = filters.createdById !== undefined && filters.createdById !== null;
@@ -931,7 +931,7 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
 }
 
 export async function buildUserLearningResultsSheetExport(mainDb = resultsDb, user, format = "xlsx") {
-  await syncFromMainDatabase(mainDb);
+  if (process.env.MAIHOC_REBUILD_RESULTS_ON_EXPORT === '1') await syncFromMainDatabase(mainDb);
 
   const allTests = await mainDb.prepare("SELECT * FROM tests ORDER BY open_at DESC").all();
 

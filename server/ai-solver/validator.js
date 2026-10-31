@@ -6,7 +6,7 @@ const ALLOWED_SUBJECTS = new Set([
   "Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học",
   "Đề thi THPT quốc gia", "IELTS"
 ]);
-const ALLOWED_MODES = new Set(["quick", "detailed"]);
+const ALLOWED_MODES = new Set(["quick", "detailed", "hint", "check"]);
 const AUTO_SUBJECT = "Tự nhận diện";
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/jpg"]);
 const ALLOWED_PDF_TYPES = new Set(["application/pdf"]);

@@ -15,8 +15,8 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
           <div>
             <button type="button" class="button secondary small" data-ai-back>← Về trang học tập</button>
             <p class="eyebrow">TRỢ LÝ HỌC TẬP ĐA MÔN</p>
-            <h1>AI Giải bài tập</h1>
-            <p class="muted">Giải nhanh hoặc phân tích chi tiết đề bài từ văn bản, ảnh chụp và PDF.</p>
+            <h1>Gia sư AI</h1>
+            <p class="muted">Gợi mở cách nghĩ, kiểm tra bài làm và giải thích kiến thức từ văn bản, ảnh hoặc PDF.</p>
           </div>
           <span class="universal-ai-chip">✨ MAI HỌC AI</span>
         </header>
@@ -48,10 +48,12 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
             <div class="universal-ai-mode">
               <span>Chế độ giải</span>
               <div role="group" aria-label="Chế độ giải" class="universal-ai-mode-switch">
-                <button type="button" class="is-active" data-ai-mode="quick" aria-pressed="true">⚡ Giải nhanh</button>
+                <button type="button" class="is-active" data-ai-mode="hint" aria-pressed="true">✦ Gợi mở</button><button type="button" data-ai-mode="check" aria-pressed="false">✓ Kiểm tra bài làm</button><button type="button" data-ai-mode="quick" aria-pressed="false">Giải nhanh</button>
                 <button type="button" data-ai-mode="detailed" aria-pressed="false">📝 Giải chi tiết</button>
               </div>
             </div>
+            <label class="portal-check" data-ai-background-option hidden><input type="checkbox" data-ai-background> Xử lý nền cho câu hỏi văn bản · có thể quay lại sau</label>
+            <button type="button" class="button secondary small" data-ai-resume hidden>Tiếp tục tác vụ AI đã gửi</button>
             <div class="universal-ai-actions">
               <button type="button" class="button primary" data-ai-submit>✨ Bắt đầu giải</button>
               <button type="button" class="button secondary" data-ai-cancel hidden>Hủy</button>
@@ -101,7 +103,24 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
     const answer = container.querySelector(".universal-ai-answer");
     const errorBox = container.querySelector(".universal-ai-error");
     const modeButtons = [...container.querySelectorAll("[data-ai-mode]")];
-    let mode = "quick";
+    let mode = "hint";
+    try { const authorDraft=sessionStorage.getItem('maihoc:ai-author-draft');if(authorDraft){prompt.value=authorDraft;sessionStorage.removeItem('maihoc:ai-author-draft');} } catch {}
+    const backgroundKey = `maihoc:ai-job:${window.maihocCurrentUser?.id || 'guest'}`;
+    let resumedJob = null;
+    try { resumedJob=localStorage.getItem(backgroundKey); } catch {}
+    const resumeButton=container.querySelector('[data-ai-resume]');resumeButton.hidden=!resumedJob;
+    resumeButton.addEventListener('click',()=>submit.click());
+    fetch('/api/platform/context',{credentials:'same-origin'}).then(r=>r.ok?r.json():{}).then(data=>{if(!destroyed)container.querySelector('[data-ai-background-option]').hidden=!data.backgroundAi;}).catch(()=>{});
+    async function pollBackground(jobId,signal) {
+      for(let count=0;count<300;count++){
+        const response=await fetch(`/api/platform/ai/jobs/${encodeURIComponent(jobId)}`,{credentials:'same-origin',signal});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'Không tải được tác vụ.');
+        if(data.status==='completed'){try{localStorage.removeItem(backgroundKey);}catch{}resumedJob=null;resumeButton.hidden=true;return {solution:data.result};}
+        if(data.status==='failed')throw new Error(data.error||'Tác vụ chưa hoàn thành.');
+        await new Promise((resolve,reject)=>{const onAbort=()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'));};const timer=setTimeout(()=>{signal.removeEventListener('abort',onAbort);resolve();},2000);signal.addEventListener('abort',onAbort,{once:true});});
+      }
+      throw new Error('Tác vụ đang xử lý. Bạn có thể quay lại để xem sau.');
+    }
 
     function readAsBase64(file) {
       return new Promise((resolve, reject) => {
@@ -221,7 +240,7 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
 
     submit.addEventListener("click", async () => {
       const text = prompt.value.trim();
-      if (!text && !selectedImage && !selectedFile) {
+      if (!text && !selectedImage && !selectedFile && !resumedJob) {
         errorBox.hidden = false;
         errorBox.textContent = "Hãy nhập đề bài, chọn ảnh hoặc tải PDF lên.";
         return;
@@ -239,17 +258,21 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
         payload.set("mode", mode);
         if (selectedImage) payload.set("image", selectedImage, selectedImage.name);
         if (selectedFile) payload.set("file", selectedFile, selectedFile.name);
-        const response = await fetch("/api/ai/solve", {
-          method: "POST",
-          credentials: "same-origin",
-          body: payload,
-          signal: activeController.signal
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "Không thể giải bài lúc này.");
+        let result;
+        const useBackground=container.querySelector('[data-ai-background]').checked;
+        if(resumedJob) result=await pollBackground(resumedJob,activeController.signal);
+        else if(useBackground&&!selectedImage&&!selectedFile){
+          const response=await fetch('/api/platform/ai/jobs',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:text,mode,subject:'Tự nhận diện'}),signal:activeController.signal});
+          const job=await response.json();if(!response.ok)throw new Error(job.error||'Không gửi được tác vụ.');
+          resumedJob=job.id;try{localStorage.setItem(backgroundKey,job.id);}catch{}resumeButton.hidden=false;
+          result=await pollBackground(job.id,activeController.signal);
+        }else{
+          const response=await fetch('/api/ai/solve',{method:'POST',credentials:'same-origin',body:payload,signal:activeController.signal});
+          result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Không thể giải bài lúc này.');
+        }
         if (destroyed) return;
         container.querySelector("[data-ai-meta]").textContent =
-          `${result.solution.subject} · ${mode === "quick" ? "Giải nhanh" : "Giải chi tiết"} · ${result.solution.modelUsed}`;
+          `${result.solution.subject} · ${({hint:"Gợi mở",check:"Kiểm tra bài làm",quick:"Giải nhanh",detailed:"Giải chi tiết"})[mode]} · ${result.solution.modelUsed}`;
         const answerNode = container.querySelector("[data-ai-answer]");
         answerNode.innerHTML = escapeHTML(result.solution.answer || "AI chưa trả về nội dung lời giải.").replace(/\r?\n/g, "<br>");
         answer.hidden = false;
