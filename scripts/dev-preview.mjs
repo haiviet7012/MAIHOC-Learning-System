@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // Isolated local preview; never reads DATABASE_URL or production data.
 delete process.env.DATABASE_URL;
 delete process.env.MAIHOC_TEST_DATABASE_URL;
@@ -20,7 +21,7 @@ const { hashPassword } = await import("../server/auth.js");
 const { app, server, initializeApplicationRuntime, stopPresenceCleanup } =
   await import("../server/server.js");
 await initializeApplicationRuntime();
-const hash = await hashPassword("Local-preview-2026!");
+const hash = await hashPassword(process.env.MAIHOC_PREVIEW_PASSWORD || randomUUID());
 for (const [id, name, email, role, level] of [
   [100, "Nguyễn Minh Anh", "student@maihoc.test", "user", 0],
   [101, "Thầy Hải Việt", "teacher@maihoc.test", "admin", 1],

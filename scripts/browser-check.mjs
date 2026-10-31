@@ -1,11 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
+const previewPassword = randomUUID();
 const preview = spawn(
   process.execPath,
   [new URL("./dev-preview.mjs", import.meta.url).pathname],
-  { stdio: ["ignore", "pipe", "pipe"] },
+  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, MAIHOC_PREVIEW_PASSWORD: previewPassword } },
 );
 await new Promise((resolve, reject) => {
   let output = "";
@@ -33,6 +35,17 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
   route.abort(),
 );
 const origin = "http://127.0.0.1:4173";
+async function clickSidebar(route) {
+  const space = ['assignments','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
+  if (!(await page.locator(`.education-switch [data-space="${space}"]`).getAttribute('aria-pressed') === 'true')) {
+    await page.locator(`.education-switch [data-space="${space}"]`).click();
+  }
+  assert.equal(await page.locator(`[data-sidebar-space="${space}"]`).first().isVisible(), true);
+  const other = space === 'school' ? 'learning' : 'school';
+  assert.equal(await page.locator(`[data-sidebar-space="${other}"]`).first().isVisible(), false);
+  await page.locator(`.education-sidebar nav [data-route="${route}"]`).click();
+}
+
 try {
   await page.goto(origin + "/learning", { waitUntil: "networkidle" });
   await page
@@ -44,7 +57,7 @@ try {
   });
   await page.locator("#login-open").click();
   await page.locator("#login-form [name=email]").fill("student@maihoc.test");
-  await page.locator("#login-form [name=password]").fill("Local-preview-2026!");
+  await page.locator("#login-form [name=password]").fill(previewPassword);
   assert.ok(
     (await page.locator("#login-form input[name=email]").boundingBox()).width >
       250,
@@ -61,6 +74,7 @@ try {
     fullPage: true,
   });
   const links = [
+    "study-rooms",
     "assignments",
     "organization",
     "analytics",
@@ -69,10 +83,7 @@ try {
     "subject-picker",
   ];
   for (const route of links) {
-    await page
-      .locator(`.education-sidebar nav [data-route="${route}"]`)
-      .first()
-      .click();
+    await clickSidebar(route);
     await page.waitForTimeout(300);
     assert.ok(
       !(await page.locator("#view").textContent()).includes(
@@ -80,10 +91,9 @@ try {
       ),
       route,
     );
+    assert.ok(!(await page.locator("#view").textContent()).includes("canCloseRoom is not defined"), route);
   }
-  await page
-    .locator('.education-sidebar nav [data-route="assignments"]')
-    .click();
+  await clickSidebar("assignments");
   await page.waitForTimeout(300);
   await page.reload({ waitUntil: "networkidle" });
   await page
@@ -173,15 +183,13 @@ try {
     fullPage: true,
   });
   await page.locator("#login-form [name=email]").fill("teacher@maihoc.test");
-  await page.locator("#login-form [name=password]").fill("Local-preview-2026!");
+  await page.locator("#login-form [name=password]").fill(previewPassword);
   await page.locator("#login-form button[type=submit]").click();
   await page
     .locator("#education-user")
     .filter({ hasText: "Thầy Hải Việt" })
     .waitFor();
-  await page
-    .locator('.education-sidebar nav [data-route="question-bank"]')
-    .click();
+  await clickSidebar("question-bank");
   await page.getByRole("heading", { name: "Soạn câu hỏi" }).waitFor();
   await page.screenshot({
     path: new URL("question-bank-desktop.png", directory).pathname,
@@ -206,7 +214,7 @@ try {
   await questionForm.locator('button[type="submit"]').click();
   await page.getByRole('button',{name:'Duyệt',exact:true}).click();
   await page.locator('[data-platform-content]').filter({hasText:'approved'}).waitFor();
-  await page.locator('.education-sidebar nav [data-route="assignments"]').click();
+  await clickSidebar("assignments");
   const assignmentForm=page.locator('[data-platform-form="assignment"]');
   await assignmentForm.locator('[name="title"]').fill('Bài kiểm tra pilot');
   await assignmentForm.locator('[name="classId"]').selectOption({label:'Lớp 12A1'});
@@ -218,9 +226,9 @@ try {
   await assignmentForm.locator('button[type="submit"]').click();
   await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
   await page.locator('#logout-button').click();await page.locator('#login-open').click();
-  await page.locator('#login-form [name="email"]').fill('student@maihoc.test');await page.locator('#login-form [name="password"]').fill('Local-preview-2026!');await page.locator('#login-form button[type="submit"]').click();
+  await page.locator('#login-form [name="email"]').fill('student@maihoc.test');await page.locator('#login-form [name="password"]').fill(previewPassword);await page.locator('#login-form button[type="submit"]').click();
   await page.locator('#education-user').filter({hasText:'Nguyễn Minh Anh'}).waitFor();
-  await page.locator('.education-sidebar nav [data-route="assignments"]').click();
+  await clickSidebar("assignments");
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
   await page.locator('[data-attempt-form] textarea').fill('1/2');
   await page.reload({waitUntil:'networkidle'});
