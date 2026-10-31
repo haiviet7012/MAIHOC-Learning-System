@@ -650,26 +650,33 @@ async function sendVerificationCodeEmail({
   userName,
   code,
   purposeLabel,
+  purpose,
   userId = null,
   extraTargetEmail = null
 }) {
   const smtp = smtpConfigFromEnv();
-  console.log(`[MAI HỌC OTP] Mã xác minh (${purposeLabel}) cho ${toEmail}: ${code} (hiệu lực 10 phút)`);
-  if (userId) {
+  const isRecoveryFlow = purpose === "forgot_password";
+  // Never log, notify in-app, or expose password-recovery OTPs outside the email channel.
+  if (!isRecoveryFlow && process.env.NODE_ENV !== "production") {
+    console.info(`[MAI HỌC OTP] Mã xác minh (${purposeLabel}) được tạo cho tài khoản ${userId || "unknown"}.`);
+  }
+  if (userId && !isRecoveryFlow) {
     try {
       await notifyUser(
         userId,
         "verification_code",
-        `Mã xác minh ${purposeLabel}: ${code}`,
-        `Mã xác minh gồm 6 chữ số cho thao tác "${purposeLabel}" của bạn là: ${code}. Mã có hiệu lực trong 10 phút.`
+        `Mã xác minh ${purposeLabel}`,
+        `Mã xác minh cho thao tác "${purposeLabel}" đã được tạo và có hiệu lực trong 10 phút. Vui lòng kiểm tra email đã đăng ký.`
       );
     } catch {}
   }
   if (!smtp.configured) {
     return {
       sentByEmail: false,
-      devCode: code,
-      message: `Hệ thống đã tạo mã xác minh 6 chữ số (môi trường hiện tại chưa cấu hình SMTP Gmail trong server/.env). Mã xác minh của bạn là: ${code} (hiệu lực 10 phút).`
+      ...(isRecoveryFlow || process.env.NODE_ENV === "production" ? {} : { devCode: code }),
+      message: isRecoveryFlow || process.env.NODE_ENV === "production"
+        ? "Dịch vụ gửi email hiện chưa sẵn sàng. Vui lòng thử lại sau hoặc liên hệ quản trị viên."
+        : "SMTP chưa cấu hình; mã xác minh chỉ được hiển thị trong môi trường phát triển."
     };
   }
   try {
@@ -708,11 +715,13 @@ async function sendVerificationCodeEmail({
       message: `Đã gửi mã xác minh 6 chữ số đến Gmail ${toEmail}. Vui lòng kiểm tra hộp thư (hoặc thư mục Spam).`
     };
   } catch (error) {
-    console.warn("Could not send verification email via SMTP:", error.message);
+    console.warn("Could not send verification email via SMTP.");
     return {
       sentByEmail: false,
-      devCode: code,
-      message: `Không kết nối được máy chủ SMTP Gmail (${error.message}). Mã xác minh dự phòng 6 chữ số của bạn là: ${code} (hiệu lực 10 phút).`
+      ...(isRecoveryFlow || process.env.NODE_ENV === "production" ? {} : { devCode: code }),
+      message: isRecoveryFlow || process.env.NODE_ENV === "production"
+        ? "Không thể gửi email xác minh lúc này. Vui lòng thử lại sau."
+        : "Không kết nối được SMTP; trong môi trường phát triển có thể dùng mã xác minh hiển thị."
     };
   }
 }
@@ -814,6 +823,7 @@ app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
       user,
       purpose: "forgot_password",
       purposeLabel: "Khôi phục mật khẩu",
+      purpose: "forgot_password",
       targetEmail: user.email
     });
     return res.json({
@@ -917,6 +927,7 @@ app.post(
         user: req.user,
         purpose,
         purposeLabel: allowedPurposes[purpose],
+        purpose,
         targetEmail
       });
       return res.json({
@@ -1049,10 +1060,14 @@ app.post(
 
 // -------------------- ONLINE USERS PRESENCE DASHBOARD API --------------------
 
-async function cleanPresenceAndListOnline(now = Date.now()) {
+async function cleanExpiredPresence(now = Date.now()) {
   const cutoff = now - ONLINE_WINDOW_MS;
   await db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
   await db.prepare("DELETE FROM user_presence WHERE last_seen_at < ?").run(cutoff);
+}
+
+async function listOnlineUsers(now = Date.now()) {
+  const cutoff = now - ONLINE_WINDOW_MS;
   return await db
     .prepare(`
       SELECT u.id, u.name, u.role, u.admin_level AS adminLevel, u.account_type AS accountType,
@@ -1077,7 +1092,7 @@ app.post("/api/presence/ping", requireSameOrigin, requireAuth, async (req, res) 
       "INSERT INTO user_presence(user_id,last_seen_at,activity) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,activity=excluded.activity"
     )
     .run(req.user.id, now, activity);
-  const users = await cleanPresenceAndListOnline(now);
+  const users = await listOnlineUsers(now);
   res.setHeader("Cache-Control", "no-store");
   return res.json({ ok: true, onlineCount: users.length, users });
 });
@@ -3050,6 +3065,25 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || "Yêu cầu không hợp lệ." });
 });
 
+let presenceCleanupTimer = null;
+
+export function startPresenceCleanup({ intervalMs = 5 * 60 * 1000, now = () => Date.now() } = {}) {
+  if (presenceCleanupTimer) return presenceCleanupTimer;
+  const runCleanup = () => cleanExpiredPresence(now()).catch((error) => {
+    console.warn("[Presence] Scheduled cleanup failed:", error.message);
+  });
+  presenceCleanupTimer = setInterval(runCleanup, intervalMs);
+  presenceCleanupTimer.unref?.();
+  void runCleanup();
+  return presenceCleanupTimer;
+}
+
+export function stopPresenceCleanup() {
+  if (!presenceCleanupTimer) return;
+  clearInterval(presenceCleanupTimer);
+  presenceCleanupTimer = null;
+}
+
 export async function initializeApplicationRuntime() {
   await initAuthDatabase();
   await initSchoolSystemDatabase(db);
@@ -3058,6 +3092,7 @@ export async function initializeApplicationRuntime() {
     await testsModule.initTestsModuleDatabase();
   }
   await createInitialAdmin();
+  startPresenceCleanup();
   await importLegacyDocuments();
   await normalizeLegacyDocumentCategories();
   await migrateLegacyAnswerKeys();
