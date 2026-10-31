@@ -21,7 +21,7 @@ import {
     wireTestsEvents,
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
-import { mountChemistryModule } from "./chemistry/index.js?v=20261101v2";
+import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
 import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");
@@ -820,7 +820,10 @@ function render() {
     }
     if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
-    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','tests'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
+    document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
+    document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
+    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','assignment-management','tests'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
     document.querySelectorAll('[data-space]').forEach(button => { const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
@@ -853,7 +856,7 @@ function render() {
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === "home")
         view.innerHTML = homePage();
-    else if (['organization','question-bank','assignments','analytics'].includes(state.route)) {
+    else if (['organization','question-bank','assignments','assignment-management','analytics'].includes(state.route)) {
         activePortalCleanup = mountPortal(view, state.route, currentUser, go);
     }
     else if (state.route === "chemistry") {
@@ -1707,7 +1710,7 @@ async function refreshAuthUI() {
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     resumePendingTest();
-    if (["home","organization","question-bank","assignments","analytics","study-rooms","account-center","tests"].includes(state.route)) render();
+    if (["home","organization","question-bank","assignments","assignment-management","analytics","study-rooms","account-center","tests"].includes(state.route)) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1737,7 +1740,7 @@ $("#login-form").addEventListener("submit", async (event) => {
         closeDialog("login-dialog");
         form.reset();
         toast("Đăng nhập thành công.", "success");
-        go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignments") : "home");
+        go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
     }
     catch (err) {
         error.textContent = err.message;

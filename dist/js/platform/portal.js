@@ -36,7 +36,7 @@ export function dashboardMarkup(user, documents, tests) {
         : empty(
             "Bạn đã theo kịp các bài kiểm tra hiện có. Khám phá thêm học liệu hoặc bài tập mới.",
           )
-  }<button class="portal-shortcut" data-route="assignments">Bài được giao từ School <span>→</span></button></div></section>
+  }${user?.role === "user" && !user.isTeacher && !user.isSuperAdmin ? '<button class="portal-shortcut" data-route="assignments">Bài được giao từ School <span>→</span></button>' : ""}</div></section>
   <section class="portal-panel"><div class="portal-panel-heading"><h2>Khám phá kiến thức</h2><button class="text-button" data-route="subject-picker">Tất cả môn học →</button></div><div class="portal-subjects">${["Toán", "Vật lý", "Hóa học", "Sinh học", "Tiếng Anh"].map((s, i) => `<button data-subject="${s}" class="portal-subject tone-${i % 3}"><span aria-hidden="true">${["∑", "⚛", "⌬", "❀", "Aa"][i]}</span><strong>${s}</strong><small>${documents.filter((d) => d.subject === s).length} tài liệu</small></button>`).join("")}</div></section></div>
   <aside class="portal-side-column"><section class="portal-panel portal-activity"><h2>Hoạt động gần đây</h2><div data-portal-activity>${user ? '<p class="muted">Đang tải hoạt động…</p>' : "<p>Đăng nhập để kết nối với lớp học và theo dõi việc học của bạn.</p>"}</div></section><section class="portal-panel"><div class="portal-panel-heading"><h2>Góc học tập</h2><span aria-hidden="true">✦</span></div><button class="portal-shortcut" data-route="ai-solver"><span><b>Gia sư AI</b><small>Gợi mở, kiểm tra và giải thích</small></span>→</button><button class="portal-shortcut" data-route="study-rooms"><span><b>Phòng tự học</b><small>Cùng nhau giữ nhịp tập trung</small></span>→</button><button class="portal-shortcut" data-route="analytics"><span><b>Tiến trình học tập</b><small>Nhìn lại điều đã học được</small></span>→</button></section><section class="portal-tip"><span class="eyebrow">MẸO HỌC HIỆU QUẢ</span><h3>Hiểu một lỗi sai,<br>tiến thêm một bước.</h3><p>Sau mỗi bài kiểm tra, dành vài phút xem lại cách làm và thử một câu tương tự.</p></section></aside></div>`;
 }
@@ -65,6 +65,15 @@ export async function hydrateActivity(container, user) {
 }
 
 export function mountPortal(container, route, user, onNavigate) {
+  const management = route === 'assignment-management';
+  if (management) route = 'assignments';
+  if (route === 'assignments' && user) {
+    const student = user.role === 'user' && !user.isTeacher && !user.isSuperAdmin;
+    if (management ? student : !student) {
+      container.innerHTML = header('Không có quyền truy cập', management ? 'Chức năng này dành cho người quản lý bài.' : 'Bài được giao chỉ dành cho học sinh.');
+      return () => {};
+    }
+  }
   const controller = new AbortController();
   let context;
   let schoolId = "";
@@ -126,7 +135,7 @@ export function mountPortal(container, route, user, onNavigate) {
         {
           organization: "Quản lý nhà trường",
           "question-bank": "Ngân hàng câu hỏi",
-          assignments: "Bài được giao",
+          assignments: management ? "Giao và quản lý bài" : "Bài được giao",
           analytics: "Tiến trình học tập",
         }[route],
         "Kết nối việc dạy, việc học và phản hồi trong cùng một nền tảng.",
@@ -151,6 +160,10 @@ export function mountPortal(container, route, user, onNavigate) {
     const school = schools.find((s) => String(s.id) === schoolId),
       staff =
         ["school_admin", "teacher"].includes(school.role) || user.isSuperAdmin;
+    if (route === 'assignments' && (management ? !staff : school.role !== 'student')) {
+      content.innerHTML = empty('Bạn không có quyền sử dụng chức năng này trong trường đã chọn.');
+      return;
+    }
     if (route === "organization") {
       const data = await request(schoolUrl("/overview"));
       content.innerHTML = `<div class="portal-stats"><article class="portal-stat yellow"><span>Lớp học</span><strong>${data.classes.length}</strong></article><article class="portal-stat lavender"><span>Năm học</span><strong>${data.years.length}</strong></article><article class="portal-stat blue"><span>Thành viên</span><strong>${data.memberCount == null ? "—" : data.memberCount}</strong></article></div><div class="portal-form-grid"><section class="portal-panel"><h2>Lớp và năm học</h2>${list(data.classes, (c) => `<div class="portal-record"><div><strong>${e(c.name)}</strong><p>${e(c.year_code)} · Khối ${e(c.grade_level)}</p></div><small>${e(c.class_code)}</small></div>`)}</section>${school.role === "school_admin" || user.isSuperAdmin ? form("class", "Thêm lớp học", select("academicYearId", "Năm học", data.years) + input("classCode", "Mã lớp") + input("name", "Tên lớp") + input("gradeLevel", "Khối lớp", "number")) : ""}</div>${school.role === "school_admin" || user.isSuperAdmin ? `<div class="portal-form-grid">${form("year", "Thêm năm học", input("code", "Năm học") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("term", "Thêm học kỳ", select("academicYearId", "Năm học", data.years) + input("name", "Tên học kỳ") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("course", "Môn học trong học kỳ", select("classId", "Lớp", data.classes) + select("termId", "Học kỳ", data.terms) + input("subject", "Môn học"))}${form("member", "Thêm thành viên đã có tài khoản", input("email", "Email", "email") + `<label>Vai trò<select name="role"><option value="student">Học sinh</option><option value="teacher">Giáo viên</option><option value="school_admin">Quản trị trường</option></select></label>`)}${form("enrollment", "Xếp hoặc chuyển lớp", input("email", "Email học sinh", "email") + select("classId", "Lớp", data.classes) + input("reason", "Lý do"))}${form("teacher", "Phân công giáo viên", input("email", "Email giáo viên", "email") + select("classId", "Lớp", data.classes) + input("subject", "Môn học") + `<label>Phân công<select name="kind"><option value="subject">Bộ môn</option><option value="homeroom">Chủ nhiệm</option></select></label>`)}</div>${form("import", "Nhập danh sách học sinh", select("classId", "Lớp", data.classes) + '<label>Danh sách email đã có tài khoản<textarea name="emails" required placeholder="Mỗi dòng một email, tối đa 200 dòng"></textarea></label><p class="muted">Hệ thống kiểm tra toàn bộ danh sách trước khi ghi dữ liệu.</p>', "Kiểm tra và nhập")}` : ""}`;

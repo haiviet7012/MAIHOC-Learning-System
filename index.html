@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="/study-rooms/styles.css?v=20261029v1">
   <link rel="stylesheet" href="/css/tests.css?v=20261029v1">
   <link rel="stylesheet" href="/css/chat.css?v=20261031v1">
-  <link rel="stylesheet" href="/js/chemistry/periodic-table/periodic-table.css?v=20261101v1">
+  <link rel="stylesheet" href="/js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
   <link rel="stylesheet" href="/js/chemistry/ai-solver/solver.css?v=20261029v8">
   <link rel="stylesheet" href="/js/ai-solver/solver.css?v=20261029v4">
   <link rel="stylesheet" href="/css/education.css?v=20261101">
@@ -47,7 +47,8 @@
     </nav>
     <p class="education-nav-label" data-sidebar-space="school" hidden>NHÀ TRƯỜNG</p>
     <nav aria-label="Nhà trường" data-sidebar-space="school" hidden>
-      <button data-route="assignments"><img src="/design/registration.svg" alt="">Bài được giao</button>
+      <button data-route="assignments" data-student-only hidden><img src="/design/registration.svg" alt="">Bài được giao</button>
+      <button data-route="assignment-management" data-staff-only hidden><span class="nav-glyph" aria-hidden="true">▤</span>Giao và quản lý bài</button>
       <button data-route="tests"><img src="/design/calendar.svg" alt="">Kiểm tra và luyện thi</button>
       <button data-route="school"><img src="/design/school.svg" alt="">Lớp của bạn</button>
       <button data-route="organization"><span class="nav-glyph" aria-hidden="true">▦</span>Quản lý nhà trường</button>
@@ -473,7 +474,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="/js/app.js?v=20261101v2"></script>
+  <script type="module" src="/js/app.js?v=20261031v2"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="/js/chat.js?v=20261031v1"></script>
 </body>
