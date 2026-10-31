@@ -226,6 +226,7 @@ export function mountStudyRooms(container, user) {
           </form>
         </div>
 
+        <div class="study-pomodoro"><span>Nhịp học chung <strong data-room-timer>Chưa bắt đầu</strong></span>${canCloseRoom ? '<button class="button secondary small" data-room-timer-start="25">Tập trung 25 phút</button><button class="button secondary small" data-room-timer-start="5">Nghỉ 5 phút</button><button class="button secondary small" data-room-timer-start="0">Dừng</button>' : ''}</div>
         <p class="study-room-error" data-room-error hidden></p>
 
         <div class="study-room-toolbar">
@@ -1021,6 +1022,8 @@ export function mountStudyRooms(container, user) {
       );
       if (disposed || !currentRoom) return;
       currentRoom = data.room || currentRoom;
+      const timer=container.querySelector('[data-room-timer]');
+      if(timer){const remaining=Math.max(0,Math.ceil(((currentRoom.timer?.endsAt || 0)-Date.now())/1000));timer.textContent=remaining?`${currentRoom.timer.phase==='focus'?'Tập trung':'Nghỉ'} · ${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`:currentRoom.timer?.endsAt?'Đã hoàn thành':'Chưa bắt đầu';}
       members = data.members || [];
       await processEvents(data.events || []);
       await refreshMembersAndConnect();
@@ -1217,6 +1220,8 @@ export function mountStudyRooms(container, user) {
       return;
     }
 
+    const timerButton=event.target.closest('[data-room-timer-start]');
+    if(timerButton&&currentRoom){try{const data=await post(roomUrl(currentRoom.id,'/timer'),{minutes:Number(timerButton.dataset.roomTimerStart)});currentRoom.timer=data.timer;}catch(error){showError(error.message);}return;}
     if (event.target.closest("[data-room-leave]")) {
       await leaveRoom(true);
       return;

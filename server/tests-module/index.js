@@ -524,7 +524,7 @@ export function installTestsModule({
     await ensureTables();
     await initResultsDatabase(db);
     await seedInitialSampleTests();
-    await syncFromMainDatabase(db);
+    if (process.env.MAIHOC_RUN_LEGACY_STARTUP_MIGRATIONS === '1') await syncFromMainDatabase(db);
   }
 
   async function initManualSolutionForDocument(documentId, precomputed = null) {
@@ -1638,7 +1638,9 @@ export function installTestsModule({
         .map(([k, v]) => [String(k).slice(0, 40), String(v ?? "").slice(0, 5000)])
     );
     const autoSubmittedFullscreen = Boolean(req.body?.autoSubmittedFullscreen);
-    const timeSpentSeconds = Math.max(0, Math.round(Number(req.body?.timeSpentSeconds) || 0));
+    const timeSpentSeconds = req.legacySession
+      ? Math.max(0, Math.round((Math.min(Date.now(), new Date(req.legacySession.deadline_at).getTime()) - new Date(req.legacySession.started_at).getTime()) / 1000))
+      : Math.max(0, Math.round(Number(req.body?.timeSpentSeconds) || 0));
 
     const approvedKey = await getApprovedAnswerKeyForTest(testId);
     let resultPayload;
@@ -1667,6 +1669,13 @@ export function installTestsModule({
     }
 
     const saveSubmissionTx = db.transaction(async () => {
+      if (req.legacySession) {
+        const locked = (await db.query('SELECT submission_id FROM legacy_test_sessions WHERE id=$1 FOR UPDATE', [req.legacySession.id])).rows[0];
+        if (locked?.submission_id) {
+          const existing = await db.prepare('SELECT result_json FROM test_submissions WHERE id=? AND user_id=?').get(locked.submission_id, req.user.id);
+          return JSON.parse(existing.result_json);
+        }
+      }
       const inserted = await db
         .prepare(`
           INSERT INTO test_submissions (
@@ -1700,6 +1709,7 @@ export function installTestsModule({
         );
 
       const submissionId = Number(inserted.lastInsertRowid);
+      if (req.legacySession) await db.query('UPDATE legacy_test_sessions SET submission_id=$2,answers=$3 WHERE id=$1', [req.legacySession.id, submissionId, JSON.stringify(answers)]);
       const fullPayload = {
         ...resultPayload,
         submissionId,

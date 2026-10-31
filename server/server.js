@@ -1,3 +1,7 @@
+import { aiExamGuard } from './platform/ai-guard.js';
+import { geminiModels } from './ai-models.js';
+import { createPlatformRouter } from './platform/routes.js';
+import { installLegacySessions } from './platform/legacy.js';
 import {
   uploadToR2,
   readFromR2,
@@ -53,6 +57,7 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
+const staticRoot = fs.existsSync(path.join(root,"dist","build-manifest.json")) ? path.join(root,"dist") : root;
 
 function createR2Key(folder, fileId, originalName) {
   const extension = path.extname(originalName).toLowerCase();
@@ -311,7 +316,7 @@ function examSolverConfig() {
     provider: "gemini",
     apiKey: String(process.env.GEMINI_API_KEY || "").trim(),
     modelName: String(
-      process.env.GEMINI_SOLUTION_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash"
+      process.env.GEMINI_SOLUTION_MODEL || process.env.GEMINI_MODEL || ""
     ).trim()
   };
 }
@@ -519,12 +524,13 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "30mb" }));
 app.use(loadCurrentUser);
+app.use(["/api/ai/solve","/api/chemistry/solve","/api/ai/evaluate"], (req,res,next)=>req.method === "POST" ? requireSameOrigin(req,res,next) : next(), aiExamGuard(db));
 
 setupChat(server, app);
 
 // Do not expose backend source, environment files or the local account database as static assets.
 app.use((req, res, next) =>
-  req.path === "/server" || req.path.startsWith("/server/") || req.path.startsWith("/uploads/")
+  req.path === "/server" || req.path.startsWith("/server/") || req.path.startsWith("/uploads/") || req.path.includes("/node_modules/") || req.path.startsWith("/node_modules") || req.path.startsWith("/.")
     ? res.sendStatus(404)
     : next()
 );
@@ -560,7 +566,7 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(root, "public"), { etag: true, lastModified: true, maxAge: "1h" }));
 app.use(
-  express.static(root, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h" })
+  express.static(staticRoot, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h" })
 );
 
 const loginAttempts = new Map();
@@ -2212,7 +2218,7 @@ app.post(
       const filename = storedFilename(file.originalname),
         ct = file.mimetype || contentTypeFor(file.originalname);
       createdLocalPath = path.join(admin ? documentsDir : pendingDir, filename);
-      if (!fs.existsSync(createdLocalPath)) {
+      if (process.env.MAIHOC_R2_ONLY !== '1' && !fs.existsSync(createdLocalPath)) {
         fs.writeFileSync(createdLocalPath, file.buffer, { flag: "wx" });
       }
       if (admin) {
@@ -2231,7 +2237,7 @@ app.post(
               file.originalname,
               file.size,
               ct,
-              file.buffer,
+              process.env.MAIHOC_R2_ONLY === "1" ? Buffer.alloc(0) : file.buffer,
               fileKey,
               req.user.id
             );
@@ -2246,7 +2252,7 @@ app.post(
                 id,
                 name,
                 answer.mimetype || contentTypeFor(name),
-                answer.buffer,
+                process.env.MAIHOC_R2_ONLY === "1" ? Buffer.alloc(0) : answer.buffer,
                 answerKey,
                 fmt,
                 norm ? JSON.stringify(norm) : null,
@@ -3018,7 +3024,7 @@ app.post("/api/ai/difficulty", async (req, res) => {
   }
   try {
     const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-3.6-flash" });
+    const model = genAI.getGenerativeModel({ model: geminiModels()[0] });
     const prompt = `Bạn là trợ lý đánh giá độ khó đề thi Toán THPT. Hãy phân tích đề sau bằng tiếng Việt, không tự khẳng định đáp án nếu thiếu dữ liệu. Trả lời ngắn gọn theo cấu trúc: Mức độ tổng quát (dễ/trung bình/khó), phân tích theo kiến thức, độ phân hóa, thời gian ước lượng và lưu ý.\nTên đề: ${String(
       title
     ).slice(0, 120)}\nNội dung đề:\n${String(text).slice(0, 18000)}`;
@@ -3035,6 +3041,8 @@ app.post("/api/ai/difficulty", async (req, res) => {
 app.use("/api/chemistry", chemistryRouter);
 app.use("/api/ai", universalAiRouter);
 
+app.use("/api/platform", createPlatformRouter({ db, requireAuth, requireSameOrigin }));
+installLegacySessions(app, { db, requireAuth, requireSameOrigin });
 testsModule = installTestsModule({
   app,
   db,
@@ -3057,6 +3065,9 @@ testsModule = installTestsModule({
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
 
+app.get(['/learning','/learning/*','/school','/school/*','/account'], (_req,res) => {
+  res.setHeader('Cache-Control','no-cache'); res.sendFile(path.join(staticRoot,'index.html'));
+});
 app.use((err, _req, res, _next) => {
   console.error(err.message);
   const status = err.name === "MulterError" ? 400 : 400;
@@ -3091,11 +3102,9 @@ export async function initializeApplicationRuntime() {
   }
   await createInitialAdmin();
   startPresenceCleanup();
-  await importLegacyDocuments();
-  await normalizeLegacyDocumentCategories();
-  await migrateLegacyAnswerKeys();
-  await normalizeStoredPdfAnswerKeys();
-  await migrateFilesToR2();
+  if (process.env.MAIHOC_RUN_LEGACY_STARTUP_MIGRATIONS === '1') {
+    await runLegacyMaintenance();
+  }
   const pendingJobs = await db
     .prepare("SELECT document_id FROM exam_solutions WHERE status IN ('queued','reading','solving')")
     .all();
@@ -3112,4 +3121,12 @@ export async function initializeApplicationRuntime() {
 if (process.env.MAIHOC_SKIP_AUTO_LISTEN !== "1") {
   await initializeApplicationRuntime();
   server.listen(port, () => console.log(`MAI HOC is running at http://localhost:${port}`));
+}
+
+export async function runLegacyMaintenance() {
+  await importLegacyDocuments();
+  await normalizeLegacyDocumentCategories();
+  await migrateLegacyAnswerKeys();
+  await normalizeStoredPdfAnswerKeys();
+  await migrateFilesToR2();
 }

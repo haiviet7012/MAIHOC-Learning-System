@@ -11,13 +11,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20261031v1">
-  <link rel="stylesheet" href="study-rooms/styles.css?v=20261029v1">
-  <link rel="stylesheet" href="css/tests.css?v=20261029v1">
-  <link rel="stylesheet" href="css/chat.css?v=20261031v1">
-  <link rel="stylesheet" href="js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
-  <link rel="stylesheet" href="js/chemistry/ai-solver/solver.css?v=20261029v8">
-  <link rel="stylesheet" href="js/ai-solver/solver.css?v=20261029v4">
+  <link rel="stylesheet" href="/css/styles.css?v=20261031v1">
+  <link rel="stylesheet" href="/study-rooms/styles.css?v=20261029v1">
+  <link rel="stylesheet" href="/css/tests.css?v=20261029v1">
+  <link rel="stylesheet" href="/css/chat.css?v=20261031v1">
+  <link rel="stylesheet" href="/js/chemistry/periodic-table/periodic-table.css?v=20261029v6">
+  <link rel="stylesheet" href="/js/chemistry/ai-solver/solver.css?v=20261029v8">
+  <link rel="stylesheet" href="/js/ai-solver/solver.css?v=20261029v4">
+  <link rel="stylesheet" href="/css/education.css?v=20261101">
   <script>
     window.MathJax = {
       tex: {
@@ -32,6 +33,29 @@
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body class="is-home-lobby">
+  <a class="skip-link" href="#view">Đến nội dung chính</a>
+  <aside class="education-sidebar" id="education-sidebar" aria-label="Điều hướng MAIHOC">
+    <button class="education-logo" data-route="home"><img src="/images/mai-hoc-favicon.png" alt=""><span><strong>MAIHOC</strong><small>HỌC TẬP VÀ KẾT NỐI</small></span></button>
+    <div class="education-switch" aria-label="Không gian"><button data-route="home" data-space="learning" class="active">Learning</button><button data-route="organization" data-space="school">School</button></div>
+    <p class="education-nav-label">KHÔNG GIAN HỌC TẬP</p>
+    <nav aria-label="Học tập">
+      <button data-route="home"><img src="/design/dashboard.svg" alt="">Tổng quan</button>
+      <button data-route="assignments"><img src="/design/registration.svg" alt="">Bài được giao</button>
+      <button data-route="subject-picker"><span class="nav-glyph" aria-hidden="true">▤</span>Kho học liệu</button>
+      <button data-route="tests"><img src="/design/calendar.svg" alt="">Kiểm tra và luyện thi</button>
+      <button data-route="analytics"><span class="nav-glyph" aria-hidden="true">↗</span>Tiến trình học tập</button>
+      <button data-route="ai-solver"><span class="nav-glyph" aria-hidden="true">✦</span>Gia sư AI</button>
+      <button data-route="study-rooms"><span class="nav-glyph" aria-hidden="true">◉</span>Phòng tự học</button>
+    </nav>
+    <p class="education-nav-label">NHÀ TRƯỜNG VÀ TÀI KHOẢN</p>
+    <nav aria-label="Nhà trường">
+      <button data-route="school"><img src="/design/school.svg" alt="">Lớp của bạn</button>
+      <button data-route="organization"><span class="nav-glyph" aria-hidden="true">▦</span>Quản lý nhà trường</button>
+      <button data-route="question-bank"><span class="nav-glyph" aria-hidden="true">?</span>Ngân hàng câu hỏi</button>
+      <button data-route="account-center"><img src="/design/profile.svg" alt="">Hồ sơ và tài khoản</button>
+    </nav>
+    <div class="education-sidebar-foot"><strong>Học mỗi ngày. Tiến xa hơn.</strong>MAIHOC Learning System</div>
+  </aside>
   <div id="app" class="app-shell">
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ">
@@ -41,6 +65,8 @@
           <span class="account-greeting" id="user-greeting" hidden></span>
         </span>
       </button>
+      <button class="education-mobile-menu" id="education-menu" aria-label="Mở điều hướng" aria-expanded="false" aria-controls="education-sidebar">☰</button>
+      <span class="education-top-title">Không gian học tập</span><span class="education-user" id="education-user"></span>
       <div class="topbar-actions">
 
 
@@ -444,8 +470,8 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=20261031v2"></script>
+  <script type="module" src="/js/app.js?v=20261031v2"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="js/chat.js?v=20261031v1"></script>
+  <script type="module" src="/js/chat.js?v=20261031v1"></script>
 </body>
 </html>
