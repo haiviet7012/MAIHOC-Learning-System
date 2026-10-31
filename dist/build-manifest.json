@@ -1,6 +1,6 @@
 {
   "files": {
-    "assets/app-ZRDEDGR6.js": "fee7028759fc6d050be65494f1e95bc30f27a936761a7226a9929aa5fe70bc8f",
+    "assets/app-4IFHZ5AK.js": "17d9ba53a391123e6e196c3ce664afd5c77ca05d903ecedffd944a1e1e49399a",
     "assets/chat-AYBLTUR6.js": "cae0968d7dff79c227d82f28e7440ffd44cf478fdd2fb0f43286822ca2c256c9",
     "assets/css-chat-47f6a59dbde7.css": "47f6a59dbde712e69d40a96b7f230046047ea9ca99ebbfc087e28081fce56290",
     "assets/css-education-2ee678636209.css": "2ee6786362096d56c0a27078abb53b80d2c78ff1917f75419b09a45697f53973",
@@ -31,7 +31,7 @@
     "images/mai-hoc-favicon.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
-    "index.html": "b88a44db38145984dd43d72f49b256eed0b0a2a241226ec0543f93c5c3214caf",
+    "index.html": "ce759b92ce9c4a5abe947f1558651ba64dcc2ba9affb15865694e835e2c3c6f6",
     "js/account-features.js": "584d8007167d8e207479bab3a2a5c916849992d272772d325f60bad15ad63e70",
     "js/ai-solver/index.js": "77376069fc1e9ee8f59a67427b7ae508d480d3333942d45def0b544527ea36ec",
     "js/ai-solver/solver.css": "c31c594f2d71eeac7f842bc5cd08c2ac358c65fe42ce20df6a92422ce372bc40",
@@ -69,7 +69,7 @@
     "public/images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "public/images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
     "study-rooms/README.md": "6c41ed1bc396f38d18fe4eb57fbbcb71dfcd2d253dde52dd7722e65322dc26f6",
-    "study-rooms/client.js": "84676bb1c03024b1c89ee716cc3d902e585ac59c9dc0206426eb802d5897db83",
+    "study-rooms/client.js": "0f3ca52504c6169b2b2ed76aac809969e553a3c1b5019c2e935833528feafbaf",
     "study-rooms/styles.css": "23a0ebc64b9d7528ce7e4718129e7310bb8088d0263c6165dabed4e21e39adc9"
   }
 }

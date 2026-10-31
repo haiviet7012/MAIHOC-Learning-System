@@ -61,6 +61,7 @@ try {
     fullPage: true,
   });
   const links = [
+    "study-rooms",
     "assignments",
     "organization",
     "analytics",
@@ -80,6 +81,7 @@ try {
       ),
       route,
     );
+    assert.ok(!(await page.locator("#view").textContent()).includes("canCloseRoom is not defined"), route);
   }
   await page
     .locator('.education-sidebar nav [data-route="assignments"]')
