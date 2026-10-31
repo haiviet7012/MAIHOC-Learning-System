@@ -162,15 +162,37 @@ function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "ex
 } }
 function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() {
-    return `<section class="hero">
-    <div class="hero-bg" aria-hidden="true"></div><div class="hero-copy"><p class="eyebrow">KHÔNG GIAN HỌC TẬP CỦA BẠN</p><h1>Học chắc nền tảng.<br>Vững vàng bứt phá.</h1><p>Ôn tập lý thuyết, luyện bài tập và thử sức với phòng thi mô phỏng — khám phá các môn học theo lộ trình của bạn.</p><div class="hero-actions"><button class="button primary" data-route="subject">Khám phá môn Toán →</button><button class="button secondary" data-action="browse-subjects">Chọn môn học</button></div></div><div class="hero-art"><img class="hero-logo" src="/images/mai-hoc-hero-logo.png" alt="Logo MAI HỌC"></div></section>
-<section class="section-head"><div><h2>Bắt đầu hành trình</h2><p>Chọn cách học phù hợp với bạn.</p></div><span class="pill">MÔN TOÁN ĐANG HOẠT ĐỘNG</span></section>
-<div class="grid four">
- <article class="card clickable resource-card" data-route="theory"><div class="card-icon">▤</div><span class="pill">NẮM VỮNG KIẾN THỨC</span><h3>Ôn tập lý thuyết</h3><p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p></article>
- <article class="card clickable resource-card" data-route="practice"><div class="card-icon">✎</div><span class="pill">LUYỆN TẬP</span><h3>Ôn tập theo đề</h3><p>Thực hành câu hỏi, tự kiểm tra và xem đáp án khi có dữ liệu.</p></article>
- <article class="card clickable resource-card" data-route="exam-select"><div class="card-icon">◷</div><span class="pill">90 PHÚT</span><h3>Phòng thi thử</h3><p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p></article>
- <article class="card clickable resource-card" data-route="tests"><div class="card-icon">📝</div><span class="pill">KIỂM TRA ĐỊNH KỲ</span><h3>Bài kiểm tra</h3><p>Danh sách bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm.</p></article>
-</div>
+    return `<section class="hero hero--cards-layout">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-cards-grid">
+      <article class="hero-feature-card clickable" data-route="theory">
+        <div class="hero-feature-icon">▤</div>
+        <span class="hero-feature-pill">NẮM VỮNG KIẾN THỨC</span>
+        <h3>Ôn tập lý thuyết</h3>
+        <p>Hệ thống kiến thức theo lớp, đọc tài liệu trực tiếp trên trang.</p>
+      </article>
+      <article class="hero-feature-card clickable" data-route="practice">
+        <div class="hero-feature-icon">✎</div>
+        <span class="hero-feature-pill">LUYỆN TẬP</span>
+        <h3>Ôn tập theo đề</h3>
+        <p>Thực hành câu hỏi, tự kiểm tra và xem đáp án khi có dữ liệu.</p>
+      </article>
+      <article class="hero-feature-card clickable" data-route="exam-select">
+        <div class="hero-feature-icon">◷</div>
+        <span class="hero-feature-pill">90 PHÚT</span>
+        <h3>Phòng thi thử</h3>
+        <p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p>
+      </article>
+      <article class="hero-feature-card clickable" data-route="tests">
+        <div class="hero-feature-icon">📝</div>
+        <span class="hero-feature-pill">KIỂM TRA ĐỊNH KỲ</span>
+        <h3>Bài kiểm tra</h3>
+        <p>Danh sách bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm.</p>
+      </article>
+    </div>
+</section>
+<section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
+<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card class-card--gradient" data-action="choose-grade" data-grade="${g}"><div><span class="pill class-card--gradient-pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
 <p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
 }
 function subjectPickerPage() {

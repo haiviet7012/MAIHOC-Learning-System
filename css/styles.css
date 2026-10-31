@@ -533,6 +533,134 @@ body.exam-open{overflow:hidden}
   .hero-logo{transition:none}
 }
 
+/* =========================================================
+   HERO — Cards-inside-banner layout (matches design mockup)
+   ========================================================= */
+.hero--cards-layout{
+  display:block;
+  min-height:auto;
+  padding:clamp(32px,5vw,56px) clamp(24px,4vw,56px);
+}
+.hero-cards-grid{
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:18px;
+}
+.hero-feature-card{
+  background:rgba(255,255,255,.08);
+  backdrop-filter:blur(6px);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;
+  padding:24px 22px;
+  color:#fff;
+  cursor:pointer;
+  transition:transform .18s,background .18s,box-shadow .18s;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.hero-feature-card:hover{
+  transform:translateY(-3px);
+  background:rgba(255,255,255,.14);
+  box-shadow:0 12px 32px rgba(0,0,0,.18);
+}
+.hero-feature-icon{
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  border-radius:14px;
+  background:rgba(255,255,255,.12);
+  font-size:22px;
+  margin-bottom:10px;
+}
+.hero-feature-pill{
+  display:inline-flex;
+  padding:4px 9px;
+  border-radius:99px;
+  background:rgba(255,255,255,.12);
+  color:#b9ddff;
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.04em;
+  width:fit-content;
+}
+.hero-feature-card h3{
+  margin:6px 0 4px;
+  font-size:17px;
+  font-weight:700;
+  color:#fff;
+}
+.hero-feature-card p{
+  margin:0;
+  font-size:13px;
+  color:#c5d9f0;
+  line-height:1.5;
+}
+:root.dark .hero-feature-card{
+  background:rgba(255,255,255,.06);
+  border-color:rgba(255,255,255,.10);
+}
+:root.dark .hero-feature-card:hover{
+  background:rgba(255,255,255,.11);
+}
+@media(max-width:900px){
+  .hero-cards-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  .hero--cards-layout{padding:22px 18px}
+  .hero-cards-grid{grid-template-columns:1fr;gap:14px}
+}
+
+/* =========================================================
+   Grade cards — blue gradient style (matches design mockup)
+   ========================================================= */
+.class-card--gradient{
+  background:linear-gradient(135deg,#0d3468,#1a5da5);
+  border:none;
+  color:#fff;
+  position:relative;
+  overflow:hidden;
+}
+.class-card--gradient::after{
+  content:"";
+  position:absolute;
+  width:180px;
+  height:180px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:50%;
+  right:-40px;
+  bottom:-60px;
+  pointer-events:none;
+}
+.class-card--gradient:hover{
+  transform:translateY(-3px);
+  border-color:transparent;
+  box-shadow:0 12px 36px rgba(13,52,104,.35);
+}
+.class-card--gradient .grade{
+  color:#fff;
+  font-size:34px;
+}
+.class-card--gradient p{
+  color:#c5d9f0;
+}
+.class-card--gradient .arrow{
+  color:#b9ddff;
+}
+.class-card--gradient-pill{
+  background:rgba(255,255,255,.15);
+  color:#b9ddff;
+}
+:root.dark .class-card--gradient{
+  background:linear-gradient(135deg,#0a2548,#134882);
+  border:1px solid rgba(255,255,255,.08);
+}
+:root.dark .class-card--gradient:hover{
+  box-shadow:0 12px 36px rgba(0,0,0,.35);
+}
 /* Saved exam results: keep the answer comparison readable on desktop and mobile. */
 .grade-details-table-wrap{width:100%;overflow:auto;border:1px solid var(--border);margin:14px 0 20px;overscroll-behavior:contain}
 .grade-details-table{width:100%;border-collapse:collapse;min-width:900px;background:var(--surface)}
