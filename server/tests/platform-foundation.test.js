@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const serverSource = fs.readFileSync(path.join(root, "server/server.js"), "utf8");
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+const serverSource = fs.readFileSync(path.join(serverDir, "../server.js"), "utf8");
 
 function extractBetween(source, start, end) {
   const startAt = source.indexOf(start);
