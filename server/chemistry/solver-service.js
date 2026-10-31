@@ -97,7 +97,7 @@ export async function solveChemistryProblem({ prompt, image, grade, mode, topic 
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
   const contents = [];
 
@@ -124,9 +124,9 @@ ${prompt || "(Xem đề bài trong hình ảnh đính kèm)"}
   contents.push({ text: userInstruction });
 
   const tryModels = [preferredModel];
-  for (const modelName of ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]) {
-    if (!tryModels.includes(modelName)) tryModels.push(modelName);
-  }
+  if (!tryModels.includes("gemini-3.6-flash")) tryModels.push("gemini-3.6-flash");
+  if (!tryModels.includes("gemini-3.8-flash")) tryModels.push("gemini-3.8-flash");
+  if (!tryModels.includes("gemini-3.5-flash")) tryModels.push("gemini-3.5-flash");
 
   let lastError = null;
 
