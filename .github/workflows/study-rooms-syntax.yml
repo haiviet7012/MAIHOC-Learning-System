@@ -19,6 +19,7 @@ jobs:
       - name: Check server modules
         run: |
           node --check server/server.js
+          node --test server/tests/platform-foundation.test.js
           node --check server/ai-solver/service.js
           node --check server/chemistry/solver-service.js
           node --check server/auth.js
