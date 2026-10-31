@@ -1,5 +1,5 @@
 import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, setSubjectCatalog, getSubjectConfig, CATEGORIES } from "./data.js";
-import { initTheme } from "./theme.js";
+import { initTheme } from "./theme.js?v=20261031v1";
 import { $, $$, escapeHTML, toast, openDialog, closeDialog, pageHeading } from "./ui.js";
 import {
     getDocuments,
@@ -171,8 +171,6 @@ function homePage() {
  <article class="card clickable resource-card" data-route="exam-select"><div class="card-icon">◷</div><span class="pill">90 PHÚT</span><h3>Phòng thi thử</h3><p>Làm bài với đồng hồ đếm ngược và xác nhận trước khi nộp.</p></article>
  <article class="card clickable resource-card" data-route="tests"><div class="card-icon">📝</div><span class="pill">KIỂM TRA ĐỊNH KỲ</span><h3>Bài kiểm tra</h3><p>Danh sách bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm.</p></article>
 </div>
-<section class="section-head"><div><h2>Chọn lớp để học</h2><p>Nội dung được tổ chức theo chương trình THPT.</p></div></section>
-<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><span class="pill">TOÁN HỌC</span><div class="grade">${gradeLabel(g)}</div><p>Ôn tập · Bài tập · Đề thi thử</p></div><span class="arrow">↗</span></article>`).join("")}</div>
 <p class="footer-note">MAI HỌC · Học tập theo nhịp độ của riêng bạn.</p>`;
 }
 function subjectPickerPage() {
