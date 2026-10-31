@@ -1261,7 +1261,8 @@ body.reader-open .app-body {
 .online-drawer .online-user-name-line {display:flex;flex-wrap:wrap;gap:5px;}
 .online-drawer .online-role-badge {white-space:normal;}
 .online-drawer .online-dashboard-head h2 {font-size:17px;}
-.online-drawer #online-drawer-close {align-self:flex-end;flex-shrink:0;}
+.online-drawer .online-dashboard-head {padding-right:80px;min-height:44px;}
+.online-drawer #online-drawer-close {position:absolute;top:16px;right:16px;margin:0;flex-shrink:0;}
 @media(max-width:900px) {
  #online-dashboard.online-drawer:not([hidden]) {left:0;top:78px;width:320px;max-width:100vw;}
 }
