@@ -21,7 +21,7 @@ import {
     wireTestsEvents,
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
-import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
+import { mountChemistryModule } from "./chemistry/index.js?v=20261101v2";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
 import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");

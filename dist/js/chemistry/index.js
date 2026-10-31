@@ -3,7 +3,7 @@
  * Entrypoint của Phân hệ Hóa học MAI HỌC
  */
 
-import { initPeriodicTable } from "./periodic-table/periodic-table-view.js";
+import { initPeriodicTable } from "./periodic-table/periodic-table-view.js?v=20261101v2";
 import { mountUniversalAiSolver } from "../ai-solver/index.js";
 
 export function mountChemistryModule(container, { subView = "periodic-table", initialElement = null, onNavigate } = {}) {

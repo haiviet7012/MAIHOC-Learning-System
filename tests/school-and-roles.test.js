@@ -370,7 +370,7 @@ test("Homeroom teacher can add student by email and Student can join class via /
 });
 
 test("UI moves class joining into My Classes and adds student leave approval controls", () => {
-  const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([a-zA-Z]:)/, "$1")), "..");
   const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
   const appJs = fs.readFileSync(path.join(rootDir, "js/app.js"), "utf8");
   const schoolJs = fs.readFileSync(path.join(rootDir, "js/school-system.js"), "utf8");

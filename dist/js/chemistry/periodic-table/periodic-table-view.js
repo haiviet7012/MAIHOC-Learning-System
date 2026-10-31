@@ -73,13 +73,21 @@ export async function initPeriodicTable(container, { onSelectElementForSolver } 
             <!-- Ô giữ chỗ đại diện cho dãy Lanthanide chu kỳ 6 nhóm 3 -->
             <div class="ptable-cell cat-lanthanide ptable-placeholder-cell" style="grid-row:6;grid-column:3;" title="Dãy Lanthanide (Z = 57 - 71)">
               <span>57-71</span>
-              <span>La-Lu</span>
+              <span>★ La-Lu</span>
             </div>
 
             <!-- Ô giữ chỗ đại diện cho dãy Actinide chu kỳ 7 nhóm 3 -->
             <div class="ptable-cell cat-actinide ptable-placeholder-cell" style="grid-row:7;grid-column:3;" title="Dãy Actinide (Z = 89 - 103)">
               <span>89-103</span>
-              <span>Ac-Lr</span>
+              <span>★★ Ac-Lr</span>
+            </div>
+
+            <!-- Nhãn chỉ dẫn cho 2 dãy Lanthanide và Actinide ở hàng 8 và 9 (cột 1 đến 3) -->
+            <div class="ptable-cell-series-label cat-lanthanide" style="grid-row:8;grid-column:1 / span 3;" title="Dãy Lanthanide (Z = 57 - 71)">
+              <span>★ Dãy Lanthanide</span>
+            </div>
+            <div class="ptable-cell-series-label cat-actinide" style="grid-row:9;grid-column:1 / span 3;" title="Dãy Actinide (Z = 89 - 103)">
+              <span>★★ Dãy Actinide</span>
             </div>
 
             ${elementsData.map(el => {

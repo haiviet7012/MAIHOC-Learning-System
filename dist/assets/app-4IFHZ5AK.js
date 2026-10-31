@@ -692,13 +692,21 @@ C\xE2u 4. Cho A(1,2), B(4,6). T\xEDnh \u0111\u1ED9 d\xE0i AB.`}];function Yn(){l
             <!-- \xD4 gi\u1EEF ch\u1ED7 \u0111\u1EA1i di\u1EC7n cho d\xE3y Lanthanide chu k\u1EF3 6 nh\xF3m 3 -->
             <div class="ptable-cell cat-lanthanide ptable-placeholder-cell" style="grid-row:6;grid-column:3;" title="D\xE3y Lanthanide (Z = 57 - 71)">
               <span>57-71</span>
-              <span>La-Lu</span>
+              <span>★ La-Lu</span>
             </div>
 
             <!-- \xD4 gi\u1EEF ch\u1ED7 \u0111\u1EA1i di\u1EC7n cho d\xE3y Actinide chu k\u1EF3 7 nh\xF3m 3 -->
             <div class="ptable-cell cat-actinide ptable-placeholder-cell" style="grid-row:7;grid-column:3;" title="D\xE3y Actinide (Z = 89 - 103)">
               <span>89-103</span>
-              <span>Ac-Lr</span>
+              <span>★★ Ac-Lr</span>
+            </div>
+
+            <!-- Nh\xE3n ch\u1EC9 d\u1EABn cho 2 d\xE3y Lanthanide v\xE0 Actinide \u1EDF h\xE0ng 8 v\xE0 9 (c\u1ED9t 1 \u0111\u1EBFn 3) -->
+            <div class="ptable-cell-series-label cat-lanthanide" style="grid-row:8;grid-column:1 / span 3;" title="D\xE3y Lanthanide (Z = 57 - 71)">
+              <span>★ D\xE3y Lanthanide</span>
+            </div>
+            <div class="ptable-cell-series-label cat-actinide" style="grid-row:9;grid-column:1 / span 3;" title="D\xE3y Actinide (Z = 89 - 103)">
+              <span>★★ D\xE3y Actinide</span>
             </div>
 
             ${ye.map(o=>{let l=r.has(o.number),d=o.gridRow||o.period,c=o.gridColumn||o.group;return`
