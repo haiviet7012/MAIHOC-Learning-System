@@ -36,7 +36,7 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
 );
 const origin = "http://127.0.0.1:4173";
 async function clickSidebar(route) {
-  const space = ['assignments','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
+  const space = ['assignments','assignment-management','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
   if (!(await page.locator(`.education-switch [data-space="${space}"]`).getAttribute('aria-pressed') === 'true')) {
     await page.locator(`.education-switch [data-space="${space}"]`).click();
   }
@@ -214,7 +214,7 @@ try {
   await questionForm.locator('button[type="submit"]').click();
   await page.getByRole('button',{name:'Duyệt',exact:true}).click();
   await page.locator('[data-platform-content]').filter({hasText:'approved'}).waitFor();
-  await clickSidebar("assignments");
+  await clickSidebar("assignment-management");
   const assignmentForm=page.locator('[data-platform-form="assignment"]');
   await assignmentForm.locator('[name="title"]').fill('Bài kiểm tra pilot');
   await assignmentForm.locator('[name="classId"]').selectOption({label:'Lớp 12A1'});

@@ -3,6 +3,7 @@ const paths = {
   school: "/school/classes",
   organization: "/school",
   "question-bank": "/school/question-bank",
+  "assignment-management": "/school/assignment-management",
   assignments: "/school/assignments",
   analytics: "/learning/progress",
   "subject-picker": "/learning/subjects",

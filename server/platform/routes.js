@@ -833,7 +833,10 @@ export function createPlatformRouter({
       const a = await assignmentFor(req.params.assignmentId);
       if (a.student_id && String(a.student_id) !== String(req.user.id))
         fail("Bài luyện được giao riêng cho học sinh khác.", 403);
-      await membership(db, req.user, a.school_id, ["student"]);
+      if (req.user.role !== 'user' || req.user.isTeacher || req.user.isSuperAdmin)
+        fail('Chỉ học sinh được bắt đầu bài được giao.', 403);
+      const learner = await membership(db, req.user, a.school_id, ['student']);
+      if (learner.role !== 'student') fail('Chỉ học sinh được bắt đầu bài được giao.', 403);
       await classPermission(db, req.user, a.school_id, a.class_id);
       const now = new Date();
       if (now < new Date(a.open_at) || now > new Date(a.close_at))
