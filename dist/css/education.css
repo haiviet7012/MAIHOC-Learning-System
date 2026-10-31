@@ -1246,3 +1246,23 @@ body.reader-open .app-body {
     max-width: 75%;
   }
 }
+
+
+/* Online presence opens beside the sidebar instead of inside the menu. */
+#online-dashboard.online-drawer:not([hidden]) {
+ display:flex !important; flex-direction:column; position:fixed;
+ top:78px; bottom:0; left:var(--sidebar); width:320px; max-width:calc(100vw - var(--sidebar));
+ min-width:0; margin:0; padding:22px 16px; border:1px solid var(--border);
+ border-radius:0 12px 12px 0; background:var(--surface); color:var(--text);
+ box-shadow:12px 0 32px #0002; z-index:220; overflow-y:auto;
+}
+#online-dashboard.online-drawer[hidden] {display:none !important;}
+.online-drawer .online-dashboard-list {flex:1;min-height:0;overflow-y:auto;max-height:none;}
+.online-drawer .online-user-name-line {display:flex;flex-wrap:wrap;gap:5px;}
+.online-drawer .online-role-badge {white-space:normal;}
+.online-drawer .online-dashboard-head h2 {font-size:17px;}
+.online-drawer .online-dashboard-head {padding-right:80px;min-height:44px;}
+.online-drawer #online-drawer-close {position:absolute;top:16px;right:16px;margin:0;flex-shrink:0;}
+@media(max-width:900px) {
+ #online-dashboard.online-drawer:not([hidden]) {left:0;top:78px;width:320px;max-width:100vw;}
+}

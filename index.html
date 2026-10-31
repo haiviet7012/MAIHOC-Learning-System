@@ -37,25 +37,47 @@
   <aside class="education-sidebar" id="education-sidebar" aria-label="Điều hướng MAIHOC">
     <button class="education-logo" data-route="home"><img src="/images/mai-hoc-favicon.png" alt=""><span><strong>MAIHOC</strong><small>HỌC TẬP VÀ KẾT NỐI</small></span></button>
     <div class="education-switch" aria-label="Không gian"><button data-route="home" data-space="learning" class="active">Learning</button><button data-route="organization" data-space="school">School</button></div>
-    <p class="education-nav-label">KHÔNG GIAN HỌC TẬP</p>
-    <nav aria-label="Học tập">
+    <p class="education-nav-label" data-sidebar-space="learning">KHÔNG GIAN HỌC TẬP</p>
+    <nav aria-label="Học tập" data-sidebar-space="learning">
       <button data-route="home"><img src="/design/dashboard.svg" alt="">Tổng quan</button>
-      <button data-route="assignments"><img src="/design/registration.svg" alt="">Bài được giao</button>
       <button data-route="subject-picker"><span class="nav-glyph" aria-hidden="true">▤</span>Kho học liệu</button>
-      <button data-route="tests"><img src="/design/calendar.svg" alt="">Kiểm tra và luyện thi</button>
       <button data-route="analytics"><span class="nav-glyph" aria-hidden="true">↗</span>Tiến trình học tập</button>
       <button data-route="ai-solver"><span class="nav-glyph" aria-hidden="true">✦</span>Gia sư AI</button>
       <button data-route="study-rooms"><span class="nav-glyph" aria-hidden="true">◉</span>Phòng tự học</button>
     </nav>
-    <p class="education-nav-label">NHÀ TRƯỜNG VÀ TÀI KHOẢN</p>
-    <nav aria-label="Nhà trường">
+    <p class="education-nav-label" data-sidebar-space="school" hidden>NHÀ TRƯỜNG</p>
+    <nav aria-label="Nhà trường" data-sidebar-space="school" hidden>
+      <button data-route="assignments"><img src="/design/registration.svg" alt="">Bài được giao</button>
+      <button data-route="tests"><img src="/design/calendar.svg" alt="">Kiểm tra và luyện thi</button>
       <button data-route="school"><img src="/design/school.svg" alt="">Lớp của bạn</button>
       <button data-route="organization"><span class="nav-glyph" aria-hidden="true">▦</span>Quản lý nhà trường</button>
       <button data-route="question-bank"><span class="nav-glyph" aria-hidden="true">?</span>Ngân hàng câu hỏi</button>
-      <button data-route="account-center"><img src="/design/profile.svg" alt="">Hồ sơ và tài khoản</button>
     </nav>
+    <nav aria-label="Cộng đồng"><button type="button" id="online-drawer-toggle" aria-expanded="false" aria-controls="online-dashboard"><span class="nav-glyph" aria-hidden="true">◉</span>Dashboard</button></nav>
+
     <div class="education-sidebar-foot"><strong>Học mỗi ngày. Tiến xa hơn.</strong>MAIHOC Learning System</div>
   </aside>
+      <aside id="online-dashboard" class="online-dashboard online-drawer" hidden tabindex="-1" aria-label="Dashboard người dùng đang online">
+        <div class="online-dashboard-head">
+          <div>
+            <p class="eyebrow">CỘNG ĐỒNG MAIHOC</p>
+            <h2>Đang online <span class="online-badge-count" id="online-dashboard-count">0</span></h2>
+          </div>
+        </div>
+        <button type="button" id="online-drawer-close" class="button secondary small" aria-label="Đóng danh sách online">Đóng ✕</button>
+        <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
+          <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
+          <button type="button" class="online-filter-btn" data-online-filter="user">Học sinh</button>
+          <button type="button" class="online-filter-btn" data-online-filter="admin">Giáo viên</button>
+        </div>
+        <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
+          <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
+        </div>
+        <div class="online-dashboard-foot">
+          <span class="online-dot"></span>
+          <span>Tự cập nhật mỗi 10 giây</span>
+        </div>
+      </aside>
   <div id="app" class="app-shell">
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ">
@@ -86,7 +108,7 @@
         <button class="icon-button icon-only-btn" id="theme-toggle" title="Đổi giao diện" aria-label="Đổi giao diện">☾</button>
         <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Mở menu">☰</button>
       </div>
-      <nav class="subject-menu" id="subject-menu" aria-label="Danh sách môn học">
+      <nav class="subject-menu" id="subject-menu" aria-label="Menu chính">
         <button data-subject="Toán" class="subject-link active">Toán</button>
         <button data-subject="Tiếng Anh" class="subject-link">Tiếng Anh</button>
         <button data-subject="Vật lý" class="subject-link">Vật lý</button>
@@ -97,6 +119,7 @@
         <button data-subject="IELTS" class="subject-link">IELTS</button>
         <button data-route="study-rooms" class="subject-link study-room-nav-link">Phòng tự học</button>
         <button data-route="ai-solver" class="subject-link ai-solver-nav-link">✨ AI giải bài tập</button>
+        <button data-route="account-center" class="subject-link">Tài khoản</button>
       </nav>
     </header>
 
@@ -107,27 +130,7 @@
         <strong id="launcher-online-count">0</strong>
       </button>
 
-      <aside id="online-dashboard" class="online-dashboard" aria-label="Dashboard người dùng đang online">
-        <div class="online-dashboard-head">
-          <div>
-            <p class="eyebrow">TRỰC TUYẾN TRÊN SERVER</p>
-            <h2>Đang online <span class="online-badge-count" id="online-dashboard-count">0</span></h2>
-          </div>
-          <button type="button" class="online-dashboard-collapse" id="online-dashboard-collapse" title="Thu gọn bảng Online" aria-label="Thu gọn bảng Online">«</button>
-        </div>
-        <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
-          <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
-          <button type="button" class="online-filter-btn" data-online-filter="user">Học sinh</button>
-          <button type="button" class="online-filter-btn" data-online-filter="admin">Giáo viên</button>
-        </div>
-        <div class="online-dashboard-list" id="online-dashboard-list" role="region" aria-live="polite" aria-label="Danh sách người dùng đang online">
-          <p class="muted tiny">Đang tải danh sách trực tuyến…</p>
-        </div>
-        <div class="online-dashboard-foot">
-          <span class="online-dot"></span>
-          <span>Cập nhật thời gian thực</span>
-        </div>
-      </aside>
+
 
       <main id="view" class="view" tabindex="-1"></main>
     </div>

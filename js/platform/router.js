@@ -3,13 +3,13 @@ const paths = {
   school: "/school/classes",
   organization: "/school",
   "question-bank": "/school/question-bank",
-  assignments: "/learning/assignments",
+  assignments: "/school/assignments",
   analytics: "/learning/progress",
   "subject-picker": "/learning/subjects",
   theory: "/learning/library",
   practice: "/learning/practice",
   "exam-select": "/learning/exams",
-  tests: "/learning/tests",
+  tests: "/school/tests",
   "ai-solver": "/learning/tutor",
   "study-rooms": "/learning/study-rooms",
   "account-center": "/account",
@@ -39,6 +39,9 @@ export function parseRoute(url) {
       subject: url.searchParams.get("subject") || "Toán",
       grade: url.searchParams.get("grade") || "10",
     };
+  if (path === "/learning/assignments") return { route: "assignments" };
+  if (path === "/learning/tests") return { route: "tests" };
+  if (path.startsWith("/school/tests/")) return { route: "tests", pendingTestId: decodeURIComponent(path.slice(14)) };
   if (path.startsWith("/learning/tests/"))
     return {
       route: "tests",

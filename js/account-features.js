@@ -731,8 +731,8 @@ function renderOnlineUsersList() {
   if (!listNode) return;
 
   const filtered = latestOnlineUsers.filter(u => {
-    if (onlineFilter === "admin") return u.role === "admin";
-    if (onlineFilter === "user") return u.role !== "admin";
+    if (onlineFilter === "admin") return u.role === "teacher" || u.role === "admin";
+    if (onlineFilter === "user") return u.role !== "admin" && u.role !== "teacher";
     return true;
   });
 
@@ -1573,12 +1573,31 @@ async function throttledRefreshOnlineDashboard() {
   }
 }
 
-// Tăng chu kỳ từ 4 giây (4000) lên 30 giây (30000)
-setInterval(throttledRefreshOnlineDashboard, 30000);
+// Cập nhật nhanh, bỏ qua tab ẩn và request đang chạy.
+setInterval(throttledRefreshOnlineDashboard, 10000);
 
 // Tự động cập nhật ngay khi người dùng mở lại tab
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     throttledRefreshOnlineDashboard();
   }
+});
+// The online list is a dismissible panel, independent of the current route.
+function setOnlineDrawer(open) {
+  const panel = document.getElementById('online-dashboard');
+  const toggle = document.getElementById('online-drawer-toggle');
+  if (!panel || !toggle) return;
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.classList.toggle('active', open);
+  if (open) { panel.focus(); throttledRefreshOnlineDashboard(); }
+  else toggle.focus();
+}
+document.addEventListener('click', event => {
+  if (event.target.closest('#online-drawer-toggle')) {
+    setOnlineDrawer(document.getElementById('online-dashboard')?.hidden);
+  } else if (event.target.closest('#online-drawer-close')) setOnlineDrawer(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.getElementById('online-dashboard')?.hidden) setOnlineDrawer(false);
 });

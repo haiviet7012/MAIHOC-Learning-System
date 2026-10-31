@@ -820,10 +820,13 @@ function render() {
     }
     if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
-    document.querySelectorAll('[data-space]').forEach(button=>button.classList.toggle('active',button.dataset.space===(['organization','school','school-class','question-bank','admin'].includes(state.route)?'school':'learning')));
+    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','tests'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
+    document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
+    document.querySelectorAll('[data-space]').forEach(button => { const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
     document.getElementById('education-sidebar')?.classList.remove('is-open');
     document.getElementById('education-menu')?.setAttribute('aria-expanded','false');
-    const title=document.querySelector('.education-top-title'); if(title)title.textContent=['organization','school','school-class','question-bank','admin'].includes(state.route)?'MAIHOC School':'MAIHOC Learning';
+    const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
     stopStudyRoomsIfActive();
     stopChemistryIfActive();
     stopUniversalAiIfActive();
@@ -831,7 +834,7 @@ function render() {
     document.body.classList.toggle("is-home-lobby", isMainLobby);
     const onlineDashboard = $("#online-dashboard");
     const onlineLauncher = $("#online-dashboard-launcher");
-    if (onlineDashboard) onlineDashboard.hidden = !isMainLobby;
+
     if (onlineLauncher) onlineLauncher.hidden = !isMainLobby;
     $("#tests-open")?.classList.toggle("is-active-route", state.route === "tests");
     $("#school-classes-open")?.classList.toggle("is-active-route", state.route === "school" || state.route === "school-class");
