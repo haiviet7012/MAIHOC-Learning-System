@@ -226,7 +226,6 @@ export function mountStudyRooms(container, user) {
           </form>
         </div>
 
-        <div class="study-pomodoro"><span>Nhịp học chung <strong data-room-timer>Chưa bắt đầu</strong></span>${canCloseRoom ? '<button class="button secondary small" data-room-timer-start="25">Tập trung 25 phút</button><button class="button secondary small" data-room-timer-start="5">Nghỉ 5 phút</button><button class="button secondary small" data-room-timer-start="0">Dừng</button>' : ''}</div>
         <p class="study-room-error" data-room-error hidden></p>
 
         <div class="study-room-toolbar">
@@ -401,6 +400,7 @@ export function mountStudyRooms(container, user) {
           </div>
         </header>
 
+        <div class="study-pomodoro"><span>Nhịp học chung <strong data-room-timer>Chưa bắt đầu</strong></span>${canCloseRoom ? '<button class="button secondary small" data-room-timer-start="25">Tập trung 25 phút</button><button class="button secondary small" data-room-timer-start="5">Nghỉ 5 phút</button><button class="button secondary small" data-room-timer-start="0">Dừng</button>' : ''}</div>
         <p class="study-room-error" data-room-error hidden></p>
 
         <div class="study-room-workspace">

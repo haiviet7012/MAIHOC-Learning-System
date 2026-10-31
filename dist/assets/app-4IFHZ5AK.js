@@ -157,7 +157,6 @@ C\xE2u 4. Cho A(1,2), B(4,6). T\xEDnh \u0111\u1ED9 d\xE0i AB.`}];function Yn(){l
           </form>
         </div>
 
-        <div class="study-pomodoro"><span>Nh\u1ECBp h\u1ECDc chung <strong data-room-timer>Ch\u01B0a b\u1EAFt \u0111\u1EA7u</strong></span>${canCloseRoom?'<button class="button secondary small" data-room-timer-start="25">T\u1EADp trung 25 ph\xFAt</button><button class="button secondary small" data-room-timer-start="5">Ngh\u1EC9 5 ph\xFAt</button><button class="button secondary small" data-room-timer-start="0">D\u1EEBng</button>':""}</div>
         <p class="study-room-error" data-room-error hidden></p>
 
         <div class="study-room-toolbar">
@@ -208,6 +207,7 @@ C\xE2u 4. Cho A(1,2), B(4,6). T\xEDnh \u0111\u1ED9 d\xE0i AB.`}];function Yn(){l
           </div>
         </header>
 
+        <div class="study-pomodoro"><span>Nh\u1ECBp h\u1ECDc chung <strong data-room-timer>Ch\u01B0a b\u1EAFt \u0111\u1EA7u</strong></span>${v?'<button class="button secondary small" data-room-timer-start="25">T\u1EADp trung 25 ph\xFAt</button><button class="button secondary small" data-room-timer-start="5">Ngh\u1EC9 5 ph\xFAt</button><button class="button secondary small" data-room-timer-start="0">D\u1EEBng</button>':""}</div>
         <p class="study-room-error" data-room-error hidden></p>
 
         <div class="study-room-workspace">
