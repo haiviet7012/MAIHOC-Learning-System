@@ -821,7 +821,6 @@ app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
     }
     const delivery = await issueVerificationCode({
       user,
-      purpose: "forgot_password",
       purposeLabel: "Khôi phục mật khẩu",
       purpose: "forgot_password",
       targetEmail: user.email
@@ -830,7 +829,6 @@ app.post("/api/auth/forgot-password", requireSameOrigin, async (req, res) => {
       ok: true,
       email: user.email,
       sentByEmail: delivery.sentByEmail,
-      ...(delivery.devCode ? { devCode: delivery.devCode } : {}),
       message: delivery.message
     });
   } catch (error) {
@@ -1115,7 +1113,7 @@ app.get("/api/presence/online", async (req, res) => {
         .run(req.user.id, now);
     }
   }
-  const users = await cleanPresenceAndListOnline(now);
+  const users = await listOnlineUsers(now);
   res.setHeader("Cache-Control", "no-store");
   return res.json({ onlineCount: users.length, users });
 });
