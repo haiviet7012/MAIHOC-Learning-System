@@ -53,13 +53,18 @@
       <button data-route="organization"><span class="nav-glyph" aria-hidden="true">▦</span>Quản lý nhà trường</button>
       <button data-route="question-bank"><span class="nav-glyph" aria-hidden="true">?</span>Ngân hàng câu hỏi</button>
     </nav>
-      <aside id="online-dashboard" class="online-dashboard sidebar-online" aria-label="Dashboard người dùng đang online">
+    <nav aria-label="Cộng đồng"><button type="button" id="online-drawer-toggle" aria-expanded="false" aria-controls="online-dashboard"><span class="nav-glyph" aria-hidden="true">◉</span>Dashboard</button></nav>
+
+    <div class="education-sidebar-foot"><strong>Học mỗi ngày. Tiến xa hơn.</strong>MAIHOC Learning System</div>
+  </aside>
+      <aside id="online-dashboard" class="online-dashboard online-drawer" hidden tabindex="-1" aria-label="Dashboard người dùng đang online">
         <div class="online-dashboard-head">
           <div>
             <p class="eyebrow">CỘNG ĐỒNG MAIHOC</p>
             <h2>Đang online <span class="online-badge-count" id="online-dashboard-count">0</span></h2>
           </div>
         </div>
+        <button type="button" id="online-drawer-close" class="button secondary small" aria-label="Đóng danh sách online">Đóng ✕</button>
         <div class="online-dashboard-filters" role="tablist" aria-label="Lọc người dùng đang online">
           <button type="button" class="online-filter-btn is-active" data-online-filter="all">Tất cả</button>
           <button type="button" class="online-filter-btn" data-online-filter="user">Học sinh</button>
@@ -70,11 +75,9 @@
         </div>
         <div class="online-dashboard-foot">
           <span class="online-dot"></span>
-          <span>Cập nhật thời gian thực</span>
+          <span>Tự cập nhật mỗi 10 giây</span>
         </div>
       </aside>
-    <div class="education-sidebar-foot"><strong>Học mỗi ngày. Tiến xa hơn.</strong>MAIHOC Learning System</div>
-  </aside>
   <div id="app" class="app-shell">
     <header class="topbar">
       <button class="brand" id="brand-home" aria-label="Về trang chủ">
