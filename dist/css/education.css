@@ -1324,3 +1324,18 @@ button,input,select,textarea {font-family:inherit;}
  .timetable-subjects h2 {flex-basis:100%;}
  .timetable-subjects button {font-size:11px;}
 }
+
+/* Keep the book's resting tilt while gently wiggling on hover. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .portal-book-art:hover {
+    transform-origin: 50% 80%;
+    animation: portal-book-wiggle 650ms ease-in-out;
+  }
+}
+@keyframes portal-book-wiggle {
+  0%, 100% { transform: rotate(-9deg); }
+  20% { transform: rotate(-14deg); }
+  40% { transform: rotate(-4deg); }
+  60% { transform: rotate(-12deg); }
+  80% { transform: rotate(-7deg); }
+}
