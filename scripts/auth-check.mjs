@@ -18,7 +18,7 @@ try {
   await page.goto(origin + '/learning'); await page.locator('#register-open').click();
   assert.equal(await page.locator('#register-form [value=teacher]').count(), 1);
   assert.ok((await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').backgroundImage)).includes('/images/poster.jpg'));
-  assert.equal(await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').borderTopRightRadius), '2px');
+  assert.equal(await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').borderTopRightRadius), '0px');
   const authClose = await page.locator('#register-dialog .close-button').boundingBox();
   assert.equal(authClose.width, 52); assert.equal(authClose.height, 40);
   await mkdir('test-results', { recursive: true });
@@ -40,7 +40,7 @@ try {
   await page.locator('#notifications-open').click();
   const close = page.locator('#notifications-dialog .close-button'); await close.waitFor();
   const box = await close.boundingBox(); assert.equal(box.width, 52); assert.equal(box.height, 40);
-  assert.equal(await close.evaluate(n => getComputedStyle(n).borderRadius), '9px');
+  assert.equal(await close.evaluate(n => getComputedStyle(n).borderRadius), '0px');
   await page.screenshot({ path: 'test-results/notification-close-rectangle.png', fullPage: true });
   await close.click(); assert.equal(await page.locator('#notifications-dialog').evaluate(n => n.open), false);
   await page.locator('#logout-button').click(); await page.locator('#login-open').click();
