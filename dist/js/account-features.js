@@ -247,6 +247,7 @@ async function requestPasswordResetCode() {
         body: JSON.stringify({ purpose: verifyPurpose, newEmail: pendingNewEmail })
       });
     }
+    if (result.sentByEmail === false && !result.devCode) throw new Error(result.message || "Chưa gửi được email xác minh. Vui lòng thử lại.");
     passwordResetEmail = email;
     $("#forgot-password-form").hidden = true;
     $("#reset-password-form").hidden = false;
@@ -306,6 +307,7 @@ document.addEventListener("click", async event => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ purpose: verifyPurpose, newEmail: pendingNewEmail })
           });
+      if (result.sentByEmail === false && !result.devCode) throw new Error(result.message || "Chưa gửi được email xác minh. Vui lòng thử lại.");
       resetMessage("reset-password-status", result.message || "Đã gửi mã xác minh 6 chữ số mới.");
       showDevCodeBox(result.devCode || "");
       if (activeUser) refreshNotifications();

@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import nodemailer from "nodemailer";
+import { deliverMail, mailConfig } from "./mail-delivery.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 import { installStudyRooms } from "./study-rooms/server.js";
@@ -629,23 +630,6 @@ const OTP_COOLDOWN_MS = 30 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
-function smtpConfigFromEnv() {
-  const rawUser = String(process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER || "").trim();
-  const rawPass = String(
-    process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || process.env.EMAIL_PASS || ""
-  ).trim();
-  const host = String(process.env.SMTP_HOST || (rawUser ? "smtp.gmail.com" : "")).trim();
-  const port = Number(process.env.SMTP_PORT || 587);
-  const from = String(process.env.SMTP_FROM || rawUser).trim();
-  const isPlaceholder =
-    !host ||
-    !rawUser ||
-    !rawPass ||
-    /your-gmail-address|your-16-character-app-password|example\.com/i.test(rawUser + " " + rawPass);
-  const pass = /gmail\.com$/i.test(host) ? rawPass.replace(/\s+/g, "") : rawPass;
-  return { host, port, user: rawUser, pass, from: from || rawUser, configured: !isPlaceholder };
-}
-
 function hashOtpCode(userId, purpose, code, targetEmail = "") {
   return crypto
     .createHash("sha256")
@@ -662,7 +646,7 @@ async function sendVerificationCodeEmail({
   userId = null,
   extraTargetEmail = null
 }) {
-  const smtp = smtpConfigFromEnv();
+  const smtp = mailConfig();
   const isRecoveryFlow = purpose === "forgot_password";
   // Never log, notify in-app, or expose password-recovery OTPs outside the email channel.
   if (!isRecoveryFlow && process.env.NODE_ENV !== "production") {
@@ -688,22 +672,12 @@ async function sendVerificationCodeEmail({
     };
   }
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.port === 465,
-      auth: { user: smtp.user, pass: smtp.pass },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 10000
-    });
     const recipients = [toEmail];
     if (extraTargetEmail && extraTargetEmail.toLowerCase() !== toEmail.toLowerCase()) {
       recipients.push(extraTargetEmail);
     }
-    await transporter.sendMail({
-      from: smtp.from,
-      to: recipients.join(", "),
+    await deliverMail({
+      to: recipients,
       subject: `[MAI HỌC] Mã xác minh ${purposeLabel}: ${code}`,
       text: `Xin chào ${
         userName || "bạn"
@@ -712,7 +686,7 @@ async function sendVerificationCodeEmail({
         <p style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:#2478c9;margin:0 0 8px">MAI HỌC LEARNING SYSTEM</p>
         <h2 style="margin:0 0 12px;font-size:20px">Xác minh: ${purposeLabel}</h2>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6">Xin chào <strong>${
-          userName || "bạn"
+          String(userName || "bạn").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
         }</strong>, sử dụng mã gồm 6 chữ số dưới đây để hoàn tất thao tác trên MAI HỌC:</p>
         <div style="padding:16px;background:#eaf1fb;text-align:center;font-size:28px;font-weight:700;letter-spacing:6px;color:#123b70;margin:0 0 16px">${code}</div>
         <p style="margin:0;font-size:12px;color:#65758b">Mã xác minh có hiệu lực trong <strong>10 phút</strong>. Không chia sẻ mã này cho bất kỳ ai.</p>
@@ -720,15 +694,16 @@ async function sendVerificationCodeEmail({
     });
     return {
       sentByEmail: true,
-      message: `Đã gửi mã xác minh 6 chữ số đến Gmail ${toEmail}. Vui lòng kiểm tra hộp thư (hoặc thư mục Spam).`
+      message: `Đã gửi mã xác minh 6 chữ số đến email ${toEmail}. Vui lòng kiểm tra hộp thư (hoặc thư mục Spam).`
     };
   } catch (error) {
-    console.warn("Could not send verification email via SMTP.");
+    const category = /^[A-Z0-9_]+$/.test(String(error.code || "")) ? error.code : "MAIL_DELIVERY_FAILED";
+    console.warn("Verification email failed", { provider: smtp.provider, category });
     return {
       sentByEmail: false,
       ...(isRecoveryFlow || process.env.NODE_ENV === "production" ? {} : { devCode: code }),
       message: isRecoveryFlow || process.env.NODE_ENV === "production"
-        ? "Không thể gửi email xác minh lúc này. Vui lòng thử lại sau."
+        ? "Không thể gửi email xác minh lúc này. Vui lòng thử lại sau hoặc liên hệ quản trị viên."
         : "Không kết nối được SMTP; trong môi trường phát triển có thể dùng mã xác minh hiển thị."
     };
   }
@@ -756,14 +731,21 @@ async function issueVerificationCode({ user, purpose, purposeLabel, targetEmail 
       "INSERT INTO email_verification_codes(user_id,email,purpose,target_email,code_hash,expires_at,attempts,created_at) VALUES(?,?,?,?,?,?,0,?)"
     )
     .run(user.id, user.email, purpose, normalizedTarget, codeHash, now + OTP_TTL_MS, now);
-  return sendVerificationCodeEmail({
+  const delivery = await sendVerificationCodeEmail({
     toEmail: user.email,
     userName: user.name,
     code,
     purposeLabel,
+    purpose,
     userId: user.id,
     extraTargetEmail: purpose === "change_email" ? normalizedTarget : null
   });
+  if (!delivery.sentByEmail && !delivery.devCode) {
+    // Remove only this failed issuance, never a newer request's code.
+    await db.prepare("DELETE FROM email_verification_codes WHERE user_id=? AND purpose=? AND code_hash=?").run(user.id, purpose, codeHash);
+    const error = new Error(delivery.message); error.status = 503; throw error;
+  }
+  return delivery;
 }
 
 async function consumeVerificationCode({ userId, purpose, code, targetEmail = null }) {
@@ -933,7 +915,6 @@ app.post(
         user: req.user,
         purpose,
         purposeLabel: allowedPurposes[purpose],
-        purpose,
         targetEmail
       });
       return res.json({
