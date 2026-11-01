@@ -110,6 +110,7 @@ try {
   await page.goto(origin + '/learning/progress');
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
+  await page.locator('.learning-progress-list progress').first().waitFor();
   const tracks = await page.locator('.learning-progress-list progress').evaluateAll(nodes => nodes.map(n => ({ x: n.getBoundingClientRect().x, width: n.getBoundingClientRect().width })));
   assert.equal(tracks.length, 3);
   assert.ok(tracks.every(t => Math.abs(t.width - tracks[0].width) < 1 && Math.abs(t.x - tracks[0].x) < 1), '0%, 40% and 100% tracks align at both ends');
