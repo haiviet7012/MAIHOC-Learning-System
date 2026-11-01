@@ -96,6 +96,12 @@ try {
     const node = page.locator(selector);
     if (await node.count()) assert.equal(await node.evaluate(n => getComputedStyle(n).borderRadius), '50%');
   }
+  const actions = await page.locator('.online-dashboard-fab, .chat-launcher, #notifications-open').evaluateAll(nodes => nodes.map(n => {
+    const s = getComputedStyle(n); return [s.backgroundColor, s.color, s.border, s.boxShadow, s.transition, s.animationName];
+  }));
+  assert.equal(actions.length, 3);
+  for (const style of actions) assert.deepEqual(style, actions[0], 'Floating actions share chat colors, border, shadow and animation');
+  assert.ok((await page.locator('.advisor-pull-arrow').evaluate(n => getComputedStyle(n).clipPath)).startsWith('polygon('));
   await page.screenshot({ path: new URL('advisor-dark-surfaces.png', directory).pathname, fullPage: true });
   await page.evaluate(() => document.documentElement.classList.remove('dark'));
 

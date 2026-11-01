@@ -1632,3 +1632,28 @@ button,input,select,textarea {font-family:inherit;}
 :root.dark .advisor textarea::placeholder { color:var(--muted); opacity:1; }
 
 .test-queue-footer { padding:20px; display:flex; justify-content:center; border-top:1px solid var(--border); }
+
+/* Reserve real content padding in addition to the native scrollbar gutter. */
+.learning-progress-scroll { padding-inline-end:24px; }
+/* One visual and motion specification shared with the chat launcher. */
+:root { --floating-action-bg:var(--primary); --floating-action-fg:#fff; --floating-action-shadow:0 10px 25px rgba(18,59,112,.28); --floating-action-hover-shadow:0 14px 32px rgba(18,59,112,.35); }
+:root.dark { --floating-action-bg:var(--accent); --floating-action-fg:#07111e; --floating-action-shadow:0 10px 30px rgba(0,0,0,.5); --floating-action-hover-shadow:0 14px 32px rgba(0,0,0,.6); }
+:root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull),
+:root.dark :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull) {
+  background:var(--floating-action-bg); color:var(--floating-action-fg);
+  border:2px solid #b4d7ff !important;
+  box-shadow:var(--floating-action-shadow);
+  transition:transform .2s cubic-bezier(.2,0,0,1),box-shadow .2s ease,background .2s ease;
+  animation:none; filter:none; outline:none;
+}
+:root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):hover {
+  transform:translateY(-2px) scale(1.05); box-shadow:var(--floating-action-hover-shadow); filter:none;
+}
+:root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):active { transform:translateY(0) scale(.96); }
+:root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.advisor-pull { border-right:0 !important; }
+.advisor-pull-arrow { display:block; width:12px; height:18px; background:currentColor; clip-path:polygon(100% 0,0 50%,100% 100%); }
+@media(prefers-reduced-motion:reduce) {
+  :root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull) { transition:none; }
+  :root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):is(:hover,:active) { transform:none; }
+}

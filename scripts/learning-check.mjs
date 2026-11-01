@@ -114,6 +114,10 @@ try {
   const tracks = await page.locator('.learning-progress-list progress').evaluateAll(nodes => nodes.map(n => ({ x: n.getBoundingClientRect().x, width: n.getBoundingClientRect().width })));
   assert.equal(tracks.length, 3);
   assert.ok(tracks.every(t => Math.abs(t.width - tracks[0].width) < 1 && Math.abs(t.x - tracks[0].x) < 1), '0%, 40% and 100% tracks align at both ends');
+  assert.ok(await page.locator('.learning-progress-scroll').evaluate(n => {
+    const edge = n.getBoundingClientRect().left + n.clientLeft + n.clientWidth;
+    return [...n.querySelectorAll('progress')].every(p => p.getBoundingClientRect().right <= edge - 23);
+  }), 'Progress tracks reserve 24px before the scrollbar gutter');
   await page.locator('.advisor-pull').click();
   await page.locator('.advisor-drawer .advisor-workspace').waitFor();
   await page.locator('.advisor-dismiss').click();
