@@ -1543,16 +1543,20 @@ button,input,select,textarea {font-family:inherit;}
 
 /* Auth poster has its own rounded clipping surface, matching the dialog. */
 :is(#login-dialog, #register-dialog, #forgot-password-dialog) {
+  --auth-radius: 18px;
+  --poster-inset: 16px;
+  --poster-inner-radius: max(0px, calc(var(--auth-radius) - var(--poster-inset)));
+  border-radius: var(--auth-radius);
   background: #fff;
 }
 :is(#login-dialog, #register-dialog, #forgot-password-dialog)::before {
   content: "";
   position: absolute;
-  top: 16px;
-  bottom: 16px;
-  right: 16px;
+  top: var(--poster-inset);
+  bottom: var(--poster-inset);
+  right: var(--poster-inset);
   width: 46%;
-  border-radius: 18px;
+  border-radius: var(--auth-radius) var(--poster-inner-radius) var(--poster-inner-radius) var(--auth-radius);
   background: url("/images/poster.jpg") center / cover no-repeat;
   pointer-events: none;
 }
@@ -1572,10 +1576,11 @@ button,input,select,textarea {font-family:inherit;}
 }
 @media (max-width: 700px) {
   :is(#login-dialog, #register-dialog, #forgot-password-dialog)::before {
-    left: 16px;
-    right: 16px;
+    left: var(--poster-inset);
+    right: var(--poster-inset);
     bottom: auto;
     width: auto;
     height: 130px;
+    border-radius: var(--poster-inner-radius) var(--poster-inner-radius) var(--auth-radius) var(--auth-radius);
   }
 }
