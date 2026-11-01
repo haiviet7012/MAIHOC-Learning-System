@@ -79,7 +79,7 @@ try {
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
   assert.ok(!(await page.locator('#view').textContent()).includes('School mới chưa được bật'));
-  assert.ok((await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).includes('Raleway'));
+  assert.ok((await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).includes('Montserrat'));
   const teacher = await browser.newContext();
   await teacher.request.post(origin + '/api/auth/login', { data: { email: 'teacher@maihoc.test', password }, headers: { Origin: origin } });
   assert.equal((await (await teacher.request.get(origin + '/api/learning/timetable')).json()).timetable, null, 'Timetable is private per account');
