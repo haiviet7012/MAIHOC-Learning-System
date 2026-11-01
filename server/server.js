@@ -1,3 +1,4 @@
+import { geminiConfig, geminiClient, providerError } from './ai-provider.js';
 import { schoolAccessGuard } from './school-access.js';
 import { canAccessSchool } from '../js/platform/school-access.js';
 import { installTeachingAdvisor } from './learning-advisor/teaching.js';
@@ -22,7 +23,6 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import nodemailer from "nodemailer";
 import { deliverMail, mailConfig } from "./mail-delivery.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
@@ -57,7 +57,7 @@ import {
 import { initSchoolSystemDatabase, installSchoolSystemRoutes, saveTeacherAssignments, validateTeacherProfile } from "./school-system.js";
 
 const __earlyDir = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__earlyDir, ".env"), override: true });
+dotenv.config({ path: path.join(__earlyDir, ".env") });
 dotenv.config({ path: path.resolve(__earlyDir, "..", ".env") });
 dotenv.config();
 
@@ -318,13 +318,8 @@ let testsModule = null;
 const activeSolutionJobs = new Set();
 
 function examSolverConfig() {
-  return {
-    provider: "gemini",
-    apiKey: String(process.env.GEMINI_API_KEY || "").trim(),
-    modelName: String(
-      process.env.GEMINI_SOLUTION_MODEL || process.env.GEMINI_MODEL || ""
-    ).trim()
-  };
+  const config = geminiConfig('exam');
+  return { provider: 'gemini', apiKey: config.apiKey, modelName: config.model };
 }
 
 async function updateSolutionJob(documentId, values) {
@@ -342,7 +337,7 @@ function queueExamSolution(documentId) {
   if (activeSolutionJobs.has(id)) return;
   activeSolutionJobs.add(id);
   setImmediate(async () => {
-    let solver = examSolverConfig();
+    let solver = { provider: 'gemini' };
     let documentTitle = id;
     try {
       const doc = await db
@@ -354,19 +349,7 @@ function queueExamSolution(documentId) {
       documentTitle = doc.title || id;
       const state = await db.prepare("SELECT status FROM exam_solutions WHERE document_id=?").get(id);
       if (!state || !["queued", "reading", "solving"].includes(state.status)) return;
-      if (!solver.apiKey) {
-        const message = "Thiếu GEMINI_API_KEY. Hãy cấu hình server/.env rồi thử lại.";
-        await updateSolutionJob(id, {
-          status: "failed",
-          progress: 0,
-          phase: "Thiếu API key",
-          model: solver.modelName,
-          error_code: "missing_api_key",
-          error_message: message
-        });
-        await notifyAdmins("exam_solution_failed", "Không thể giải đề bằng Gemini", `${doc.title}: ${message}`, "admin");
-        return;
-      }
+      solver = examSolverConfig();
       const bytes = await getDocumentBuffer(doc);
       if (!bytes) throw new Error("Không tìm thấy file đề trên R2 hoặc kho lưu trữ cũ.");
       const cfg = assessmentConfigFor(doc.subject, doc.category);
@@ -432,7 +415,7 @@ function queueExamSolution(documentId) {
           /insufficient balance/i.test(rawErrorMessage),
         serviceUnavailable =
           /\b503\b|service unavailable|high demand|temporarily unavailable|temporarily overloaded/i.test(rawErrorMessage) ||
-          Number(error?.status || error?.statusCode) === 503,
+          (Number(error?.status || error?.statusCode) === 503 && (!error.safeAiError || error.retryable)),
         quota = isAIQuotaError(error) && !insufficient && !serviceUnavailable,
         network = /fetch failed|network|econnreset|enotfound|eai_again|timeout|socket/i.test(rawErrorMessage);
       const message = serviceUnavailable
@@ -3009,14 +2992,13 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
 });
 
 app.post("/api/ai/difficulty", async (req, res) => {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return res.status(503).json({ error: "Chưa cấu hình GEMINI_API_KEY trong file server/.env." });
   const { text = "", title = "Đề thi" } = req.body || {};
   if (!String(text).trim()) {
     return res.status(400).json({ error: "Đề thi chưa có nội dung văn bản để phân tích." });
   }
   try {
-    const genAI = new GoogleGenerativeAI(key);
+    const { apiKey } = geminiConfig();
+    const genAI = geminiClient(apiKey);
     const model = genAI.getGenerativeModel({ model: geminiModels()[0] });
     const prompt = `Bạn là trợ lý đánh giá độ khó đề thi Toán THPT. Hãy phân tích đề sau bằng tiếng Việt, không tự khẳng định đáp án nếu thiếu dữ liệu. Trả lời ngắn gọn theo cấu trúc: Mức độ tổng quát (dễ/trung bình/khó), phân tích theo kiến thức, độ phân hóa, thời gian ước lượng và lưu ý.\nTên đề: ${String(
       title
@@ -3024,10 +3006,9 @@ app.post("/api/ai/difficulty", async (req, res) => {
     const result = await model.generateContent(prompt);
     res.json({ analysis: result.response.text() });
   } catch (err) {
-    console.error("Gemini error:", err);
-    res.status(502).json({
-      error: "Gemini không thể xử lý yêu cầu lúc này. Hãy kiểm tra model, API key và quota."
-    });
+    const error = providerError(err);
+    console.error('Gemini difficulty:', error.code);
+    res.status(error.status).json({ error: error.message, code: error.code });
   }
 });
 

@@ -19,7 +19,8 @@
     "storage:verify": "node server/platform/verify-storage.js",
     "test:learning": "node scripts/learning-check.mjs",
     "test:advisor": "node scripts/learning-advisor-check.mjs",
-    "test:auth": "node scripts/auth-check.mjs"
+    "test:auth": "node scripts/auth-check.mjs",
+    "ai:check": "node server/check-ai.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",

@@ -1,10 +1,11 @@
+import { geminiConfig, geminiClient, canTryAnotherModel, providerError } from '../ai-provider.js';
 import { geminiModels } from '../ai-models.js';
 /**
  * server/chemistry/solver-service.js
  * Dịch vụ xử lý giải bài tập Hóa học với Google Gemini AI
  */
 
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { SchemaType } from "@google/generative-ai";
 
 const CHEMISTRY_SYSTEM_PROMPT = `
 Bạn là một Chuyên gia Giảng dạy và Giải bài tập Hóa học THPT hàng đầu tại Việt Nam, nắm vững chương trình Giáo dục Phổ thông hiện hành (lớp 10, 11, 12).
@@ -90,14 +91,9 @@ const chemistrySolutionSchema = {
 };
 
 export async function solveChemistryProblem({ prompt, image, grade, mode, topic }) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    const error = new Error("Chưa cấu hình GEMINI_API_KEY trong file server/.env.");
-    error.code = "MISSING_API_KEY";
-    throw error;
-  }
+  const { apiKey } = geminiConfig();
 
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const genAI = geminiClient(apiKey);
   const configuredModels = geminiModels();
 
   const contents = [];
@@ -152,10 +148,10 @@ ${prompt || "(Xem đề bài trong hình ảnh đính kèm)"}
 
       return parsedSolution;
     } catch (err) {
-      console.warn(`[Chemistry Solver] Model ${modelName} gặp lỗi:`, err.message || err);
-      lastError = err;
+      console.warn(`[Chemistry Solver] Model ${modelName} gặp lỗi:`, providerError(err).code);
+      lastError = providerError(err);
       const isQuota = /quota|429|resource_exhausted/i.test(err.message || "");
-      if (isQuota) break; // If quota is exhausted on the API key, trying next model on the same key might still hit quota, but let's check
+      if (isQuota || !canTryAnotherModel(lastError)) break; // If quota is exhausted on the API key, trying next model on the same key might still hit quota, but let's check
     }
   }
 
