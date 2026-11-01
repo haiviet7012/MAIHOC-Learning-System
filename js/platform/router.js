@@ -6,7 +6,7 @@ const paths = {
   "assignment-management": "/school/assignment-management",
   assignments: "/school/assignments",
   "school-analytics": "/school/progress",
-  timetable: "/learning/timetable",
+  timetable: "/school/timetable",
   analytics: "/learning/progress",
   "subject-picker": "/learning/subjects",
   theory: "/learning/library",
@@ -42,6 +42,7 @@ export function parseRoute(url) {
       subject: url.searchParams.get("subject") || "Toán",
       grade: url.searchParams.get("grade") || "10",
     };
+  if (path === "/learning/timetable") return { route: "timetable" };
   if (path === "/learning/assignments") return { route: "assignments" };
   if (path === "/learning/tests") return { route: "tests" };
   if (path.startsWith("/school/tests/")) return { route: "tests", pendingTestId: decodeURIComponent(path.slice(14)) };

@@ -2,10 +2,9 @@ import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from '../ui.js';
 import { api } from './api.js';
 
-const subjects = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'IELTS', 'Tự học'];
-const days = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'];
-const sessions = [{ name: 'Sáng', count: 5, start: 0 }, { name: 'Chiều', count: 4, start: 5 }];
-const heading = (title, sub) => `<div class="portal-heading"><div><p class="eyebrow">MAIHOC · LEARNING</p><h1>${title}</h1><p>${sub}</p></div></div>`;
+import { subjects, days, sessions, loadExcelJS, parseTimetableWorkbook, createTimetableWorkbook } from './timetable-xlsx.js';
+
+const heading = (title, sub, space = 'LEARNING') => `<div class="portal-heading"><div><p class="eyebrow">MAIHOC · ${space}</p><h1>${title}</h1><p>${sub}</p></div></div>`;
 const colour = subject => subjects.indexOf(subject) % 5;
 function grid(cells, editable = false) {
   return `<div class="timetable-scroll" tabindex="0" aria-label="Thời khóa biểu tuần"><table class="timetable-grid"><caption>Thời khóa biểu cá nhân từ thứ hai đến chủ nhật</caption><thead><tr><th scope="col">Buổi</th><th scope="col">Tiết</th>${days.map(d => `<th scope="col">${d}</th>`).join('')}</tr></thead>${sessions.map(session => `<tbody aria-label="Buổi ${session.name}">${Array.from({length: session.count}, (_, period) => `<tr>${period === 0 ? `<th scope="rowgroup" rowspan="${session.count}" class="timetable-session">${session.name}</th>` : ''}<th scope="row" class="timetable-period">${period + 1}</th>${days.map((d, col) => {
@@ -53,22 +52,27 @@ export function mountLearningProgress(container, user) {
 }
 
 export function mountTimetable(container, user, { createNew = false } = {}) {
+  const timetableHeading = (title, sub) => heading(title, sub, 'SCHOOL');
   const controller = new AbortController();
   let cells = {}, legacyCells = null, version = 0, selected = subjects[0], dirty = false, busy = false;
   const unload = event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
   window.addEventListener('beforeunload', unload);
-  container.innerHTML = heading('Thời khóa biểu của bạn', 'Kéo môn học vào ô, hoặc chọn môn rồi nhấn vào ô để xếp lịch.') + '<p role="status">Đang tải lịch…</p>';
+  container.innerHTML = timetableHeading('Thời khóa biểu của bạn', 'Kéo môn học vào ô, hoặc chọn môn rồi nhấn vào ô để xếp lịch.') + '<p role="status">Đang tải lịch…</p>';
   const confirmNew = () => window.confirm('Bạn có muốn xóa thời khóa biểu hiện tại để tạo thời khóa biểu mới? Lịch mới chỉ thay thế lịch cũ khi bạn nhấn Lưu.');
-  function draw() {
-    container.innerHTML = heading('Thời khóa biểu của bạn', 'Kéo môn học vào ô, hoặc chọn môn rồi nhấn vào ô để xếp lịch.') + `<div class="timetable-actions"><button class="button primary" data-save-timetable>Lưu thời khóa biểu</button><button class="button secondary" data-reset-timetable>Tạo thời khóa biểu mới</button><button class="button secondary" data-exit-timetable>Quay lại tổng quan</button></div><p data-timetable-status role="status" aria-live="polite">${dirty ? 'Có thay đổi chưa lưu.' : version ? 'Đã tải lịch đã lưu.' : 'Lịch mới chưa được lưu.'}</p><div class="timetable-editor"><aside class="timetable-subjects" aria-label="Chọn môn học"><h2>Môn học</h2>${subjects.map(s => `<button type="button" draggable="true" data-subject-choice="${e(s)}" aria-pressed="${s === selected}" class="tone-${colour(s)}">${e(s)}</button>`).join('')}<button type="button" data-erase-cell aria-pressed="${selected === null}">Xóa ô</button></aside><div>${grid(cells, true)}${legacySchedule(legacyCells)}<p class="muted tiny">Chuột phải vào môn để xóa. Bạn cũng có thể nhấn Delete khi ô đang được chọn, hoặc chọn “Xóa ô” rồi nhấn ô.</p></div></div>`;
+  function setBusy() {
+    container.querySelectorAll('[data-save-timetable], [data-reset-timetable], [data-import-timetable], [data-export-timetable], [data-exit-timetable], [data-timetable-file]').forEach(el => { el.disabled = busy; });
   }
-  if (!user) container.innerHTML = heading('Thời khóa biểu của bạn', 'Lịch học cá nhân của MAIHOC Learning') + login;
+  function draw() {
+    container.innerHTML = timetableHeading('Thời khóa biểu của bạn', 'Kéo môn học vào ô, hoặc chọn môn rồi nhấn vào ô để xếp lịch.') + `<div class="timetable-actions"><button class="button primary" data-save-timetable>Lưu thời khóa biểu</button><button class="button secondary" data-reset-timetable>Tạo thời khóa biểu mới</button><button type="button" class="button secondary" data-import-timetable>Nhập .xlsx</button><input type="file" data-timetable-file accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden><button type="button" class="button secondary" data-export-timetable>Xuất .xlsx</button><button class="button secondary" data-exit-timetable>Quay lại tổng quan</button></div><p data-timetable-status role="status" aria-live="polite">${dirty ? 'Có thay đổi chưa lưu.' : version ? 'Đã tải lịch đã lưu.' : 'Lịch mới chưa được lưu.'}</p><div class="timetable-editor"><aside class="timetable-subjects" aria-label="Chọn môn học"><h2>Môn học</h2>${subjects.map(s => `<button type="button" draggable="true" data-subject-choice="${e(s)}" aria-pressed="${s === selected}" class="tone-${colour(s)}">${e(s)}</button>`).join('')}<button type="button" data-erase-cell aria-pressed="${selected === null}">Xóa ô</button></aside><div>${grid(cells, true)}${legacySchedule(legacyCells)}<p class="muted tiny">Excel: dùng bảng Buổi | Tiết | Thứ hai … Chủ nhật hoặc Thứ | Buổi | Tiết | Môn học. Xuất lịch trống để lấy mẫu. Nhập file thay thế lịch đang sửa; nhấn Lưu để lưu vào tài khoản.</p><p class="muted tiny">Chuột phải vào môn để xóa. Bạn cũng có thể nhấn Delete khi ô đang được chọn, hoặc chọn “Xóa ô” rồi nhấn ô.</p></div></div>`;
+    setBusy();
+  }
+  if (!user) container.innerHTML = timetableHeading('Thời khóa biểu của bạn', 'Lịch học cá nhân của MAIHOC Learning') + login;
   else api('/api/learning/timetable', { signal: controller.signal }).then(({ timetable }) => {
     if (controller.signal.aborted) return;
     cells = { ...(timetable?.cells || {}) }; legacyCells = timetable?.legacyCells; version = timetable?.version || 0;
     if (createNew && timetable && confirmNew()) { cells = {}; dirty = true; }
     draw();
-  }).catch(error => { if (!controller.signal.aborted) container.innerHTML = heading('Thời khóa biểu của bạn', '') + `<p role="alert">${e(error.message)}</p><button class="button secondary" data-route="home">Về tổng quan</button>`; });
+  }).catch(error => { if (!controller.signal.aborted) container.innerHTML = timetableHeading('Thời khóa biểu của bạn', '') + `<p role="alert">${e(error.message)}</p><button class="button secondary" data-route="home">Về tổng quan</button>`; });
   function place(key, subject = selected) {
     if (busy || !/^[0-8]-[0-6]$/.test(key) || (subject !== null && !subjects.includes(subject))) return;
     const focused = container.querySelector('[data-place]:focus')?.dataset.place;
@@ -78,6 +82,26 @@ export function mountTimetable(container, user, { createNew = false } = {}) {
   }
   container.addEventListener('click', async event => {
     if (busy) return;
+    if (event.target.closest('[data-import-timetable]')) { container.querySelector('[data-timetable-file]').click(); return; }
+    if (event.target.closest('[data-export-timetable]')) {
+      busy = true; draw();
+      const status = container.querySelector('[data-timetable-status]'); status.textContent = 'Đang xuất Excel…';
+      try {
+        const ExcelJS = await loadExcelJS();
+        if (controller.signal.aborted) return;
+        const now = new Date(), workbook = createTimetableWorkbook(ExcelJS, cells, now);
+        const bytes = await workbook.xlsx.writeBuffer();
+        if (controller.signal.aborted) return;
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        const link = document.createElement('a'); link.href = url;
+        const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+        link.download = `MAIHOC-thoi-khoa-bieu-${date}.xlsx`; document.body.append(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        status.textContent = 'Đã xuất lịch đang hiển thị (bao gồm thay đổi chưa lưu).';
+      } catch (error) { if (!controller.signal.aborted) status.textContent = error.message; }
+      finally { busy = false; setBusy(); }
+      return;
+    }
     const choice = event.target.closest('[data-subject-choice]');
     if (choice || event.target.closest('[data-erase-cell]')) { selected = choice?.dataset.subjectChoice || null; draw(); container.querySelector(choice ? `[data-subject-choice="${selected}"]` : '[data-erase-cell]')?.focus(); return; }
     const cell = event.target.closest('[data-place]');
@@ -85,7 +109,7 @@ export function mountTimetable(container, user, { createNew = false } = {}) {
     if (event.target.closest('[data-reset-timetable]') && confirmNew()) { cells = {}; dirty = true; draw(); }
     if (event.target.closest('[data-exit-timetable]') && (!dirty || window.confirm('Bỏ các thay đổi chưa lưu?'))) { dirty = false; window.dispatchEvent(new CustomEvent('maihoc-timetable-home')); }
     if (!event.target.closest('[data-save-timetable]')) return;
-    busy = true;
+    busy = true; setBusy();
     container.querySelector('[data-save-timetable]').disabled = true;
     const status = container.querySelector('[data-timetable-status]'); status.textContent = 'Đang lưu…';
     try {
@@ -93,7 +117,25 @@ export function mountTimetable(container, user, { createNew = false } = {}) {
       if (controller.signal.aborted) return;
       version = data.timetable.version; dirty = false; status.textContent = 'Đã lưu thời khóa biểu vào tài khoản.';
     } catch (error) { if (!controller.signal.aborted) status.textContent = error.message; }
-    finally { busy = false; const save = container.querySelector('[data-save-timetable]'); if (save) save.disabled = false; }
+    finally { busy = false; setBusy(); const save = container.querySelector('[data-save-timetable]'); if (save) save.disabled = false; }
+  }, { signal: controller.signal });
+  container.addEventListener('change', async event => {
+    if (!event.target.matches('[data-timetable-file]') || busy) return;
+    const file = event.target.files?.[0]; event.target.value = '';
+    if (!file) return;
+    const status = container.querySelector('[data-timetable-status]');
+    if (!/\.xlsx$/i.test(file.name) || file.size > 5 * 1024 * 1024) { status.textContent = 'Chọn file .xlsx không quá 5 MB.'; return; }
+    busy = true; setBusy(); status.textContent = 'Đang kiểm tra file Excel…';
+    try {
+      const ExcelJS = await loadExcelJS(), workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await file.arrayBuffer());
+      if (controller.signal.aborted) return;
+      const result = parseTimetableWorkbook(workbook), count = Object.keys(result.cells).length;
+      if (!window.confirm(`Đã đọc ${count} tiết học từ sheet “${result.sheetName}”. Thay thế lịch đang hiển thị? Nhấn Lưu sau khi kiểm tra để lưu vào tài khoản.`)) { status.textContent = 'Đã hủy nhập. Lịch hiện tại được giữ nguyên.'; return; }
+      cells = result.cells; dirty = true; draw();
+      container.querySelector('[data-timetable-status]').textContent = `Đã nhập ${count} tiết học. Kiểm tra lịch rồi nhấn Lưu thời khóa biểu.`;
+    } catch (error) { if (!controller.signal.aborted) status.textContent = `Không nhập được file: ${error.message}`; }
+    finally { busy = false; if (!controller.signal.aborted) setBusy(); }
   }, { signal: controller.signal });
   container.addEventListener('contextmenu', event => {
     const cell = event.target.closest('[data-place]');
