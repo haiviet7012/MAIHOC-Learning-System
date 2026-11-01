@@ -35,6 +35,7 @@ const state = { route: standaloneStudentProgress ? "student-progress" : "home", 
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
 let authResolved = false;
+let activeActivityCleanup = null;
 let activePortalCleanup = null;
 let activeTestDraft = null;
 let testStarting = false;
@@ -833,6 +834,7 @@ function render() {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
+    if (activeActivityCleanup) { activeActivityCleanup(); activeActivityCleanup = null; }
     if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
@@ -868,6 +870,7 @@ function render() {
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
     document.body.classList.toggle("exam-open", fullscreenExam);
+    document.body.classList.toggle("practice-open", state.route === "exam" && !fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === "home") {
         view.innerHTML = homePage();
@@ -951,7 +954,7 @@ function render() {
             loadTextExamQuestions(examDocument);
         }
     }
-    if (state.route === 'home') hydrateActivity(view, currentUser);
+    if (state.route === 'home') activeActivityCleanup = hydrateActivity(view, currentUser);
     view.focus({ preventScroll: true });
     if (state.route === "admin")
         loadAdminUsers();

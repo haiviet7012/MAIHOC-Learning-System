@@ -27,28 +27,44 @@ export function dashboardMarkup(user, documents, tests) {
   <section class="portal-panel"><div class="portal-panel-heading"><h2>Khám phá kiến thức</h2><button class="text-button" data-route="subject-picker">Tất cả môn học →</button></div><div class="portal-subjects">${["Toán", "Vật lý", "Hóa học", "Sinh học", "Tiếng Anh"].map((s, i) => `<button data-subject="${s}" class="portal-subject tone-${i % 3}"><span aria-hidden="true">${["∑", "⚛", "⌬", "❀", "Aa"][i]}</span><strong>${s}</strong><small>${documents.filter((d) => d.subject === s).length} tài liệu</small></button>`).join("")}</div></section></div>
   <aside class="portal-side-column"><section class="portal-panel portal-activity"><h2>Hoạt động gần đây</h2><div data-portal-activity>${user ? '<p class="muted">Đang tải hoạt động…</p>' : "<p>Đăng nhập để kết nối với lớp học và theo dõi việc học của bạn.</p>"}</div></section><section class="portal-panel"><div class="portal-panel-heading"><h2>Góc học tập</h2><span aria-hidden="true">✦</span></div><button class="portal-shortcut" data-route="ai-solver"><span><b>Gia sư AI</b><small>Gợi mở, kiểm tra và giải thích</small></span>→</button><button class="portal-shortcut" data-route="study-rooms"><span><b>Phòng tự học</b><small>Cùng nhau giữ nhịp tập trung</small></span>→</button><button class="portal-shortcut" data-route="analytics"><span><b>Tiến trình học tập</b><small>Nhìn lại điều đã học được</small></span>→</button></section><section class="portal-tip"><span class="eyebrow">MẸO HỌC HIỆU QUẢ</span><h3>Hiểu một lỗi sai,<br>tiến thêm một bước.</h3><p>Sau mỗi bài kiểm tra, dành vài phút xem lại cách làm và thử một câu tương tự.</p></section></aside></div>`;
 }
-export async function hydrateActivity(container, user) {
-  if (!user) return;
-  try {
-    const data = await api("/api/notifications");
-    const list = data.notifications || data.items || [];
-    const target = container.querySelector("[data-portal-activity]");
-    if (target)
-      target.innerHTML = list.length
-        ? list
-            .slice(0, 4)
-            .map(
-              (n) =>
-                `<article><span aria-hidden="true">↗</span><div><p>${e(n.title || n.message)}</p><small>${dt(n.createdAt || n.created_at)}</small></div></article>`,
-            )
-            .join("")
-        : "<p>Chưa có thông báo mới. Mọi việc học của bạn sẽ được cập nhật tại đây.</p>";
-  } catch {
-    const target = container.querySelector("[data-portal-activity]");
-    if (target)
-      target.innerHTML =
-        "<p>Chưa tải được hoạt động. Bạn có thể mở lại thông báo sau.</p>";
+export function hydrateActivity(container, user) {
+  if (!user) return () => {};
+  const target = container.querySelector('[data-portal-activity]');
+  if (!target) return () => {};
+  let disposed = false, timer, items = [], clockOffset = 0;
+  const resize = new ResizeObserver(() => sizeList());
+  function sizeList() {
+    const rows = [...target.querySelectorAll('article')];
+    target.style.maxHeight = rows.length > 5
+      ? `${rows[4].offsetTop + rows[4].offsetHeight - rows[0].offsetTop}px` : '';
   }
+  function render() {
+    if (disposed) return;
+    clearTimeout(timer);
+    const now = Date.now() + clockOffset;
+    items = items.filter(item => item.expiresAt > now);
+    target.innerHTML = items.length ? items.map(n =>
+      `<article><span aria-hidden="true">↗</span><div><p>${e(n.title || n.message)}</p><small>${dt(new Date(n.expiresAt - 86400000).toISOString())}</small></div></article>`
+    ).join('') : '<p>Chưa có hoạt động trong 24 giờ qua.</p>';
+    sizeList();
+    if (items.length) timer = setTimeout(render, Math.max(1, Math.min(...items.map(n => n.expiresAt)) - now));
+  }
+  resize.observe(target);
+  document.addEventListener('visibilitychange', render);
+  api('/api/learning/recent-activity').then(data => {
+    if (disposed) return;
+    clockOffset = data.serverTime - Date.now();
+    items = data.items || [];
+    render();
+  }).catch(() => {
+    if (!disposed) target.innerHTML = '<p>Chưa tải được hoạt động. Vui lòng thử lại sau.</p>';
+  });
+  return () => {
+    disposed = true;
+    clearTimeout(timer);
+    resize.disconnect();
+    document.removeEventListener('visibilitychange', render);
+  };
 }
 
 export function mountPortal(container, route, user, onNavigate) {

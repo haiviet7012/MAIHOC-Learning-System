@@ -1433,6 +1433,18 @@ app.post(
 
 // -------------------- NOTIFICATIONS + LEARNING PROGRESS --------------------
 
+// Recent activity is a rolling view; notification history and learning evidence stay intact.
+app.get("/api/learning/recent-activity", requireAuth, async (req, res) => {
+  const now = Date.now();
+  const cutoff = new Date(now - 86400000).toISOString().slice(0, 19).replace('T', ' ');
+  const items = await db.prepare(
+    "SELECT id,type,title,message,created_at AS createdAt FROM notifications WHERE user_id=? AND created_at>? ORDER BY created_at DESC,id DESC"
+  ).all(req.user.id, cutoff);
+  res.json({ items: items.map(item => ({ ...item,
+    expiresAt: new Date(item.createdAt.replace(' ', 'T') + 'Z').getTime() + 86400000
+  })).filter(item => item.expiresAt > now), serverTime: now });
+});
+
 app.get("/api/notifications", requireAuth, async (req, res) => {
   const items = await db
     .prepare(
