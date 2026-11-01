@@ -153,15 +153,19 @@ a {
   align-items: center;
   gap: 13px;
   width: 100%;
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   background: none;
   color: #5c6d89;
   border-radius: 9px;
-  padding: 11px 14px;
+  box-sizing: border-box;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 8px 13px;
+  line-height: 18px;
   text-align: left;
   font-size: 14px;
   font-weight: 700;
-  min-height: 46px;
+  min-height: 56px;
 }
 .education-sidebar nav button:hover {
   background: #e7ecf7;
@@ -180,6 +184,7 @@ a {
 }
 .education-sidebar nav .nav-glyph {
   width: 22px;
+  flex: 0 0 22px;
   text-align: center;
   font-size: 20px;
 }
