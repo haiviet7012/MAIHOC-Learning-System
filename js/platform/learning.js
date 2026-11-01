@@ -1,3 +1,4 @@
+import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from '../ui.js';
 import { api } from './api.js';
 
@@ -29,6 +30,7 @@ export function mountTimetablePreview(container, user) {
 }
 
 export function mountLearningProgress(container, user) {
+  let disposeAdvisor = () => {};
   const controller = new AbortController();
   container.innerHTML = heading('Tiến trình học tập', 'Theo dõi việc tự học trên MAIHOC Learning, độc lập với School.') + '<div data-learning-progress role="status">Đang tải tiến trình…</div>';
   const target = container.querySelector('[data-learning-progress]');
@@ -39,8 +41,10 @@ export function mountLearningProgress(container, user) {
     const percent = p => Math.max(0, Math.min(100, Number(p.progressPercent) || 0));
     const done = rows.filter(p => p.status === 'completed' || percent(p) === 100).length;
     target.innerHTML = `<div class="portal-stats"><article class="portal-stat yellow"><span>Mục đang theo dõi</span><strong>${rows.length}</strong></article><article class="portal-stat lavender"><span>Đã hoàn thành</span><strong>${done}</strong></article><article class="portal-stat blue"><span>Tiến độ trung bình</span><strong>${rows.length ? Math.round(rows.reduce((sum, p) => sum + percent(p), 0) / rows.length) : 0}%</strong></article></div><section class="portal-panel learning-progress-list"><h2>Hành trình tự học của bạn</h2>${rows.length ? rows.map(p => `<article class="portal-record"><div><h3>${e(p.itemTitle || 'Nội dung học tập')}</h3><p>${e(p.subject || '')} · ${e(p.grade || '')} · ${p.status === 'completed' || percent(p) === 100 ? 'Hoàn thành' : 'Đang học'}</p><progress max="100" value="${percent(p)}" aria-label="Tiến độ ${e(p.itemTitle || '')}"></progress></div><strong>${percent(p)}%</strong></article>`).join('') : '<p>Bạn chưa có tiến trình Learning. Hãy mở học liệu hoặc luyện tập để bắt đầu ghi nhận.</p>'}</section>`;
+    const advisor = document.createElement('div'); container.append(advisor);
+    disposeAdvisor = mountLearningAdvisor(advisor);
   }).catch(error => { if (!controller.signal.aborted) target.innerHTML = `<p role="alert">${e(error.message)}</p>`; });
-  return () => controller.abort();
+  return () => { controller.abort(); disposeAdvisor(); };
 }
 
 export function mountTimetable(container, user, { createNew = false } = {}) {

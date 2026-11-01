@@ -1,3 +1,4 @@
+import { installLearningAdvisor } from './learning-advisor/routes.js';
 import { ensureLearningSchema, installLearningRoutes } from "./learning.js";
 import { aiExamGuard } from './platform/ai-guard.js';
 import { geminiModels } from './ai-models.js';
@@ -1511,6 +1512,7 @@ app.get("/api/admin/progress", requireSuperAdmin, async (req, res) => {
 });
 
 installLearningRoutes(app, { db, requireAuth, requireSameOrigin });
+installLearningAdvisor(app, { db, requireAuth, requireSameOrigin });
 
 app.get("/api/progress", requireAuth, async (req, res) => {
   const rows = await db
