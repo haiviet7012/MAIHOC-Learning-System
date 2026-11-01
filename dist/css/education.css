@@ -1456,22 +1456,22 @@ button,input,select,textarea {font-family:inherit;}
 .advisor { margin-top:24px; }
 .advisor-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
 .advisor label { display:grid; gap:6px; font-size:14px; }
-.advisor input:not([type=checkbox]),.advisor select,.advisor textarea { width:100%; padding:10px 12px; border:1px solid #ccd8d1; border-radius:0; background:#fff; color:#233a2d; font:inherit; box-sizing:border-box; }
+.advisor input:not([type=checkbox]),.advisor select,.advisor textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:0; background:var(--surface); color:var(--text); font:inherit; box-sizing:border-box; }
 .advisor-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:20px 0; }
 .advisor-options button { min-height:52px; white-space:normal; }
 .advisor-charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; }
-.advisor-chart { padding:20px; border-radius:0; background:#f8faf8; border:1px solid #e4ece5; min-width:0; }
+.advisor-chart { padding:20px; border-radius:0; background:var(--surface-2); border:1px solid var(--border); min-width:0; }
 .advisor-chart svg { display:block; width:100%; max-height:350px; margin:auto; }
 .advisor table { width:100%; border-collapse:collapse; margin:12px 0; }
-.advisor th,.advisor td { padding:8px; border-bottom:1px solid #e3e9e5; text-align:left; }
+.advisor th,.advisor td { padding:8px; border-bottom:1px solid var(--border); text-align:left; }
 .advisor caption { text-align:left; font-weight:600; }
 .advisor-workspace { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; margin-top:24px; }
-.advisor-chat { max-height:460px; overflow:auto; padding:16px; border:1px solid #e3e9e5; border-radius:0; background:#fbfcfb; }
-.advisor-message { margin:0 0 12px; padding:14px; border-radius:0; background:#edf5ee; }
+.advisor-chat { max-height:460px; overflow:auto; padding:16px; border:1px solid var(--border); border-radius:0; background:var(--surface-2); }
+.advisor-message { margin:0 0 12px; padding:14px; border-radius:0; background:var(--surface-2); }
 .advisor-message p { white-space:pre-wrap; overflow-wrap:anywhere; }
-.advisor-user { background:#eef1fa; }
+.advisor-user { background:var(--surface); }
 .advisor form { display:grid; gap:12px; margin-top:16px; }
-.advisor-plan { border:1px solid #d9e6db; border-radius:0; padding:18px; margin-bottom:16px; }
+.advisor-plan { border:1px solid var(--border); border-radius:0; padding:18px; margin-bottom:16px; }
 .advisor-plan ol { padding-left:20px; }
 .advisor-plan li { margin:14px 0; }
 .advisor-plan li label { display:block; line-height:1.6; }
@@ -1603,3 +1603,32 @@ button,input,select,textarea {font-family:inherit;}
 .advisor-drawer-host.is-open .advisor-drawer { transform:translateX(0); visibility:visible; }
 .advisor-dismiss { position:absolute; top:12px; right:12px; width:40px; height:32px; background:var(--surface-2); color:var(--primary); border:1px solid var(--border); }
 @media(prefers-reduced-motion:reduce) { .advisor-drawer { transition:none; } }
+
+/* All progress tracks occupy the same full row, regardless of percentage width. */
+.learning-progress-list .portal-record { position:relative; display:block; }
+.learning-progress-list .portal-record > div { width:100%; }
+.learning-progress-list .portal-record h3,
+.learning-progress-list .portal-record p { padding-right:64px; }
+.learning-progress-list .portal-record > strong { position:absolute; top:18px; right:0; text-align:right; }
+.learning-progress-list progress { display:block; width:100%; height:8px; appearance:none; -webkit-appearance:none; border:0; background:var(--surface-2); color:var(--primary); }
+.learning-progress-list progress::-webkit-progress-bar { background:var(--surface-2); }
+.learning-progress-list progress::-webkit-progress-value { background:var(--primary); }
+.learning-progress-list progress::-moz-progress-bar { background:var(--primary); }
+/* Explicit circular exceptions for the three floating actions. */
+:root .online-dashboard-fab,
+:root .chat-launcher,
+:root #notifications-open {
+  border-radius:50% !important;
+  border:2px solid #b4d7ff !important;
+}
+:root.dark .advisor .button.secondary { background:var(--surface-2); color:var(--text); border-color:var(--border); }
+:root.dark .advisor .button.primary { background:#315fa8; color:#fff; border-color:#80baff; }
+:root.dark .advisor-chart,
+:root.dark .advisor-chat,
+:root.dark .advisor-message,
+:root.dark .advisor-plan { color:var(--text); }
+.advisor-chart svg text { fill:var(--text); }
+:root.dark .advisor input::placeholder,
+:root.dark .advisor textarea::placeholder { color:var(--muted); opacity:1; }
+
+.test-queue-footer { padding:20px; display:flex; justify-content:center; border-top:1px solid var(--border); }
