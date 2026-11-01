@@ -42,7 +42,7 @@ export async function workOnce({
       [
         job.id,
         token,
-        job.attempts >= 3 ? "failed" : "queued",
+        job.attempts >= 3 || (error.safeAiError && !error.retryable) ? "failed" : "queued",
         String(error.message).slice(0, 1000),
         Math.min(300, 2 ** job.attempts * 10),
       ],

@@ -1,10 +1,11 @@
+import { configValue, normalizeModel } from './ai-provider.js';
 // Model names are deployment configuration, never a guessed provider fallback chain.
 export function geminiModels(preferred = process.env.GEMINI_MODEL) {
   const models = [
     preferred,
     ...String(process.env.GEMINI_FALLBACK_MODELS || "").split(","),
   ]
-    .map((x) => String(x || "").trim())
+    .map(configValue)
     .filter(Boolean);
   if (!models.length) {
     const error = new Error(
@@ -13,7 +14,7 @@ export function geminiModels(preferred = process.env.GEMINI_MODEL) {
     error.status = 503;
     throw error;
   }
-  return [...new Set(models)];
+  return [...new Set(models.map(normalizeModel))];
 }
 export function tutorInstruction(mode) {
   if (mode === "hint")

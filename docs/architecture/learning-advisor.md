@@ -14,7 +14,7 @@ LEARNING_ADVISOR_API_KEY=YOUR_DEDICATED_KEY
 LEARNING_ADVISOR_MODEL=gemini-3.6-flash
 ```
 
-Đây là một API key và hai biến cấu hình, không phải ba API key. Engine không đọc `GEMINI_API_KEY`, không dùng fallback model/client của solver. Key chỉ được đọc ở server và gửi trong header, không ở URL hoặc frontend. Không commit `.env`, không gửi key qua chat. File mẫu: `server/.env.learning-advisor.example`.
+Đây là một API key và hai biến cấu hình, không phải ba API key. Engine ưu tiên `LEARNING_ADVISOR_API_KEY` / `LEARNING_ADVISOR_MODEL`; để trống thì dùng `GEMINI_API_KEY` (hoặc `GOOGLE_API_KEY`) / `GEMINI_MODEL`. Key riêng sai hoặc hết hạn sẽ báo lỗi, không tự chuyển sang key khác. Cố vấn không dùng chuỗi fallback model của solver. Key chỉ được đọc ở server và gửi trong header, không ở URL hoặc frontend. Không commit `.env`, không gửi key qua chat. File mẫu: `server/.env.learning-advisor.example`.
 
 Từ thư mục gốc repository:
 

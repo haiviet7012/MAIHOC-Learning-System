@@ -28,7 +28,7 @@ function loadEnvFileFallback(filePath) {
 
 try {
   const { default: dotenv } = await import("dotenv");
-  dotenv.config({ path: path.join(__dirname, ".env"), override: true });
+  dotenv.config({ path: path.join(__dirname, ".env") });
   dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
   dotenv.config();
 } catch {
