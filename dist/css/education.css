@@ -1266,3 +1266,15 @@ body.reader-open .app-body {
 @media(max-width:900px) {
  #online-dashboard.online-drawer:not([hidden]) {left:0;top:78px;width:320px;max-width:100vw;}
 }
+
+/* Online dashboard launcher sits above chat and notifications. */
+.online-dashboard-fab {
+ position:fixed;right:28px;bottom:148px;z-index:990;
+ width:48px;height:48px;min-width:48px;min-height:48px;padding:0;
+ display:grid;place-items:center;border:1px solid var(--primary);
+ border-radius:50%;background:var(--primary);color:#fff;
+ font-size:24px;font-weight:700;line-height:1;box-shadow:0 8px 24px #132b5e26;
+}
+.online-dashboard-fab:hover {filter:brightness(1.15);}
+.online-dashboard-fab.active {outline:3px solid var(--primary);outline-offset:3px;}
+@media(max-width:700px) {.online-dashboard-fab {right:16px;}}
