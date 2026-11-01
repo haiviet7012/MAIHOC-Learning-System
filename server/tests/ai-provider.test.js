@@ -17,7 +17,13 @@ test('normalizes shared and dedicated config, honors precedence and accepts auth
   assert.equal(geminiConfig('shared',env).model,'gemini-fixture');
   assert.equal(geminiConfig('advisor',{...env,LEARNING_ADVISOR_API_KEY:'  ',LEARNING_ADVISOR_MODEL:'  '}).keySource,'GEMINI_API_KEY');
   assert.equal(geminiConfig('advisor',{...env,LEARNING_ADVISOR_API_KEY:'dedicated',LEARNING_ADVISOR_MODEL:'gemini-advisor'}).model,'gemini-advisor');
-  assert.equal(geminiConfig('exam',{...env,GEMINI_SOLUTION_MODEL:'gemini-exam'}).model,'gemini-exam');
+  const exam = geminiConfig('exam',{...env,GEMINI_SOLUTION_API_KEY:'exam-only',GEMINI_SOLUTION_MODEL:'gemini-exam'});
+  assert.equal(exam.model,'gemini-exam');
+  assert.equal(exam.apiKey,'exam-only');
+  assert.equal(exam.keySource,'GEMINI_SOLUTION_API_KEY');
+  assert.equal(geminiConfig('exam',{...env,GEMINI_SOLUTION_API_KEY:'  '}).apiKey,fakeKey);
+  assert.equal(geminiConfig('shared',{...env,GEMINI_SOLUTION_API_KEY:'exam-only'}).apiKey,fakeKey);
+  assert.equal(geminiConfig('exam',{GEMINI_SOLUTION_API_KEY:'exam-only',GEMINI_SOLUTION_MODEL:'gemini-exam'}).apiKey,'exam-only');
   assert.equal(geminiConfig('shared',{...env,GEMINI_API_KEY:'',GOOGLE_API_KEY:'alias'}).apiKey,'alias');
   assert.equal(geminiConfigured('advisor', {GEMINI_API_KEY:' ',GEMINI_MODEL:'x'}),false);
   assert.throws(()=>geminiConfig('shared',{...env,GEMINI_API_KEY:'bad\nkey'}),e=>e.code==='AI_KEY_FORMAT');
@@ -76,16 +82,18 @@ test('tutor, chemistry and exam retain successful response formats',async t=>{
 });
 test('live diagnostic verifies each configured model using correct key, without publishing keys',async()=>{
   let listCalls=0,generateCalls=0;
-  const results=await checkAi({env:{...env,LEARNING_ADVISOR_API_KEY:'dedicated',LEARNING_ADVISOR_MODEL:'gemini-advisor'},generate:true,fetcher:async(url,options)=>{
+  const results=await checkAi({env:{...env,LEARNING_ADVISOR_API_KEY:'dedicated',LEARNING_ADVISOR_MODEL:'gemini-advisor',GEMINI_SOLUTION_API_KEY:'exam-key',GEMINI_SOLUTION_MODEL:'gemini-exam'},generate:true,fetcher:async(url,options)=>{
     assert.ok(!url.includes(fakeKey));
     if(url.includes(':generateContent')) {generateCalls++;return candidate('OK');}
     listCalls++;
-    const model=options.headers['x-goog-api-key']==='dedicated'?'gemini-advisor':'gemini-fixture';
+    const model=({'dedicated':'gemini-advisor','exam-key':'gemini-exam'})[options.headers['x-goog-api-key']] || 'gemini-fixture';
     return new Response(JSON.stringify({models:[{name:'models/'+model,supportedGenerationMethods:['generateContent']}]}));
   }});
-  assert.equal(listCalls,2);assert.equal(generateCalls,3);
+  assert.equal(listCalls,3);assert.equal(generateCalls,3);
   assert.ok(results.every(r=>r.status==='GENERATE_VERIFIED'));
   assert.ok(!JSON.stringify(results).includes(fakeKey));
+  assert.ok(!JSON.stringify(results).includes('exam-key'));
+  assert.equal(results.find(r=>r.scope==='exam').keySource,'GEMINI_SOLUTION_API_KEY');
   const failure=await checkAi({env,live:true,fetcher:async()=>rejected(401)});
   assert.ok(failure.every(r=>r.status==='AI_AUTH_INVALID'));
   assert.ok(!JSON.stringify(failure).includes(fakeKey));
