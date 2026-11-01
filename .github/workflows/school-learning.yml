@@ -28,6 +28,7 @@ jobs:
       - run: npm ci --prefix server --ignore-scripts
       - run: npm test
       - run: node --test server/tests/platform-foundation.test.js server/tests/postgres-runtime.test.js
+      - run: node --test server/tests/timetable.test.js
       - name: PostgreSQL migration and domain integration
         run: npm run test:platform
         env:

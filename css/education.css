@@ -1388,3 +1388,10 @@ button,input,select,textarea {font-family:inherit;}
 .advisor-plan li label { display:block; line-height:1.6; }
 .advisor button:focus-visible,.advisor input:focus-visible,.advisor select:focus-visible,.advisor textarea:focus-visible { outline:3px solid #3d7751; outline-offset:3px; }
 @media(max-width:760px) { .advisor-workspace,.advisor-options { grid-template-columns:1fr; } .advisor-chart { padding:12px; } }
+
+.timetable-grid th:first-child {width:54px;}
+.timetable-grid th:nth-child(2) {width:40px;}
+.timetable-grid .timetable-cell {min-height:48px;}
+.timetable-grid tbody + tbody {border-top:3px solid var(--primary);}
+.timetable-grid .timetable-session {font-size:14px;}
+.timetable-legacy {margin:12px 0;font-size:12px;color:var(--muted);}
