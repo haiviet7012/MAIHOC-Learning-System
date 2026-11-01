@@ -1278,3 +1278,15 @@ body.reader-open .app-body {
 .online-dashboard-fab:hover {filter:brightness(1.15);}
 .online-dashboard-fab.active {outline:3px solid var(--primary);outline-offset:3px;}
 @media(max-width:700px) {.online-dashboard-fab {right:16px;}}
+
+/* Blur the welcome image layer only; foreground stays sharp. */
+.portal-welcome {isolation:isolate;}
+.portal-welcome::before {
+ content:"";position:absolute;inset:-6px;z-index:0;pointer-events:none;
+ background:linear-gradient(90deg,rgba(237,241,251,.88),rgba(237,241,251,.40)),url("/images/background.jpg") center/cover no-repeat;
+ filter:blur(3px);
+}
+.portal-welcome > * {position:relative;z-index:1;}
+:root.dark .portal-welcome::before {
+ background-image:linear-gradient(90deg,rgba(32,47,76,.90),rgba(32,47,76,.50)),url("/images/background.jpg");
+}
