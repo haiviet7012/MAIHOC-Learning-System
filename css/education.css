@@ -81,6 +81,7 @@ a {
   flex-direction: column;
   padding: 28px 18px;
   overflow-y: auto;
+  font-weight: 700;
 }
 .education-logo {
   display: flex;
@@ -107,7 +108,9 @@ a {
 .education-logo small {
   display: block;
   font-size: 9px;
-  letter-spacing: 1.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
   color: var(--muted);
 }
 .education-switch {
@@ -124,8 +127,8 @@ a {
   border-radius: 6px;
   background: none;
   color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 800;
+  font-size: 14px;
 }
 .education-switch button.active {
   background: #fff;
@@ -133,9 +136,9 @@ a {
   box-shadow: 0 2px 5px #14264a0d;
 }
 .education-nav-label {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1.5px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--muted);
   padding: 0 14px;
   margin: 10px 0;
@@ -150,13 +153,14 @@ a {
   align-items: center;
   gap: 13px;
   width: 100%;
-  border: 0;
+  border: 1px solid var(--border);
   background: none;
   color: #5c6d89;
   border-radius: 9px;
   padding: 11px 14px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 700;
   min-height: 46px;
 }
 .education-sidebar nav button:hover {
@@ -167,6 +171,7 @@ a {
   background: #e1e7f5;
   color: var(--primary);
   font-weight: 700;
+  border: 2px solid #c4d1e8;
 }
 .education-sidebar nav img {
   width: 22px;
@@ -182,7 +187,7 @@ a {
   margin-top: auto;
   padding: 28px 12px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 .education-sidebar-foot strong {
   color: var(--primary);
@@ -191,7 +196,8 @@ a {
 .education-top-title {
   margin-right: auto;
   padding-left: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 800;
   color: var(--primary);
 }
 .education-mobile-menu {
@@ -216,15 +222,52 @@ a {
 }
 .topbar-actions {
   width: auto;
-  gap: 12px;
+  gap: 8px;
+  align-items: center;
+}
+.topbar-actions > .inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .topbar .button,
 .topbar .icon-button {
-  font-size: 11px;
+  font-size: 15px;
+  font-weight: 800;
   border-radius: 8px;
 }
+.app-shell > .topbar .topbar-actions > .icon-button,
+.app-shell > .topbar .topbar-actions > .inline-actions > .icon-button,
+.app-shell > .topbar .topbar-actions > .inline-actions > .button {
+  box-sizing: border-box;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#theme-toggle,
+#menu-toggle {
+  flex: 0 0 48px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+}
+.topbar-actions :is(.icon-button, .button):focus-visible {
+  outline-width: 2px;
+  outline-offset: 2px;
+}
+:root.dark .app-shell > .topbar .topbar-actions > .icon-button,
+:root.dark .app-shell > .topbar .topbar-actions > .inline-actions > .icon-button,
+:root.dark .app-shell > .topbar .topbar-actions > .inline-actions > .button {
+  border-color: #7187a8;
+}
 .topbar #user-actions {
-  gap: 5px;
+  gap: 8px;
 }
 .topbar #school-classes-open,
 .topbar #tests-open,
@@ -235,7 +278,8 @@ a {
   display: block;
 }
 .education-user {
-  font-size: 12px;
+  font-size: 16px;
+  font-weight: 800;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -288,15 +332,16 @@ a {
 }
 .portal-heading p {
   margin: 0;
-  font-size: 12px;
+  font-size: 15px;
 }
 .portal-heading .eyebrow {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1.8px;
   color: #7b88a2;
 }
 .portal-date {
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 800;
   color: var(--muted);
   text-align: right;
 }
@@ -305,6 +350,7 @@ a {
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 24px;
   align-items: start;
+  font-weight: 700;
 }
 .portal-main-column,
 .portal-side-column {
@@ -318,14 +364,15 @@ a {
   justify-content: space-between;
   align-items: center;
   padding: 32px;
-  border: 1px solid #e0e6f2;
+  border: 1px solid #bfd5fb;
   border-radius: 16px;
   background: #edf1fb;
   overflow: hidden;
   min-height: 260px;
+  box-shadow: 0 0 0 1px #ffffffb8, 0 10px 28px #183b7012;
 }
 .portal-overline {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1.4px;
   color: #60729d;
   font-weight: 600;
@@ -338,14 +385,14 @@ a {
   margin: 15px 0;
 }
 .portal-welcome p {
-  font-size: 12px;
+  font-size: 15px;
   color: #657596;
   line-height: 1.9;
   margin: 0 0 20px;
 }
 .portal-welcome button {
   gap: 20px;
-  font-size: 12px;
+  font-size: 15px;
 }
 .portal-book-art {
   width: 145px;
@@ -396,7 +443,7 @@ a {
   padding: 20px;
 }
 .portal-stat span {
-  font-size: 11px;
+  font-size: 14px;
   color: #43536f;
   font-weight: 600;
 }
@@ -408,7 +455,7 @@ a {
   margin: 9px 0;
 }
 .portal-stat small {
-  font-size: 10px;
+  font-size: 13px;
   color: #5b6781;
 }
 .yellow {
@@ -429,7 +476,7 @@ a {
   box-shadow: var(--shadow);
 }
 .portal-panel h2 {
-  font-size: 15px;
+  font-size: 18px;
   color: var(--primary);
   margin: 0 0 18px;
 }
@@ -447,7 +494,7 @@ a {
   border: 0;
   background: none;
   color: var(--primary);
-  font-size: 11px;
+  font-size: 14px;
   padding: 0;
   min-height: 30px;
 }
@@ -477,14 +524,14 @@ a {
   min-width: 0;
 }
 .portal-task h3 {
-  font-size: 12px;
+  font-size: 14px;
   margin: 3px 0;
   color: var(--primary);
   overflow-wrap: anywhere;
 }
 .portal-task small,
 .portal-task p {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   margin: 0;
 }
@@ -518,11 +565,11 @@ a {
   color: #536ca0;
 }
 .portal-subject strong {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--primary);
 }
 .portal-subject small {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
 }
 .portal-activity {
@@ -532,24 +579,38 @@ a {
 }
 .portal-activity h2 {
   color: #fff;
+  font-weight: 800;
 }
 .portal-activity article {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 12px;
   padding: 14px 0;
   border-bottom: 1px solid #ffffff2b;
 }
+.portal-activity article > span {
+  width: 16px;
+  font-weight: 800;
+}
 .portal-activity article p {
-  margin: 0 0 4px;
-  font-size: 11px;
+  margin: 0 0 5px;
+  font-size: 14px;
+  font-weight: 800;
 }
 .portal-activity small {
-  font-size: 9px;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
   color: #c3cfe4;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .portal-activity > div > p {
   color: #d2dcef;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 800;
 }
 .portal-shortcut {
   display: flex;
@@ -562,7 +623,7 @@ a {
   padding: 14px;
   text-align: left;
   color: var(--primary);
-  font-size: 12px;
+  font-size: 15px;
   margin: 8px 0 0;
 }
 .portal-shortcut b,
@@ -570,9 +631,9 @@ a {
   display: block;
 }
 .portal-shortcut small {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
-  font-weight: 400;
+  font-weight: 700;
   margin-top: 4px;
 }
 .portal-tip {
@@ -582,7 +643,7 @@ a {
   padding: 25px;
 }
 .portal-tip .eyebrow {
-  font-size: 9px;
+  font-size: 11px;
   color: #60733d;
 }
 .portal-tip h3 {
@@ -593,7 +654,7 @@ a {
   margin: 10px 0;
 }
 .portal-tip p {
-  font-size: 11px;
+  font-size: 14px;
   color: #61704e;
   line-height: 1.8;
 }
@@ -601,7 +662,7 @@ a {
   padding: 24px 12px;
   text-align: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 .portal-empty > span {
   font-size: 35px;
@@ -801,12 +862,28 @@ body.reader-open .app-body {
 :root.dark .topbar {
   background: var(--surface);
 }
+:root.dark .education-nav-label {
+  color: #dce7f7;
+}
+:root.dark .education-sidebar nav button:not(.active) {
+  color: #bdcce2;
+}
+:root.dark .education-sidebar nav button:not(.active) .nav-glyph {
+  color: #bdcce2;
+}
+:root.dark .education-sidebar nav button.active {
+  color: #111827;
+}
 :root.dark .portal-welcome,
 :root.dark .portal-shortcut,
 :root.dark .portal-form input,
 :root.dark .portal-form select,
 :root.dark .portal-form textarea {
   background: #202f4c;
+}
+:root.dark .portal-welcome {
+  border-color: #82b5ff;
+  box-shadow: 0 0 0 1px #82b5ff38, 0 12px 30px #0003;
 }
 :root.dark .portal-stat,
 :root.dark .portal-subject,
@@ -817,6 +894,10 @@ body.reader-open .app-body {
 :root.dark .portal-subject strong,
 :root.dark .portal-task h3 {
   color: #0e2c75;
+}
+:root.dark .portal-subject small {
+  color: #334a70;
+  font-weight: 600;
 }
 :root.dark .button.primary {
   background: #315ba4;
@@ -835,6 +916,9 @@ body.reader-open .app-body {
 :root.dark .portal-tip h3,
 :root.dark .portal-tip p {
   color: #d4e8c3;
+}
+:root.dark .portal-tip .eyebrow {
+  color: #d9efa9;
 }
 @media (min-width: 1600px) {
   .portal-dashboard {
@@ -1395,3 +1479,41 @@ button,input,select,textarea {font-family:inherit;}
 .timetable-grid tbody + tbody {border-top:3px solid var(--primary);}
 .timetable-grid .timetable-session {font-size:14px;}
 .timetable-legacy {margin:12px 0;font-size:12px;color:var(--muted);}
+/* Keep the main shell readable without the extra-heavy weights. */
+.education-sidebar,
+.education-sidebar *,
+.app-shell > .topbar,
+.app-shell > .topbar *,
+.portal-dashboard,
+.portal-dashboard * {
+  font-weight: 500 !important;
+}
+.education-sidebar :is(strong, b, button.active),
+.app-shell > .topbar :is(.education-top-title, .education-user, .icon-button, .button),
+.portal-dashboard :is(h1, h2, h3, strong, b, button) {
+  font-weight: 600 !important;
+}
+.portal-dashboard .portal-welcome .portal-overline {
+  color: #244982;
+  font-weight: 700 !important;
+}
+.portal-dashboard .portal-welcome h2 {
+  color: #103879;
+  font-weight: 800 !important;
+}
+.portal-dashboard .portal-welcome p {
+  color: #354f79;
+  font-weight: 600 !important;
+}
+.portal-dashboard .portal-welcome button {
+  font-weight: 700 !important;
+}
+:root.dark .portal-dashboard .portal-welcome .portal-overline {
+  color: #c6dcff;
+}
+:root.dark .portal-dashboard .portal-welcome h2 {
+  color: #e2edff;
+}
+:root.dark .portal-dashboard .portal-welcome p {
+  color: #d4e2f8;
+}
