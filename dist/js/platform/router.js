@@ -5,6 +5,8 @@ const paths = {
   "question-bank": "/school/question-bank",
   "assignment-management": "/school/assignment-management",
   assignments: "/school/assignments",
+  "school-analytics": "/school/progress",
+  timetable: "/learning/timetable",
   analytics: "/learning/progress",
   "subject-picker": "/learning/subjects",
   theory: "/learning/library",

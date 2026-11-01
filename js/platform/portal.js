@@ -22,21 +22,7 @@ export function dashboardMarkup(user, documents, tests) {
   return `${header(user ? `Chào ${e(user.name.split(" ").slice(-1)[0])}, hôm nay học gì?` : "Mỗi ngày, tiến bộ một chút.", "Một không gian cho lớp học, kiến thức và hành trình của bạn.", `<span class="portal-date">${new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long" })}</span>`)}
   <div class="portal-dashboard"><div class="portal-main-column"><section class="portal-welcome"><div><span class="portal-overline">HỌC CHẮC · LUYỆN ĐỀU · HIỂU SÂU</span><h2>Kiến thức hôm nay.<br>Nền tảng ngày mai.</h2><p>Tiếp tục việc học, hoàn thành bài được giao<br>và tìm lời giải cho điều bạn đang tò mò.</p><button class="button primary" data-route="subject-picker">Khám phá môn học <span aria-hidden="true">→</span></button></div><div class="portal-book-art" aria-hidden="true"><span>∑</span><b>MAI<br>HỌC</b><small>LEARN EVERY DAY</small></div></section>
   <div class="portal-stats"><article class="portal-stat yellow"><span>Kho học liệu</span><strong>${documents.length}</strong><small>Tài liệu có thể khám phá</small></article><article class="portal-stat lavender"><span>Bài cần hoàn thành</span><strong>${user ? pending.length : "—"}</strong><small>${user ? "Trong danh sách bài kiểm tra" : "Đăng nhập để xem"}</small></article><article class="portal-stat blue"><span>Môn học có tài liệu</span><strong>${subjects.length}</strong><small>Học theo nhịp của bạn</small></article></div>
-  <section class="portal-panel"><div class="portal-panel-heading"><h2>Việc học của bạn</h2><button data-route="tests" class="text-button">Xem tất cả →</button></div><div class="portal-task-list">${
-    !user
-      ? `<div class="portal-empty"><p>Đăng nhập để xem bài giáo viên giao và lưu tiến trình học tập.</p><button class="button primary" data-portal-login>Đăng nhập</button></div>`
-      : pending.length
-        ? pending
-            .slice(0, 4)
-            .map(
-              (t, i) =>
-                `<article class="portal-task tone-${i % 3}"><span class="portal-subject-icon" aria-hidden="true">${e((t.subject || "M").slice(0, 1))}</span><div><small>${e(t.subject)} · Lớp ${e(t.grade)}</small><h3>${e(t.title)}</h3><p>Hạn nộp ${dt(t.closeAt)}</p></div><button class="button secondary small" data-portal-test="${id(t.id)}">Làm bài →</button></article>`,
-            )
-            .join("")
-        : empty(
-            "Bạn đã theo kịp các bài kiểm tra hiện có. Khám phá thêm học liệu hoặc bài tập mới.",
-          )
-  }${user?.role === "user" && !user.isTeacher && !user.isSuperAdmin ? '<button class="portal-shortcut" data-route="assignments">Bài được giao từ School <span>→</span></button>' : ""}</div></section>
+  <section class="portal-panel"><div class="portal-panel-heading"><h2>Thời khóa biểu</h2></div><div data-personal-timetable><p role="status">Đang tải thời khóa biểu…</p></div></section>
   <section class="portal-panel"><div class="portal-panel-heading"><h2>Khám phá kiến thức</h2><button class="text-button" data-route="subject-picker">Tất cả môn học →</button></div><div class="portal-subjects">${["Toán", "Vật lý", "Hóa học", "Sinh học", "Tiếng Anh"].map((s, i) => `<button data-subject="${s}" class="portal-subject tone-${i % 3}"><span aria-hidden="true">${["∑", "⚛", "⌬", "❀", "Aa"][i]}</span><strong>${s}</strong><small>${documents.filter((d) => d.subject === s).length} tài liệu</small></button>`).join("")}</div></section></div>
   <aside class="portal-side-column"><section class="portal-panel portal-activity"><h2>Hoạt động gần đây</h2><div data-portal-activity>${user ? '<p class="muted">Đang tải hoạt động…</p>' : "<p>Đăng nhập để kết nối với lớp học và theo dõi việc học của bạn.</p>"}</div></section><section class="portal-panel"><div class="portal-panel-heading"><h2>Góc học tập</h2><span aria-hidden="true">✦</span></div><button class="portal-shortcut" data-route="ai-solver"><span><b>Gia sư AI</b><small>Gợi mở, kiểm tra và giải thích</small></span>→</button><button class="portal-shortcut" data-route="study-rooms"><span><b>Phòng tự học</b><small>Cùng nhau giữ nhịp tập trung</small></span>→</button><button class="portal-shortcut" data-route="analytics"><span><b>Tiến trình học tập</b><small>Nhìn lại điều đã học được</small></span>→</button></section><section class="portal-tip"><span class="eyebrow">MẸO HỌC HIỆU QUẢ</span><h3>Hiểu một lỗi sai,<br>tiến thêm một bước.</h3><p>Sau mỗi bài kiểm tra, dành vài phút xem lại cách làm và thử một câu tương tự.</p></section></aside></div>`;
 }
@@ -65,6 +51,7 @@ export async function hydrateActivity(container, user) {
 }
 
 export function mountPortal(container, route, user, onNavigate) {
+  if (route === "school-analytics") route = "analytics";
   const management = route === 'assignment-management';
   if (management) route = 'assignments';
   if (route === 'assignments' && user) {
@@ -136,7 +123,7 @@ export function mountPortal(container, route, user, onNavigate) {
           organization: "Quản lý nhà trường",
           "question-bank": "Ngân hàng câu hỏi",
           assignments: management ? "Giao và quản lý bài" : "Bài được giao",
-          analytics: "Tiến trình học tập",
+          analytics: "Kết quả học tập School",
         }[route],
         "Kết nối việc dạy, việc học và phản hồi trong cùng một nền tảng.",
         schoolPicker,
@@ -248,7 +235,7 @@ export function mountPortal(container, route, user, onNavigate) {
     if (activeAttempt.status !== "in_progress") {
       container.innerHTML =
         header("Bài đã nộp", "Kết quả được lưu tại máy chủ.") +
-        `<section class="portal-panel"><p>Trạng thái: ${e(activeAttempt.status)}</p><button class="button secondary" data-route="analytics">Xem tiến trình</button></section>`;
+        `<section class="portal-panel"><p>Trạng thái: ${e(activeAttempt.status)}</p><button class="button secondary" data-route="school-analytics">Xem kết quả theo chuyên đề</button></section>`;
       return;
     }
     let answers = activeAttempt.answers || {};
@@ -415,7 +402,7 @@ export function mountPortal(container, route, user, onNavigate) {
               "Đã nộp bài thành công",
               "Bài làm đã được lưu tại máy chủ.",
             ) +
-            `<section class="portal-panel"><h2>${data.status === "pending_grade" ? "Đang chờ giáo viên chấm" : `Kết quả ${data.score} / ${data.scale}`}</h2><button class="button primary" data-route="analytics">Xem tiến trình</button></section>`;
+            `<section class="portal-panel"><h2>${data.status === "pending_grade" ? "Đang chờ giáo viên chấm" : `Kết quả ${data.score} / ${data.scale}`}</h2><button class="button primary" data-route="school-analytics">Xem kết quả theo chuyên đề</button></section>`;
           return;
         }
         const body = Object.fromEntries(new FormData(target));

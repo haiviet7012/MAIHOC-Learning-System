@@ -15,7 +15,8 @@
     "db:legacy": "node scripts/legacy-maintenance.mjs",
     "test:browser": "node scripts/browser-check.mjs",
     "preview:isolated": "node scripts/dev-preview.mjs",
-    "storage:verify": "node server/platform/verify-storage.js"
+    "storage:verify": "node server/platform/verify-storage.js",
+    "test:learning": "node scripts/learning-check.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",

@@ -36,7 +36,7 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
 );
 const origin = "http://127.0.0.1:4173";
 async function clickSidebar(route) {
-  const space = ['assignments','assignment-management','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
+  const space = ['assignments','assignment-management','school-analytics','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
   if (!(await page.locator(`.education-switch [data-space="${space}"]`).getAttribute('aria-pressed') === 'true')) {
     await page.locator(`.education-switch [data-space="${space}"]`).click();
   }
@@ -237,7 +237,7 @@ try {
   await page.locator('[data-attempt-form] button[type="submit"]').click();
   await page.getByRole('heading',{name:'Kết quả 10 / 10'}).waitFor();
   await page.screenshot({path:new URL('native-assessment.png',directory).pathname,fullPage:true});
-  await page.getByRole('button',{name:'Xem tiến trình',exact:true}).click();
+  await page.getByRole('button',{name:'Xem kết quả theo chuyên đề',exact:true}).click();
   await page.getByRole('button',{name:'Luyện chuyên đề',exact:true}).click();
   await page.locator('[data-attempt-form] textarea').fill('0,5');
   await page.locator('[data-attempt-form] button[type="submit"]').click();
