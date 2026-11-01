@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import ExcelJS from 'exceljs';
+import { createTimetableWorkbook, parseTimetableWorkbook } from '../js/platform/timetable-xlsx.js';
 const password = randomUUID();
 const origin = 'http://127.0.0.1:4174';
 const preview = spawn(process.execPath, ['scripts/dev-preview.mjs'], {
@@ -68,6 +70,35 @@ try {
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Lưu thời khóa biểu', exact: true }).click();
   await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
+  // School navigation, download, invalid upload, cancellation, then import/save/reopen.
+  assert.equal(await page.locator('[data-sidebar-space="school"]').first().isVisible(), true);
+  assert.equal(await page.locator('nav[data-sidebar-space="school"] [data-route="timetable"]').getAttribute('aria-current'), 'page');
+  const downloadEvent = page.waitForEvent('download');
+  await page.locator('[data-export-timetable]').click();
+  const download = await downloadEvent;
+  assert.match(download.suggestedFilename(), /^MAIHOC-thoi-khoa-bieu-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const exported = new ExcelJS.Workbook(); await exported.xlsx.load(await readFile(await download.path()));
+  assert.deepEqual(parseTimetableWorkbook(exported).cells, { '1-1': 'Tiếng Anh' });
+  const upload = async workbook => page.locator('[data-timetable-file]').setInputFiles({ name: 'lich.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) });
+  const invalid = createTimetableWorkbook(ExcelJS, {}); invalid.getWorksheet('Thời khóa biểu').getCell('C6').value = 'Môn lạ';
+  await upload(invalid);
+  await page.locator('[data-timetable-status]').filter({ hasText: 'chưa được hỗ trợ' }).waitFor();
+  assert.equal((await page.locator('[data-place="1-1"]').textContent()).trim(), 'Tiếng Anh');
+  const importedCells = { '4-0': 'Hóa học', '8-6': 'IELTS' };
+  page.once('dialog', dialog => dialog.dismiss());
+  await upload(createTimetableWorkbook(ExcelJS, importedCells));
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã hủy nhập' }).waitFor();
+  assert.equal((await page.locator('[data-place="1-1"]').textContent()).trim(), 'Tiếng Anh');
+  page.once('dialog', dialog => dialog.accept());
+  await upload(createTimetableWorkbook(ExcelJS, importedCells));
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã nhập 2 tiết học' }).waitFor();
+  assert.equal((await page.locator('[data-place="8-6"]').textContent()).trim(), 'IELTS');
+  assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['1-1'], 'Tiếng Anh', 'Import does not persist until Save');
+  await page.locator('[data-save-timetable]').click();
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
+  await page.reload();
+  await page.locator('[data-place="8-6"]').filter({ hasText: 'IELTS' }).waitFor();
+  assert.deepEqual((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells, importedCells);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No mobile page overflow');
   await mkdir('test-results', { recursive: true });
@@ -83,7 +114,7 @@ try {
   const teacher = await browser.newContext();
   await teacher.request.post(origin + '/api/auth/login', { data: { email: 'teacher@maihoc.test', password }, headers: { Origin: origin } });
   assert.equal((await (await teacher.request.get(origin + '/api/learning/timetable')).json()).timetable, null, 'Timetable is private per account');
-  assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['1-1'], 'Tiếng Anh');
+  assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['8-6'], 'IELTS');
   assert.deepEqual(errors, []);
   console.log('Learning checks passed: disabled School, personal progress, drag/drop, keyboard/mobile, save/reopen, reset confirmation, ownership, CSRF, validation and stale-write protection.');
 } finally {

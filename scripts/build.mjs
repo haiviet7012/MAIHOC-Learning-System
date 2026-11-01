@@ -10,6 +10,8 @@ const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
 const check = process.argv.includes("--check");
 let index = await readFile(new URL("index.html", root), "utf8");
 const generated = new Map();
+generated.set("vendor/exceljs/exceljs.min.js", await readFile(new URL("node_modules/exceljs/dist/exceljs.min.js", root)));
+generated.set("vendor/exceljs/LICENSE", await readFile(new URL("node_modules/exceljs/LICENSE", root)));
 const bundled = await build({
   absWorkingDir: fileURLToPath(root),
   entryPoints: { app: "js/app.js", chat: "js/chat.js" },
@@ -89,8 +91,10 @@ if (check) {
     await cp(new URL(folder, root), new URL(folder, dist), { recursive: true });
   await cp(new URL("public/", root), dist, { recursive: true });
   await writeFile(new URL("index.html", dist), index);
-  for (const [name, bytes] of generated)
+  for (const [name, bytes] of generated) {
+    await mkdir(new URL("./", new URL(name, dist)), { recursive: true });
     await writeFile(new URL(name, dist), bytes);
+  }
   const files = {};
   async function manifest(dir, prefix = "") {
     for (const entry of await readdir(dir, { withFileTypes: true })) {

@@ -23,6 +23,7 @@
     "@electric-sql/pglite": "^0.5.14",
     "@playwright/test": "^1.51.1",
     "esbuild": "^0.28.2",
+    "exceljs": "^4.4.0",
     "prettier": "^3.9.10"
   }
 }
