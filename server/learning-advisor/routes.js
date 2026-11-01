@@ -16,7 +16,7 @@ export function installLearningAdvisor(
     requireAuth,
     requireSameOrigin,
     generate = advise,
-    enabled = () => process.env.MAIHOC_LEARNING_ADVISOR_ENABLED === "1",
+    enabled = () => process.env.MAIHOC_LEARNING_ADVISOR_ENABLED !== "0",
   },
 ) {
   const router = express.Router(),
@@ -31,6 +31,13 @@ export function installLearningAdvisor(
     enabled()
       ? next()
       : res.status(503).json({ error: "Cố vấn học tập chưa được bật." }),
+  );
+  router.use((req, res, next) =>
+    Promise.resolve()
+      .then(async () => {
+        const schema = await rows("SELECT to_regclass('public.learning_advisor_threads') AS ready");
+        if (!schema[0]?.ready) fail("Cơ sở dữ liệu Cố vấn chưa được cập nhật. Quản trị viên cần chạy npm run db:migrate trên backend.", 503);
+      }).then(() => next()).catch(next),
   );
   router.use((req, res, next) =>
     Promise.resolve()
@@ -92,8 +99,8 @@ export function installLearningAdvisor(
         messages,
         roadmaps: await plans(thread),
         aiConfigured: Boolean(
-          process.env.LEARNING_ADVISOR_API_KEY &&
-          process.env.LEARNING_ADVISOR_MODEL,
+          (process.env.LEARNING_ADVISOR_API_KEY || process.env.GEMINI_API_KEY) &&
+          (process.env.LEARNING_ADVISOR_MODEL || process.env.GEMINI_MODEL),
         ),
       });
     }),

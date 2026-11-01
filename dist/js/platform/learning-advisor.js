@@ -50,7 +50,7 @@ function radarChart(rows, previous = []) {
       "",
     )}</svg><p class="muted tiny">Tối đa 8 môn trên radar. ${older.every(Boolean) ? "Nét đứt: ngày có kết quả liền trước." : "Môn chưa có điểm không được gán bằng 0."}</p>`;
 }
-export function mountLearningAdvisor(
+function mountAdvisorContent(
   container,
   { scope = "learning", schoolId = null } = {},
 ) {
@@ -260,4 +260,24 @@ export function mountLearningAdvisor(
       container.innerHTML = `<section class="portal-panel advisor"><h2>Cố vấn học tập AI</h2><p role="status">${e(error.message)}</p></section>`;
   });
   return () => controller.abort();
+}
+
+export function mountLearningAdvisor(container, options = {}) {
+  const controller = new AbortController();
+  const host = document.createElement('div'); host.className = 'advisor-drawer-host';
+  const panelId = `advisor-panel-${Math.random().toString(36).slice(2)}`;
+  host.innerHTML = `<button type="button" class="advisor-pull" aria-expanded="false" aria-controls="${panelId}" aria-label="Mở Cố vấn học tập">❮ <span>Cố vấn học tập</span></button><aside id="${panelId}" class="advisor-drawer" aria-label="Cố vấn học tập" inert><button type="button" class="advisor-dismiss" aria-label="Đóng Cố vấn học tập">×</button><div class="advisor-drawer-content"></div></aside>`;
+  document.body.append(host);
+  const pull = host.querySelector('.advisor-pull'), panel = host.querySelector('.advisor-drawer');
+  let dispose = null;
+  function toggle(open) {
+    host.classList.toggle('is-open', open); panel.inert = !open;
+    pull.setAttribute('aria-expanded', String(open));
+    if (open) { dispose ||= mountAdvisorContent(host.querySelector('.advisor-drawer-content'), options); host.querySelector('.advisor-dismiss').focus(); }
+    else pull.focus();
+  }
+  pull.addEventListener('click', () => toggle(!host.classList.contains('is-open')), { signal: controller.signal });
+  host.querySelector('.advisor-dismiss').addEventListener('click', () => toggle(false), { signal: controller.signal });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && host.classList.contains('is-open')) toggle(false); }, { signal: controller.signal });
+  return () => { controller.abort(); dispose?.(); host.remove(); };
 }

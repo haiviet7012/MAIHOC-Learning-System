@@ -533,7 +533,8 @@
       const res = await fetch("/api/chat/conversations", { credentials: "same-origin" });
       if (!res.ok) return;
       const data = await res.json();
-      const list = data.conversations || [];
+      const list = (data.conversations || []).filter(c => c.type !== "direct" || c.partner);
+      if (activeDirectConv && !list.some(c => c.id === activeDirectConv.id)) { activeDirectConv = null; dom.directMessages.innerHTML = ""; dom.dmListView.hidden = false; dom.dmChatView.hidden = true; dom.headerTitle.textContent = "Tin nhắn riêng"; dom.backBtn.hidden = true; }
 
       conversationsMap.clear();
       let directUnread = 0;
@@ -795,6 +796,7 @@
     });
 
     // Update conversation item on incoming direct message
+    socket.on("chat:account-deleted", () => { loadConversations(); loadGlobalMessages(); });
     socket.on("chat:conversation-updated", () => {
       loadConversations();
     });

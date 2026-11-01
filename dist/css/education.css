@@ -1584,3 +1584,15 @@ button,input,select,textarea {font-family:inherit;}
     border-radius: var(--poster-inner-radius) var(--poster-inner-radius) var(--auth-radius) var(--auth-radius);
   }
 }
+
+/* Square frames across the application, including dynamically mounted tools. */
+*, *::before, *::after { border-radius: 0 !important; }
+.learning-progress-scroll { max-height: 660px; overflow-y: auto; scrollbar-gutter: stable; }
+.learning-progress-scroll .portal-record { height:132px; box-sizing:border-box; overflow:auto; margin:0; }
+.learning-progress-scroll .portal-record h3 { margin:0; }
+.advisor-pull { position:fixed; right:0; top:45%; z-index:150; background:#287ef4; color:white; border:0; padding:16px 10px; display:flex; gap:8px; align-items:center; }
+.advisor-pull span { writing-mode:vertical-rl; }
+.advisor-drawer { position:fixed; inset:80px 0 16px auto; width:min(900px,calc(100vw - 48px)); z-index:151; background:var(--surface,#fff); color:var(--text); border:1px solid var(--border); box-shadow:-10px 0 30px #14264a30; padding:56px 18px 18px; overflow:auto; transform:translateX(105%); visibility:hidden; transition:transform .28s ease,visibility .28s; }
+.advisor-drawer-host.is-open .advisor-drawer { transform:translateX(0); visibility:visible; }
+.advisor-dismiss { position:absolute; top:12px; right:12px; width:40px; height:32px; background:var(--surface-2); color:var(--primary); border:1px solid var(--border); }
+@media(prefers-reduced-motion:reduce) { .advisor-drawer { transition:none; } }
