@@ -106,9 +106,13 @@ try {
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.screenshot({ path: 'test-results/timetable-desktop.png', fullPage: true });
   await context.request.put(origin + '/api/progress', { headers: { Origin: origin }, data: { itemType: 'document', itemId: 'learning-fixture', itemTitle: 'Tự học Toán', subject: 'Toán', grade: '12', status: 'in_progress', progressPercent: 40 } });
+  for (const [itemId, progressPercent] of [['progress-zero', 0], ['progress-full', 100]]) await context.request.put(origin + '/api/progress', { headers: { Origin: origin }, data: { itemType: 'document', itemId, itemTitle: itemId, subject: 'Toán', grade: '12', status: 'in_progress', progressPercent } });
   await page.goto(origin + '/learning/progress');
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
+  const tracks = await page.locator('.learning-progress-list progress').evaluateAll(nodes => nodes.map(n => ({ x: n.getBoundingClientRect().x, width: n.getBoundingClientRect().width })));
+  assert.equal(tracks.length, 3);
+  assert.ok(tracks.every(t => Math.abs(t.width - tracks[0].width) < 1 && Math.abs(t.x - tracks[0].x) < 1), '0%, 40% and 100% tracks align at both ends');
   await page.locator('.advisor-pull').click();
   await page.locator('.advisor-drawer .advisor-workspace').waitFor();
   await page.locator('.advisor-dismiss').click();
