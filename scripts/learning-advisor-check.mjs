@@ -65,6 +65,10 @@ try {
   await page.locator('.education-sidebar nav [data-route="analytics"]').click();
   await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
+  assert.equal(await page.locator('[data-advisor-activity] table').count(), 2);
+  assert.equal(await page.locator('[data-advisor-activity]').isVisible(), true);
+  assert.equal(await page.locator('.advisor details').count(), 0);
+  assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
   assert.equal(await page.locator(".advisor-chart svg").count(), 1);
   await page.locator("[name=goal]").fill("Đạt 8 điểm Toán trong 4 tuần");
   await page.locator("[data-advisor-form] button[type=submit]").click();
@@ -129,6 +133,10 @@ try {
     .click();
   await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
+  assert.equal(await page.locator('[data-advisor-activity] table').count(), 2);
+  assert.equal(await page.locator('[data-advisor-activity]').isVisible(), true);
+  assert.equal(await page.locator('.advisor details').count(), 0);
+  assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
   assert.equal(
     await page.locator(".advisor-message").count(),
     0,

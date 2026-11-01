@@ -1657,3 +1657,8 @@ button,input,select,textarea {font-family:inherit;}
   :root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull) { transition:none; }
   :root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):is(:hover,:active) { transform:none; }
 }
+
+.advisor-activity { border:1px solid var(--border); padding:16px; background:var(--surface-2); color:var(--text); margin-bottom:12px; }
+.advisor-activity .timetable-scroll { max-height:none; overflow-y:visible; }
+.advisor-activity h3 { margin:0 0 12px; }
+.advisor-activity caption { padding:8px 0; }
