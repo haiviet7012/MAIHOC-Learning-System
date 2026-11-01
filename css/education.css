@@ -1339,3 +1339,26 @@ button,input,select,textarea {font-family:inherit;}
   60% { transform: rotate(-12deg); }
   80% { transform: rotate(-7deg); }
 }
+
+/* Shared geometry keeps the three floating launchers aligned. */
+.online-dashboard-fab,
+.chat-launcher,
+.notification-launcher {
+  right: 28px !important;
+  left: auto !important;
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+  box-sizing: border-box;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+}
+@media (max-width: 700px) {
+  .online-dashboard-fab,
+  .chat-launcher,
+  .notification-launcher { right: 16px !important; }
+}
