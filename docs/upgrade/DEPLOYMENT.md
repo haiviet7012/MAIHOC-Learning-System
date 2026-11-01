@@ -6,7 +6,7 @@
 2. Tạo backup PostgreSQL và diễn tập restore trên staging. Đối soát tài khoản, sessions, documents, tests, submissions, answer keys và learning_results. R2 không nằm trong backup database; kiểm kê riêng.
 3. Cài dependencies từ lockfile. Build frontend ở root bằng `npm ci --ignore-scripts && npm run build`. Backend tiếp tục chạy `npm start` trong `server/` theo cấu hình Render hiện tại.
 4. Kiểm tra `DATABASE_URL`, R2, SMTP, `PUBLIC_ORIGIN`, `BACKEND_ORIGIN`, đường `/api`, `/socket.io`, `/vendor` và cookie. Không tạo database School/Learning riêng.
-5. Đặt `GEMINI_MODEL` thành tên model đã kiểm chứng bằng tài khoản API triển khai; `GEMINI_SOLUTION_MODEL` có thể chọn model riêng cho giải đề. `GEMINI_FALLBACK_MODELS` là danh sách cấu hình phân cách dấu phẩy. Không dùng chuỗi tên phỏng đoán. Phiên bản này báo lỗi cấu hình nếu thiếu model; cần hoàn tất bước này trước khi triển khai code có AI.
+5. Đặt `GEMINI_MODEL` thành tên model đã kiểm chứng bằng tài khoản API triển khai; `GEMINI_SOLUTION_MODEL` có thể chọn model riêng cho giải đề; `GEMINI_SOLUTION_API_KEY` chọn key riêng cho tác vụ này (để trống dùng key chung). `GEMINI_FALLBACK_MODELS` là danh sách cấu hình phân cách dấu phẩy. Không dùng chuỗi tên phỏng đoán. Phiên bản này báo lỗi cấu hình nếu thiếu model; cần hoàn tất bước này trước khi triển khai code có AI.
 
 ## Migration
 

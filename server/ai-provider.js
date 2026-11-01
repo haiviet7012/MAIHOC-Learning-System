@@ -25,6 +25,7 @@ export function normalizeModel(value) {
 export function geminiConfig(scope = 'shared', env = process.env) {
   const key = first(env, scope === 'advisor'
     ? ['LEARNING_ADVISOR_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
+    : scope === 'exam' ? ['GEMINI_SOLUTION_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
     : ['GEMINI_API_KEY', 'GOOGLE_API_KEY']);
   const model = first(env, scope === 'advisor' ? ['LEARNING_ADVISOR_MODEL', 'GEMINI_MODEL']
     : scope === 'exam' ? ['GEMINI_SOLUTION_MODEL', 'GEMINI_MODEL'] : ['GEMINI_MODEL']);

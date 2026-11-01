@@ -11,8 +11,10 @@ Rà soát mã nguồn phát hiện `server/server.js` và `server/postgres.js` d
 | Chức năng | API key theo thứ tự ưu tiên | Model theo thứ tự ưu tiên |
 | --- | --- | --- |
 | Gia sư văn bản/ảnh/PDF, giải Hóa, đánh giá độ khó, Gia sư chạy nền | GEMINI_API_KEY → GOOGLE_API_KEY | GEMINI_MODEL |
-| Giải đề/tạo đáp án tự động | GEMINI_API_KEY → GOOGLE_API_KEY | GEMINI_SOLUTION_MODEL → GEMINI_MODEL |
+| Giải đề/tạo đáp án tự động | GEMINI_SOLUTION_API_KEY → GEMINI_API_KEY → GOOGLE_API_KEY | GEMINI_SOLUTION_MODEL → GEMINI_MODEL |
 | Cố vấn học tập và Cố vấn giảng dạy | LEARNING_ADVISOR_API_KEY → GEMINI_API_KEY → GOOGLE_API_KEY | LEARNING_ADVISOR_MODEL → GEMINI_MODEL |
+
+Để tách ba key, đặt riêng `GEMINI_API_KEY`, `LEARNING_ADVISOR_API_KEY` và `GEMINI_SOLUTION_API_KEY`. `GEMINI_SOLUTION_MODEL` chỉ là tên model, không chứa API key. Engine giải đề tạo đáp án/rubric để phục vụ chấm; phần đối chiếu và tính điểm vẫn theo engine chấm hiện hữu.
 
 Biến trống hoặc chỉ có khoảng trắng được bỏ qua. Key riêng đã đặt nhưng không hợp lệ vẫn được báo lỗi; hệ thống không tự dùng key khác để che lỗi. Bỏ cả hai biến LEARNING_ADVISOR_* nếu muốn Cố vấn dùng cấu hình chung. `MAIHOC_LEARNING_ADVISOR_ENABLED=0` vẫn tắt Cố vấn. Chuỗi fallback model của solver chỉ được thử cho model không khả dụng hoặc lỗi tạm thời, không thử tiếp khi xác thực/quyền/quota sai.
 
