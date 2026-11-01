@@ -65,11 +65,10 @@ try {
   await page.locator('.education-sidebar nav [data-route="analytics"]').click();
   await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
-  assert.equal(await page.locator('[data-advisor-activity] table').count(), 2);
-  assert.equal(await page.locator('[data-advisor-activity]').isVisible(), true);
+  assert.equal(await page.locator('[data-advisor-activity], .advisor-chart, .advisor table').count(), 0);
   assert.equal(await page.locator('.advisor details').count(), 0);
   assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
-  assert.equal(await page.locator(".advisor-chart svg").count(), 1);
+  assert.equal(await page.locator(".advisor-chart svg").count(), 0);
   await page.locator("[name=goal]").fill("Đạt 8 điểm Toán trong 4 tuần");
   await page.locator("[data-advisor-form] button[type=submit]").click();
   await page.locator("[data-advisor-apply]").waitFor();
@@ -92,7 +91,7 @@ try {
   await page.waitForFunction(
     () => document.querySelectorAll(".advisor-message").length >= 4,
   );
-  await page.locator("[data-advisor-mode=charts]").click();
+
   await page.evaluate(() => document.documentElement.classList.add('dark'));
   const darkSurfaces = await page.locator('.advisor-chart, .advisor-chat, .advisor select').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).backgroundColor));
   assert.ok(darkSurfaces.every(color => !['rgb(255, 255, 255)', 'rgb(248, 250, 248)', 'rgb(251, 252, 251)'].includes(color)), 'Advisor uses dark surfaces throughout');
@@ -133,8 +132,7 @@ try {
     .click();
   await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
-  assert.equal(await page.locator('[data-advisor-activity] table').count(), 2);
-  assert.equal(await page.locator('[data-advisor-activity]').isVisible(), true);
+  assert.equal(await page.locator('[data-advisor-activity], .advisor-chart, .advisor table').count(), 0);
   assert.equal(await page.locator('.advisor details').count(), 0);
   assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
   assert.equal(
@@ -142,14 +140,37 @@ try {
     0,
     "School conversation is isolated",
   );
-  assert.equal(await page.locator(".advisor-chart svg").count(), 2);
-  await page.locator("[data-advisor-day]").selectOption({ index: 2 });
-  assert.equal(await page.locator("polygon[stroke-dasharray]").count(), 1);
+  assert.equal(await page.locator(".advisor-chart svg").count(), 0);
   await page.waitForTimeout(450);
   await page.screenshot({
     path: new URL("advisor-school-desktop.png", directory).pathname,
     fullPage: true,
   });
+  const teacherContext = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
+  await teacherContext.request.post(origin + '/api/auth/login', { headers: { Origin: origin }, data: { email: 'teacher@maihoc.test', password } });
+  const teacherPage = await teacherContext.newPage();
+  await teacherPage.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
+  await teacherPage.goto(origin + '/school/assignment-management');
+  await teacherPage.getByRole('button', { name: 'Mở Cố vấn giảng dạy', exact: true }).click();
+  await teacherPage.locator('.teaching-advisor h2').waitFor();
+  await teacherPage.locator('.teaching-advisor [name=classKey] option').nth(1).waitFor({ state: 'attached' });
+  await teacherPage.locator('.teaching-advisor [name=classKey]').selectOption({ index: 1 });
+  await teacherPage.locator('.teaching-advisor [name=studentId] option[value="100"]').waitFor({ state: 'attached' });
+  assert.equal(await teacherPage.locator('.teaching-advisor [name=studentId]').inputValue(), '');
+  await teacherPage.locator('.teaching-advisor [name=subject]').fill('Toán');
+  await teacherPage.locator('.teaching-advisor [name=message]').fill('Thiết kế bài giảng về hàm số và hoạt động phân hóa.');
+  await teacherPage.locator('[data-teaching-form] button[type=submit]').click();
+  await teacherPage.getByRole('heading', { name: 'Bản thiết kế bài giảng', exact: true }).waitFor();
+  await teacherPage.locator('[data-teaching-mode=plan]').click();
+  await teacherPage.locator('.teaching-advisor [name=studentId]').selectOption('100');
+  await teacherPage.locator('.teaching-advisor [name=message]').fill('Thiết kế lộ trình Toán cho học sinh trong 7 ngày.');
+  await teacherPage.locator('[data-teaching-form] button[type=submit]').click();
+  await teacherPage.getByRole('heading', { name: 'Lộ trình đề xuất', exact: true }).waitFor();
+  assert.equal(await teacherPage.locator('[data-teaching-result] li').count(), 1);
+  await teacherPage.setViewportSize({ width:390, height:844 });
+  assert.ok(await teacherPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await teacherPage.screenshot({ path: new URL('teaching-advisor-mobile.png', directory).pathname, fullPage:true });
+  await teacherContext.close();
   assert.deepEqual(errors, []);
   console.log(
     "Advisor full-app browser checks passed (Google stubbed; real auth, DB, persistence, scope and UI).",

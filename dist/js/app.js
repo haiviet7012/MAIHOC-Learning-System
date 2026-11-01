@@ -1,3 +1,5 @@
+import { mountLearningAdvisor } from './platform/learning-advisor.js';
+let disposeTeachingAdvisor = null;
 import { mountTimetablePreview, mountTimetable, mountLearningProgress } from "./platform/learning.js";
 import { TestDraft } from './platform/test-draft.js';
 import { routeUrl, parseRoute } from './platform/router.js';
@@ -815,6 +817,8 @@ async function loadAdminUsers() {
 }
 
 function render() {
+    disposeTeachingAdvisor?.(); disposeTeachingAdvisor = null;
+    if (currentUser?.isTeacher) disposeTeachingAdvisor = mountLearningAdvisor(document.getElementById('view'), { teaching: true });
     if (state.route === "account-center" && currentUser?.role === "admin") {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);

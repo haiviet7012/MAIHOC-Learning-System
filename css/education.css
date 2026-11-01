@@ -1662,3 +1662,8 @@ button,input,select,textarea {font-family:inherit;}
 .advisor-activity .timetable-scroll { max-height:none; overflow-y:visible; }
 .advisor-activity h3 { margin:0 0 12px; }
 .advisor-activity caption { padding:8px 0; }
+.teaching-advisor .advisor-options { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.teaching-advisor form { display:grid; gap:14px; }
+.teaching-advisor [data-teaching-result] { margin-top:20px; }
+.teaching-reply { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:600px) { .teaching-advisor .advisor-options { grid-template-columns:1fr; } }

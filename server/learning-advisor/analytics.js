@@ -116,6 +116,8 @@ export async function snapshot(db, userId, scope, schoolId, days) {
         [userId, schoolId, days],
       )
     ).rows;
+    progress = (await db.query(`SELECT item_type,item_id,item_title,subject,progress_percent,status FROM user_progress
+      WHERE user_id=$1 AND item_type IN ('lesson','document','exam','practice') ORDER BY updated_at DESC LIMIT 200`, [userId])).rows;
     // Legacy rows belong to School only through an explicit class mapping.
     const legacy = (
       await db.query(
