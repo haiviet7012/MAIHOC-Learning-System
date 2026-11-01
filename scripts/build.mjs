@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { build, transform } from "esbuild";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 const root = new URL("../", import.meta.url),
   dist = new URL("dist/", root);
 const sources = ["js", "css", "configs", "study-rooms", "public"];
@@ -10,7 +11,7 @@ const check = process.argv.includes("--check");
 let index = await readFile(new URL("index.html", root), "utf8");
 const generated = new Map();
 const bundled = await build({
-  absWorkingDir: root.pathname,
+  absWorkingDir: fileURLToPath(root),
   entryPoints: { app: "js/app.js", chat: "js/chat.js" },
   bundle: true,
   minify: true,
