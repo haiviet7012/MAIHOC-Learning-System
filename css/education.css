@@ -804,7 +804,7 @@ a {
   width: min(920px, 94vw);
   padding: 44px 52% 44px 44px;
   position: fixed;
-  background: #fff url("/design/login-art.png") right 16px center / 46%
+  background: #fff url("/images/poster.jpg") right 16px center / 46%
     calc(100% - 32px) no-repeat;
   min-height: 540px;
 }
@@ -1177,7 +1177,7 @@ body.reader-open .app-body {
 #forgot-password-dialog {
   padding: 38px;
   width: min(920px, 94vw);
-  background: #fff url("/design/login-art.png") right 16px center / 46%
+  background: #fff url("/images/poster.jpg") right 16px center / 46%
     calc(100% - 32px) no-repeat;
   min-height: 540px;
   border-radius: 18px;
@@ -1521,4 +1521,22 @@ button,input,select,textarea {font-family:inherit;}
 }
 :root.dark .portal-dashboard .portal-welcome p {
   color: #d4e2f8;
+}
+
+/* Keep the notification close control parallel with the dialog edges. */
+#notifications-dialog .modal-heading { align-items: flex-start; }
+#notifications-dialog .close-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  width: 52px;
+  min-width: 52px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  line-height: 1;
+  transform: none;
 }
