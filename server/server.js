@@ -1,3 +1,5 @@
+import { schoolAccessGuard } from './school-access.js';
+import { canAccessSchool } from '../js/platform/school-access.js';
 import { installTeachingAdvisor } from './learning-advisor/teaching.js';
 import { installLearningAdvisor } from './learning-advisor/routes.js';
 import { ensureLearningSchema, installLearningRoutes } from "./learning.js";
@@ -528,6 +530,7 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "30mb" }));
 app.use(loadCurrentUser);
+app.use(schoolAccessGuard);
 app.use(["/api/ai/solve","/api/chemistry/solve","/api/ai/evaluate"], (req,res,next)=>req.method === "POST" ? requireSameOrigin(req,res,next) : next(), aiExamGuard(db));
 
 setupChat(server, app);
@@ -1504,7 +1507,7 @@ app.get("/api/progress", requireAuth, async (req, res) => {
       "SELECT p.id,p.item_type AS itemType,p.item_id AS itemId,p.item_title AS itemTitle,p.subject,p.grade,p.status,p.progress_percent AS progressPercent,p.score,p.answers_json AS answers,p.last_position AS lastPosition,p.started_at AS startedAt,p.updated_at AS updatedAt,CASE WHEN p.item_type IN ('exam','test') THEN (SELECT a.id FROM exam_attempts a WHERE a.user_id=p.user_id AND a.document_id=p.item_id ORDER BY a.id DESC LIMIT 1) ELSE NULL END AS latestAttemptId,CASE WHEN p.item_type='test' THEN (SELECT ts.id FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS testSubmissionId,CASE WHEN p.item_type='test' THEN (SELECT ts.grading_status FROM test_submissions ts WHERE ts.user_id=p.user_id AND ts.test_id=p.item_id ORDER BY ts.id DESC LIMIT 1) ELSE NULL END AS gradingStatus FROM user_progress p WHERE p.user_id=? ORDER BY p.updated_at DESC"
     )
     .all(req.user.id);
-  res.json({ progress: rows });
+  res.json({ progress: canAccessSchool(req.user) ? rows : rows.filter(row => row.itemType !== "test") });
 });
 
 app.put("/api/progress", requireSameOrigin, requireAuth, async (req, res) => {
@@ -2379,7 +2382,7 @@ app.get("/api/documents", async (req, res) => {
     ? await db.prepare(sql).all(req.user.id)
     : await db.prepare(sql).all();
   res.setHeader("Cache-Control", "private, no-store");
-  res.json(documents.map(documentResponse));
+  res.json(documents.filter(doc => doc.category !== "test" || canAccessSchool(req.user)).map(documentResponse));
 });
 
 app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
@@ -2783,6 +2786,7 @@ app.get("/api/documents/:id/file", async (req, res, next) => {
   try {
     const doc = await db.prepare("SELECT * FROM documents WHERE id=?").get(req.params.id);
     if (!doc) return res.sendStatus(404);
+    if (doc.category === "test" && !canAccessSchool(req.user)) return res.status(req.user ? 403 : 401).json({ error: "MAIHOC School chỉ dành cho học sinh trong trường và giáo viên." });
     const bytes = await getDocumentBuffer(doc);
     if (!bytes) return res.status(410).json({ error: "File tài liệu không còn trong R2 hoặc kho cũ." });
     if (!doc.r2_key) {

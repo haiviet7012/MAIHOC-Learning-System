@@ -1,3 +1,4 @@
+import { canAccessSchool, schoolRoutes } from './platform/school-access.js';
 import { mountLearningAdvisor } from './platform/learning-advisor.js';
 let disposeTeachingAdvisor = null;
 import { mountTimetablePreview, mountTimetable, mountLearningProgress } from "./platform/learning.js";
@@ -33,6 +34,7 @@ const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "stud
 const state = { route: standaloneStudentProgress ? "student-progress" : "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
+let authResolved = false;
 let activePortalCleanup = null;
 let activeTestDraft = null;
 let testStarting = false;
@@ -817,6 +819,14 @@ async function loadAdminUsers() {
 }
 
 function render() {
+    if (schoolRoutes.has(state.route) && !authResolved) {
+        view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
+        return;
+    }
+    if (schoolRoutes.has(state.route) && !canAccessSchool(currentUser)) {
+        state.route = 'home';
+        history.replaceState(saveRouteHistory(), '', routeUrl({ route: 'home' }));
+    }
     disposeTeachingAdvisor?.(); disposeTeachingAdvisor = null;
     if (currentUser?.isTeacher) disposeTeachingAdvisor = mountLearningAdvisor(document.getElementById('view'), { teaching: true });
     if (state.route === "account-center" && currentUser?.role === "admin") {
@@ -828,10 +838,10 @@ function render() {
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
-    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','assignment-management','school-analytics','tests','timetable'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const sidebarSpace = !canAccessSchool(currentUser) ? 'learning' : schoolRoutes.has(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
-    document.querySelectorAll('[data-space]').forEach(button => { const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+    document.querySelectorAll('[data-space]').forEach(button => { button.hidden = button.dataset.space === 'school' && !canAccessSchool(currentUser); const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
     document.getElementById('education-sidebar')?.classList.remove('is-open');
     document.getElementById('education-menu')?.setAttribute('aria-expanded','false');
     const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
@@ -1669,7 +1679,7 @@ function applyAuthUI() {
     $("#user-actions").hidden = !signedIn;
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
-    if ($("#tests-open")) $("#tests-open").hidden = !signedIn;
+    if ($("#tests-open")) $("#tests-open").hidden = !canAccessSchool(currentUser);
     if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || !isStudentAccount;
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = !(isSuperAdmin || isTeacherAccount);
 
@@ -1718,12 +1728,13 @@ async function refreshAuthUI() {
     catch {
         currentUser = null;
     }
+    authResolved = true;
     applyAuthUI();
     const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     resumePendingTest();
-    if (["home","organization","question-bank","assignments","assignment-management","school-analytics","analytics","timetable","study-rooms","account-center","tests"].includes(state.route)) render();
+    if (schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1900,7 +1911,7 @@ document.addEventListener("click",async e=>{
 window.addEventListener("maihoc-user-updated", event => {
   currentUser = event.detail?.user || null;
   applyAuthUI();
-  if (["account-center", "school", "school-class", "admin"].includes(state.route)) render();
+  if (schoolRoutes.has(state.route) || ["account-center", "home"].includes(state.route)) render();
 });
 window.addEventListener("maihoc-navigate", event => {
   const { route, params } = event.detail || {};
@@ -1944,7 +1955,7 @@ window.addEventListener("maihoc-tests-rerender", () => {
 });
 window.addEventListener("maihoc-auth-changed", async () => {
     await refreshTestsQueue();
-    if (["tests","home"].includes(state.route)) render();
+    if (schoolRoutes.has(state.route) || state.route === "home") render();
 });
 window.addEventListener("maihoc-admin-panel-mounted", () => {
     loadAdminTestsAndPendingGrading();

@@ -1,3 +1,4 @@
+import { canAccessSchool } from '../../js/platform/school-access.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { answersMatch } from "../grading/engine.js";
@@ -34,6 +35,7 @@ export function createPlatformRouter({
   router.get(
     "/context",
     wrap(async (req, res) => {
+      if (!canAccessSchool(req.user)) return res.json({ enabled: false, schools: [], schoolAccess: false, backgroundAi: enabled() && process.env.MAIHOC_AI_WORKER_ENABLED === "1" });
       if (!enabled()) return res.json({ enabled: false, schools: [] });
       const schools = superAdmin(req.user)
         ? await rows(

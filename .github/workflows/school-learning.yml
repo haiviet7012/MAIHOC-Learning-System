@@ -35,6 +35,7 @@ jobs:
           MAIHOC_TEST_DATABASE_URL: postgresql://postgres:maihoc_test@localhost:5432/maihoc_test
       - run: npm run build && npm run check:dist
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:school-access
       - run: npm run test:auth
       - run: npm run test:learning
       - run: npm run test:advisor
