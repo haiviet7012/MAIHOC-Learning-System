@@ -1,3 +1,4 @@
+import { mountTimetablePreview, mountTimetable, mountLearningProgress } from "./platform/learning.js";
 import { TestDraft } from './platform/test-draft.js';
 import { routeUrl, parseRoute } from './platform/router.js';
 import { dashboardMarkup, hydrateActivity, mountPortal } from './platform/portal.js';
@@ -823,7 +824,7 @@ function render() {
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
-    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','assignment-management','tests'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const sidebarSpace = ['organization','school','school-class','question-bank','admin','assignments','assignment-management','school-analytics','tests'].includes(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
     document.querySelectorAll('[data-space]').forEach(button => { const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
@@ -854,9 +855,17 @@ function render() {
     view.classList.toggle("exam-fullscreen", fullscreenExam);
     document.body.classList.toggle("exam-open", fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
-    if (state.route === "home")
+    if (state.route === "home") {
         view.innerHTML = homePage();
-    else if (['organization','question-bank','assignments','assignment-management','analytics'].includes(state.route)) {
+        activePortalCleanup = mountTimetablePreview(view, currentUser);
+    }
+    else if (state.route === "analytics") activePortalCleanup = mountLearningProgress(view, currentUser);
+    else if (state.route === "timetable") {
+        const createNew = Boolean(state.newTimetable);
+        state.newTimetable = false;
+        activePortalCleanup = mountTimetable(view, currentUser, { createNew });
+    }
+    else if (['organization','question-bank','assignments','assignment-management','school-analytics'].includes(state.route)) {
         activePortalCleanup = mountPortal(view, state.route, currentUser, go);
     }
     else if (state.route === "chemistry") {
@@ -1292,7 +1301,7 @@ document.addEventListener("click", async (e) => {
             return;
         }
         $("#subject-menu")?.classList.remove("open");
-        go(r);
+        go(r, { newTimetable: routeBtn.hasAttribute("data-new-timetable") });
         return;
     }
     const action = e.target.closest("[data-action]");
@@ -1710,7 +1719,7 @@ async function refreshAuthUI() {
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     resumePendingTest();
-    if (["home","organization","question-bank","assignments","assignment-management","analytics","study-rooms","account-center","tests"].includes(state.route)) render();
+    if (["home","organization","question-bank","assignments","assignment-management","school-analytics","analytics","timetable","study-rooms","account-center","tests"].includes(state.route)) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1951,3 +1960,5 @@ window.addEventListener('resize',syncEducationSidebar);
 window.addEventListener('maihoc-route-changed',syncEducationSidebar);
 document.addEventListener('keydown',event=>{if(event.key==='Escape')syncEducationSidebar();});
 syncEducationSidebar();
+
+window.addEventListener("maihoc-timetable-home", () => go("home", { newTimetable: false }));

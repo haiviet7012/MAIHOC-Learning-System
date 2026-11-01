@@ -18,7 +18,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Montserrat", Arial, sans-serif;
+  font-family: "Raleway", Arial, sans-serif;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -1289,4 +1289,38 @@ body.reader-open .app-body {
 .portal-welcome > * {position:relative;z-index:1;}
 :root.dark .portal-welcome::before {
  background-image:linear-gradient(90deg,rgba(32,47,76,.90),rgba(32,47,76,.50)),url("/images/background.jpg");
+}
+
+/* Learning planner and personal progress, independent of School. */
+h1,h2,h3,.education-logo strong {font-weight:800;}
+button,input,select,textarea {font-family:inherit;}
+.timetable-actions {display:flex;flex-wrap:wrap;gap:10px;margin:16px 0;}
+.timetable-editor {display:grid;grid-template-columns:200px minmax(0,1fr);gap:20px;align-items:start;}
+.timetable-editor > div {min-width:0;}
+.timetable-subjects {display:flex;flex-direction:column;gap:8px;background:var(--surface);padding:16px;border:1px solid var(--border);border-radius:12px;}
+.timetable-subjects h2 {font-size:16px;margin:0 0 8px;}
+.timetable-subjects button {border:1px solid var(--border);border-radius:8px;padding:10px;text-align:left;color:var(--text);}
+.timetable-subjects button[aria-pressed="true"] {outline:2px solid var(--primary);outline-offset:2px;}
+.timetable-subjects [draggable="true"] {cursor:grab;}
+.timetable-scroll {overflow-x:auto;max-width:100%;border:1px solid var(--border);border-radius:10px;}
+.timetable-grid {width:100%;min-width:700px;border-collapse:collapse;table-layout:fixed;}
+.timetable-grid th,.timetable-grid td {padding:6px;border:1px solid var(--border);font-size:11px;vertical-align:middle;text-align:center;}
+.timetable-grid th {background:var(--surface-2,#eaf1fb);font-weight:700;color:var(--text);}
+.timetable-grid th:first-child {width:108px;}
+.timetable-cell {display:grid;place-items:center;width:100%;min-height:66px;padding:8px;border:0;border-radius:6px;font-size:11px;overflow-wrap:anywhere;color:#172b50;}
+.timetable-grid button:hover {outline:2px dashed var(--primary);outline-offset:-2px;}
+.timetable-cell.tone-empty {background:var(--surface);color:var(--muted);}
+.timetable-cell.tone-0,.timetable-subjects .tone-0 {background:#f8dcd6;color:#172b50;}
+.timetable-cell.tone-1,.timetable-subjects .tone-1 {background:#f6edc7;color:#172b50;}
+.timetable-cell.tone-2,.timetable-subjects .tone-2 {background:#d6eee7;color:#172b50;}
+.timetable-cell.tone-3,.timetable-subjects .tone-3 {background:#e7ddf3;color:#172b50;}
+.timetable-cell.tone-4,.timetable-subjects .tone-4 {background:#dae8f6;color:#172b50;}
+.learning-progress-list {margin-top:22px;}
+.learning-progress-list .portal-record > div {flex:1;min-width:0;}
+.learning-progress-list progress {width:100%;accent-color:var(--primary);}
+@media(max-width:700px) {
+ .timetable-editor {grid-template-columns:minmax(0,1fr);}
+ .timetable-subjects {flex-direction:row;flex-wrap:wrap;}
+ .timetable-subjects h2 {flex-basis:100%;}
+ .timetable-subjects button {font-size:11px;}
 }

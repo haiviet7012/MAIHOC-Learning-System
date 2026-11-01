@@ -1,0 +1,84 @@
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdir } from 'node:fs/promises';
+const password = randomUUID();
+const origin = 'http://127.0.0.1:4174';
+const preview = spawn(process.execPath, ['scripts/dev-preview.mjs'], {
+  env: { ...process.env, PREVIEW_PORT: '4174', MAIHOC_PREVIEW_PASSWORD: password, MAIHOC_PREVIEW_PLATFORM_ENABLED: '0' },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+let browser;
+try {
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Preview startup timeout')), 60000);
+    let output = '';
+    preview.stdout.on('data', chunk => { output += chunk; if (output.includes('isolated preview ready')) { clearTimeout(timeout); resolve(); } });
+    preview.stderr.on('data', chunk => process.stderr.write(chunk));
+    preview.on('exit', code => { clearTimeout(timeout); reject(new Error(`Preview exited ${code}`)); });
+  });
+  browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
+  assert.equal((await context.request.get(origin + '/api/learning/timetable')).status(), 401);
+  await page.goto(origin + '/learning');
+  await page.locator('#login-open').click();
+  await page.locator('#login-form [name=email]').fill('student@maihoc.test');
+  await page.locator('#login-form [name=password]').fill(password);
+  await page.locator('#login-form button[type=submit]').click();
+  await page.getByRole('button', { name: 'Thiết lập thời khóa biểu của bạn', exact: true }).waitFor();
+  assert.equal((await (await context.request.get(origin + '/api/platform/context')).json()).enabled, false);
+  await page.getByRole('button', { name: 'Thiết lập thời khóa biểu của bạn', exact: true }).click();
+  await page.locator('[data-subject-choice="Toán"]').dragTo(page.locator('[data-place="0-0"]'));
+  await page.locator('[data-place="0-0"]').filter({ hasText: 'Toán' }).waitFor();
+  await page.getByRole('button', { name: 'Lưu thời khóa biểu', exact: true }).click();
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
+  const saved = (await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable;
+  assert.equal(saved.cells['0-0'], 'Toán');
+  const put = body => context.request.put(origin + '/api/learning/timetable', { data: body, headers: { Origin: origin } });
+  assert.equal((await put({ cells: { '4-0': 'Toán' }, version: saved.version })).status(), 400);
+  assert.equal((await put({ cells: { '0-0': '<script>' }, version: saved.version })).status(), 400);
+  assert.equal((await put({ cells: {}, version: 0 })).status(), 409);
+  assert.equal((await context.request.put(origin + '/api/learning/timetable', { data: { cells: {}, version: saved.version }, headers: { Origin: 'https://untrusted.example' } })).status(), 403);
+  await page.reload();
+  await page.locator('[data-place="0-0"]').filter({ hasText: 'Toán' }).waitFor();
+  await page.getByRole('button', { name: 'Quay lại tổng quan', exact: true }).click();
+  await page.getByRole('button', { name: 'Sửa thời khóa biểu hiện tại', exact: true }).waitFor();
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Tạo thời khóa biểu mới', exact: true }).click();
+  await page.locator('[data-place="0-0"]').filter({ hasText: 'Toán' }).waitFor();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Tạo thời khóa biểu mới', exact: true }).click();
+  assert.ok(!(await page.locator('[data-place="0-0"]').textContent()).includes('Toán'));
+  assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['0-0'], 'Toán', 'Reset does not delete persisted schedule before save');
+  await page.locator('[data-subject-choice="Tiếng Anh"]').click();
+  await page.locator('[data-place="1-1"]').focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Lưu thời khóa biểu', exact: true }).click();
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No mobile page overflow');
+  await mkdir('test-results', { recursive: true });
+  await page.screenshot({ path: 'test-results/timetable-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.screenshot({ path: 'test-results/timetable-desktop.png', fullPage: true });
+  await context.request.put(origin + '/api/progress', { headers: { Origin: origin }, data: { itemType: 'document', itemId: 'learning-fixture', itemTitle: 'Tự học Toán', subject: 'Toán', grade: '12', status: 'in_progress', progressPercent: 40 } });
+  await page.goto(origin + '/learning/progress');
+  await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
+  assert.ok(!(await page.locator('#view').textContent()).includes('School mới chưa được bật'));
+  assert.ok((await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).includes('Raleway'));
+  const teacher = await browser.newContext();
+  await teacher.request.post(origin + '/api/auth/login', { data: { email: 'teacher@maihoc.test', password }, headers: { Origin: origin } });
+  assert.equal((await (await teacher.request.get(origin + '/api/learning/timetable')).json()).timetable, null, 'Timetable is private per account');
+  assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['1-1'], 'Tiếng Anh');
+  assert.deepEqual(errors, []);
+  console.log('Learning checks passed: disabled School, personal progress, drag/drop, keyboard/mobile, save/reopen, reset confirmation, ownership, CSRF, validation and stale-write protection.');
+} finally {
+  await browser?.close();
+  preview.kill('SIGTERM');
+}

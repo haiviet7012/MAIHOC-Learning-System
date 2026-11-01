@@ -1,3 +1,4 @@
+import { ensureLearningSchema, installLearningRoutes } from "./learning.js";
 import { aiExamGuard } from './platform/ai-guard.js';
 import { geminiModels } from './ai-models.js';
 import { createPlatformRouter } from './platform/routes.js';
@@ -1508,6 +1509,8 @@ app.get("/api/admin/progress", requireSuperAdmin, async (req, res) => {
     .all(...(subordinateAdmin ? [req.user.id] : []));
   res.json({ progress: rows });
 });
+
+installLearningRoutes(app, { db, requireAuth, requireSameOrigin });
 
 app.get("/api/progress", requireAuth, async (req, res) => {
   const rows = await db
@@ -3095,6 +3098,7 @@ export function stopPresenceCleanup() {
 
 export async function initializeApplicationRuntime() {
   await initAuthDatabase();
+  await ensureLearningSchema(db);
   await initSchoolSystemDatabase(db);
   await initChatDatabase();
   if (testsModule?.initTestsModuleDatabase) {

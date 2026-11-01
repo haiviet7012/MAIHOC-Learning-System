@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 delete process.env.DATABASE_URL;
 delete process.env.MAIHOC_TEST_DATABASE_URL;
 process.env.MAIHOC_SKIP_AUTO_LISTEN = "1";
-process.env.MAIHOC_PLATFORM_ENABLED = "1";
+process.env.MAIHOC_PLATFORM_ENABLED = process.env.MAIHOC_PREVIEW_PLATFORM_ENABLED ?? "1";
 process.env.MAIHOC_AI_WORKER_ENABLED = "0";
 process.env.NODE_ENV = "test";
 for (const key of [
