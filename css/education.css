@@ -1540,3 +1540,42 @@ button,input,select,textarea {font-family:inherit;}
   line-height: 1;
   transform: none;
 }
+
+/* Auth poster has its own rounded clipping surface, matching the dialog. */
+:is(#login-dialog, #register-dialog, #forgot-password-dialog) {
+  background: #fff;
+}
+:is(#login-dialog, #register-dialog, #forgot-password-dialog)::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  right: 16px;
+  width: 46%;
+  border-radius: 18px;
+  background: url("/images/poster.jpg") center / cover no-repeat;
+  pointer-events: none;
+}
+:is(#login-dialog, #register-dialog, #forgot-password-dialog) .close-button {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  min-width: 52px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  line-height: 1;
+  transform: none;
+}
+@media (max-width: 700px) {
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)::before {
+    left: 16px;
+    right: 16px;
+    bottom: auto;
+    width: auto;
+    height: 130px;
+  }
+}

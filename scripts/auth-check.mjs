@@ -17,7 +17,10 @@ try {
   await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, r => r.abort());
   await page.goto(origin + '/learning'); await page.locator('#register-open').click();
   assert.equal(await page.locator('#register-form [value=teacher]').count(), 1);
-  assert.ok((await page.locator('#register-dialog').evaluate(n => getComputedStyle(n).backgroundImage)).includes('/images/poster.jpg'));
+  assert.ok((await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').backgroundImage)).includes('/images/poster.jpg'));
+  assert.equal(await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').borderRadius), '18px');
+  const authClose = await page.locator('#register-dialog .close-button').boundingBox();
+  assert.equal(authClose.width, 52); assert.equal(authClose.height, 40);
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/signup-teacher-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
