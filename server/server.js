@@ -12,7 +12,7 @@ import {
 
 import express from "express";
 import http from "node:http";
-import { setupChat, initChatDatabase } from "./chat.js";
+import { setupChat, initChatDatabase, notifyDeletedChatUser } from "./chat.js";
 import multer from "multer";
 import dotenv from "dotenv";
 import fs from "node:fs";
@@ -1115,6 +1115,7 @@ async function deleteAccountPermanently(id) {
     .all(id);
   const result = await db.prepare("DELETE FROM users WHERE id=?").run(id);
   if (!result.changes) return false;
+  notifyDeletedChatUser(id);
   try {
     await deleteLearningResultsByUserId(id);
   } catch {}

@@ -109,6 +109,10 @@ try {
   await page.goto(origin + '/learning/progress');
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
+  await page.locator('.advisor-pull').click();
+  await page.locator('.advisor-drawer .advisor-workspace').waitFor();
+  await page.locator('.advisor-dismiss').click();
+  assert.equal(await page.locator('.advisor-drawer').evaluate(n => n.inert), true);
   assert.ok(!(await page.locator('#view').textContent()).includes('School mới chưa được bật'));
   assert.ok((await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).includes('Montserrat'));
   const teacher = await browser.newContext();

@@ -2,6 +2,12 @@ import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
 import { db, publicUser } from "./auth.js";
 
+let chatIO;
+export function notifyDeletedChatUser(userId) {
+  chatIO?.emit("chat:account-deleted", { userId: Number(userId) });
+  chatIO?.in(`user_${userId}`).disconnectSockets(true);
+}
+
 const SESSION_COOKIE = "maihoc.sid";
 
 function hashToken(token) {
@@ -58,6 +64,17 @@ export async function initChatDatabase() {
     CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
   `);
 
+  // Remove direct threads whose other account was already deleted.
+  await db.query(`DELETE FROM chat_conversations c WHERE c.type='direct' AND
+    (SELECT count(*) FROM chat_participants p JOIN users u ON u.id=p.user_id WHERE p.conversation_id=c.id)<2`);
+  await db.query(`CREATE OR REPLACE FUNCTION remove_deleted_user_chat() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      DELETE FROM chat_conversations WHERE type='direct' AND id IN
+        (SELECT conversation_id FROM chat_participants WHERE user_id=OLD.id);
+      RETURN OLD;
+    END; $$`);
+  await db.query(`DROP TRIGGER IF EXISTS users_remove_chat ON users`);
+  await db.query(`CREATE TRIGGER users_remove_chat BEFORE DELETE ON users FOR EACH ROW EXECUTE FUNCTION remove_deleted_user_chat()`);
   // Ensure default Global Chat room exists
   await db
     .prepare(`
@@ -144,7 +161,7 @@ export async function isParticipant(conversationId, userId) {
 // Setup Socket.IO & Chat REST API
 // ----------------------------------------------------
 export function setupChat(server, app) {
-  const io = new SocketIOServer(server, {
+  const io = chatIO = new SocketIOServer(server, {
     path: "/socket.io",
     cors: {
       origin: true,
@@ -515,7 +532,7 @@ export function setupChat(server, app) {
         })
       );
 
-      res.json({ conversations });
+      res.json({ conversations: conversations.filter(c => c.type !== "direct" || c.partner) });
     } catch (err) {
       console.error("GET /api/chat/conversations error:", err);
       res.status(500).json({ error: "Không thể lấy danh sách cuộc trò chuyện." });

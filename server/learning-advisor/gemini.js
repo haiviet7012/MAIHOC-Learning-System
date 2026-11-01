@@ -45,8 +45,8 @@ export async function advise(
   { mode, message, context, history, roadmap, goal, minutes },
   { env = process.env, fetcher = fetch } = {},
 ) {
-  const key = String(env.LEARNING_ADVISOR_API_KEY || "").trim();
-  const model = String(env.LEARNING_ADVISOR_MODEL || "").trim();
+  const key = String(env.LEARNING_ADVISOR_API_KEY || env.GEMINI_API_KEY || "").trim();
+  const model = String(env.LEARNING_ADVISOR_MODEL || env.GEMINI_MODEL || "").trim();
   if (!key || !/^gemini-[a-zA-Z0-9.-]+$/.test(model))
     fail("Chưa cấu hình API key/model riêng của Cố vấn học tập.", 503);
   let response;

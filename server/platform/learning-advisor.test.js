@@ -20,13 +20,12 @@ test("advisor metrics normalize scales, preserve zero, exclude missing and use V
   assert.equal(result.radarDaily.length, 1);
   assert.equal(summarize([]).daily.length, 0);
 });
-test("advisor uses only its dedicated key and validates provider output", async () => {
+test("advisor prefers dedicated configuration, supports shared Gemini and validates provider output", async () => {
   await assert.rejects(
     advise(
       {},
       {
         env: {
-          GEMINI_API_KEY: "old-key",
           LEARNING_ADVISOR_MODEL: "gemini-3.6-flash",
         },
         fetcher: () => {
@@ -73,6 +72,13 @@ test("advisor uses only its dedicated key and validates provider output", async 
   assert.equal(sent.options.headers["x-goog-api-key"], "dedicated");
   assert.ok(!sent.url.includes("dedicated"));
   assert.equal(result.reply, "Ôn tập");
+  await advise({ mode: 'chat', message: 'Toán', context: {}, history: [] }, {
+    env: { GEMINI_API_KEY: 'shared-fixture', GEMINI_MODEL: 'gemini-3.6-flash' },
+    fetcher: async (url, options) => {
+      assert.equal(options.headers['x-goog-api-key'], 'shared-fixture');
+      return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ inScope: true, reply: 'Học tập', tasks: [] }) }] } }] }) };
+    }
+  });
   assert.throws(() =>
     validateAdvice({ inScope: true, reply: "x", tasks: [{ day: 0 }] }),
   );

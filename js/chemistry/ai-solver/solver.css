@@ -17,7 +17,7 @@
 .solver-panel {
   background: #070e1b;
   border: 1px solid rgba(56, 189, 248, 0.25);
-  border-radius: 18px;
+  border-radius:0;
   padding: 22px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
   color: #e2e8f0;
@@ -37,7 +37,7 @@
   min-height: 140px;
   background: #040810;
   border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: 12px;
+  border-radius:0;
   color: #f8fafc;
   padding: 14px;
   font-size: 14px;
@@ -57,7 +57,7 @@
   align-items: center;
   justify-content: center;
   border: 2px dashed rgba(56, 189, 248, 0.3);
-  border-radius: 12px;
+  border-radius:0;
   padding: 18px;
   margin: 14px 0;
   background: rgba(15, 23, 42, 0.5);
@@ -78,7 +78,7 @@
 
 .solver-dropzone-preview img {
   max-height: 160px;
-  border-radius: 8px;
+  border-radius:0;
   border: 1px solid #38bdf8;
 }
 
@@ -95,7 +95,7 @@
   border: 1px solid rgba(56, 189, 248, 0.3);
   color: #7dd3fc;
   padding: 6px 12px;
-  border-radius: 99px;
+  border-radius:0;
   font-size: 11px;
   font-weight: 600;
   transition: all 0.15s ease;
@@ -110,7 +110,7 @@
 .solution-panel {
   background: #081224;
   border: 1px solid rgba(56, 189, 248, 0.25);
-  border-radius: 18px;
+  border-radius:0;
   padding: 24px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
   color: #e2e8f0;
@@ -123,7 +123,7 @@
   padding: 16px;
   background: rgba(15, 23, 42, 0.7);
   border-left: 4px solid #38bdf8;
-  border-radius: 0 12px 12px 0;
+  border-radius:0;
 }
 
 .solution-section h4 {
@@ -139,7 +139,7 @@
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(56, 189, 248, 0.15));
   border: 2px solid #10b981;
   padding: 18px;
-  border-radius: 14px;
+  border-radius:0;
   margin: 20px 0;
   text-align: center;
 }

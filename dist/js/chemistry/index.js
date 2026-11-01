@@ -25,7 +25,7 @@ export function mountChemistryModule(container, { subView = "periodic-table", in
             <h1 style="margin:4px 0 6px;font-size:clamp(24px,3.5vw,32px);">${currentSubView === 'periodic-table' ? 'Bảng tuần hoàn 118 nguyên tố' : 'AI Giải bài tập Hóa học'}</h1>
             <p class="muted" style="margin:0;">Bảng tuần hoàn tương tác IUPAC &amp; Trợ lý AI giải bài tập Hóa học từng bước.</p>
           </div>
-          <div class="inline-actions" style="background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:12px;box-shadow:var(--shadow);">
+          <div class="inline-actions" style="background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:0;box-shadow:var(--shadow);">
             <button type="button" class="button ${currentSubView === 'periodic-table' ? 'primary' : 'ghost'} small" id="tab-ptable">📊 Bảng tuần hoàn</button>
             <button type="button" class="button ${currentSubView === 'ai-solver' ? 'primary' : 'ghost'} small" id="tab-solver">⚗️ AI Giải bài tập</button>
           </div>
