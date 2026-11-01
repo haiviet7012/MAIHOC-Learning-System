@@ -71,6 +71,10 @@ await fixture.db.query(
 await fixture.db.query(
   "INSERT INTO notifications(user_id,type,title,message) VALUES(100,'learning','Chào mừng đến lớp học','Hãy bắt đầu với học liệu và bài được giao.'),(100,'learning','Kiến thức luôn được kết nối','Theo dõi tiến trình sau mỗi bài làm.')",
 );
+if (process.env.MAIHOC_PREVIEW_ADVISOR_DATA === '1') {
+  const { seedAdvisorPreview } = await import('./advisor-preview-data.mjs');
+  await seedAdvisorPreview(fixture.db, school.id, year.id, cls.id);
+}
 // The existing server exposes static files, APIs, real cookies, grading and Socket.IO.
 const port = Number(process.env.PREVIEW_PORT || 4173);
 server.listen(port, "127.0.0.1", () =>

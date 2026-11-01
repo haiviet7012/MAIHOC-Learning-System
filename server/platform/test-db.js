@@ -2,8 +2,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { createPostgresDb, initPostgresSchema } from "../postgres.js";
 import { migrate } from "./migrate.js";
 import { initSchoolSystemDatabase } from "../school-system.js";
-export async function testDatabase() {
-  if (process.env.MAIHOC_TEST_DATABASE_URL) {
+export async function testDatabase({ memoryOnly = false } = {}) {
+  if (process.env.MAIHOC_TEST_DATABASE_URL && !memoryOnly) {
     const url = new URL(process.env.MAIHOC_TEST_DATABASE_URL);
     if (!url.pathname.toLowerCase().includes("test"))
       throw new Error("Use an isolated database whose name contains test.");

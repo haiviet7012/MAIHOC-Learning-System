@@ -1409,6 +1409,76 @@ button,input,select,textarea {font-family:inherit;}
  .timetable-subjects button {font-size:11px;}
 }
 
+/* Keep the book's resting tilt while gently wiggling on hover. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .portal-book-art:hover {
+    transform-origin: 50% 80%;
+    animation: portal-book-wiggle 650ms ease-in-out;
+  }
+}
+@keyframes portal-book-wiggle {
+  0%, 100% { transform: rotate(-9deg); }
+  20% { transform: rotate(-14deg); }
+  40% { transform: rotate(-4deg); }
+  60% { transform: rotate(-12deg); }
+  80% { transform: rotate(-7deg); }
+}
+
+/* Shared geometry keeps the three floating launchers aligned. */
+.online-dashboard-fab,
+.chat-launcher,
+.notification-launcher {
+  right: 28px !important;
+  left: auto !important;
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+  box-sizing: border-box;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+}
+@media (max-width: 700px) {
+  .online-dashboard-fab,
+  .chat-launcher,
+  .notification-launcher { right: 16px !important; }
+}
+
+/* Personal learning advisor: scoped styles, no global form overrides. */
+.advisor { margin-top:24px; }
+.advisor-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+.advisor label { display:grid; gap:6px; font-size:14px; }
+.advisor input:not([type=checkbox]),.advisor select,.advisor textarea { width:100%; padding:10px 12px; border:1px solid #ccd8d1; border-radius:10px; background:#fff; color:#233a2d; font:inherit; box-sizing:border-box; }
+.advisor-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:20px 0; }
+.advisor-options button { min-height:52px; white-space:normal; }
+.advisor-charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; }
+.advisor-chart { padding:20px; border-radius:24px; background:#f8faf8; border:1px solid #e4ece5; min-width:0; }
+.advisor-chart svg { display:block; width:100%; max-height:350px; margin:auto; }
+.advisor table { width:100%; border-collapse:collapse; margin:12px 0; }
+.advisor th,.advisor td { padding:8px; border-bottom:1px solid #e3e9e5; text-align:left; }
+.advisor caption { text-align:left; font-weight:600; }
+.advisor-workspace { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; margin-top:24px; }
+.advisor-chat { max-height:460px; overflow:auto; padding:16px; border:1px solid #e3e9e5; border-radius:18px; background:#fbfcfb; }
+.advisor-message { margin:0 0 12px; padding:14px; border-radius:14px; background:#edf5ee; }
+.advisor-message p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.advisor-user { background:#eef1fa; }
+.advisor form { display:grid; gap:12px; margin-top:16px; }
+.advisor-plan { border:1px solid #d9e6db; border-radius:18px; padding:18px; margin-bottom:16px; }
+.advisor-plan ol { padding-left:20px; }
+.advisor-plan li { margin:14px 0; }
+.advisor-plan li label { display:block; line-height:1.6; }
+.advisor button:focus-visible,.advisor input:focus-visible,.advisor select:focus-visible,.advisor textarea:focus-visible { outline:3px solid #3d7751; outline-offset:3px; }
+@media(max-width:760px) { .advisor-workspace,.advisor-options { grid-template-columns:1fr; } .advisor-chart { padding:12px; } }
+
+.timetable-grid th:first-child {width:54px;}
+.timetable-grid th:nth-child(2) {width:40px;}
+.timetable-grid .timetable-cell {min-height:48px;}
+.timetable-grid tbody + tbody {border-top:3px solid var(--primary);}
+.timetable-grid .timetable-session {font-size:14px;}
+.timetable-legacy {margin:12px 0;font-size:12px;color:var(--muted);}
 /* Keep the main shell readable without the extra-heavy weights. */
 .education-sidebar,
 .education-sidebar *,
