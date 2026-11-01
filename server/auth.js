@@ -186,8 +186,9 @@ export async function registerUser({ name, email, password, accountType, classCo
   const secret = String(password || "");
   const normalizedClassCode = String(classCode || "").trim().toUpperCase();
   const hasValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode);
-  const normalizedAccountType = (accountType === "school" || hasValidClass) ? "school" : "external";
-  if (normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {
+  const teacherRegistration = accountType === "teacher";
+  const normalizedAccountType = (teacherRegistration || accountType === "school" || hasValidClass) ? "school" : "external";
+  if (!teacherRegistration && normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {
     throw new Error("Học sinh của trường cần chọn lớp hợp lệ (10A1–12C9).");
   }
   if (safeName.length < 2 || safeName.length > 80) {
@@ -202,8 +203,8 @@ export async function registerUser({ name, email, password, accountType, classCo
   const passwordHash = await hashPassword(secret);
   try {
     const result = await db
-      .prepare("INSERT INTO users (name,email,password_hash,role,account_type) VALUES (?,?,?,'user',?)")
-      .run(safeName, safeEmail, passwordHash, normalizedAccountType);
+      .prepare("INSERT INTO users (name,email,password_hash,role,admin_level,account_type) VALUES (?,?,?,?,?,?)")
+      .run(safeName, safeEmail, passwordHash, teacherRegistration ? "admin" : "user", teacherRegistration ? 1 : 0, normalizedAccountType);
     const created = await db.prepare("SELECT * FROM users WHERE id=?").get(result.lastInsertRowid);
     return publicUser({
       ...created,

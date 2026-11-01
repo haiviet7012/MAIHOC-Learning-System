@@ -1783,7 +1783,7 @@ $("#register-form").addEventListener("submit", async (event) => {
         closeDialog("register-dialog");
         form.reset();
         toast("Tạo tài khoản thành công.", "success");
-        go("home");
+        go(currentUser.isTeacher ? "assignment-management" : "home");
     }
     catch (err) {
         error.textContent = err.message;
