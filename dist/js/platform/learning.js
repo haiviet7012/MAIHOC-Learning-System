@@ -1,3 +1,4 @@
+import { canAccessSchool } from './school-access.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from '../ui.js';
 import { api } from './api.js';
@@ -22,6 +23,8 @@ const login = '<p>Đăng nhập để lưu thời khóa biểu và theo dõi vi�
 export function mountTimetablePreview(container, user) {
   const target = container.querySelector('[data-personal-timetable]');
   if (!target) return () => {};
+  target.closest('.portal-panel').hidden = !canAccessSchool(user);
+  if (!canAccessSchool(user)) return () => {};
   const controller = new AbortController();
   if (!user) { target.innerHTML = login; return () => controller.abort(); }
   api('/api/learning/timetable', { signal: controller.signal }).then(({ timetable }) => {

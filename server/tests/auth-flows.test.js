@@ -30,6 +30,32 @@ test('teacher signup and recovery email success/failure preserve roles, OTP priv
     assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1', [teacher.id])).rows.length, 0);
     const student = await post('/api/auth/register', { name: 'Học sinh mới', email: 'new-student@maihoc.test', password: 'student-fixture-password', accountType: 'external', role: 'admin', adminLevel: 2 });
     assert.equal((await student.json()).user.adminLevel, 0);
+    const externalCookie = student.headers.get('set-cookie').split(';')[0];
+    const get = (path, session) => fetch(origin + path, { headers: session ? { Cookie: session } : {} });
+    const restricted = ['/api/school/classes', '/api/tests', '/api/test-submissions/1', '/api/platform/schools', '/api/learning/timetable', '/api/learning-advisor/snapshot?scope=school&schoolId=1'];
+    for (const path of restricted) {
+      assert.equal((await get(path)).status, 401, `Guest denied: ${path}`);
+      assert.equal((await get(path, externalCookie)).status, 403, `External learner denied: ${path}`);
+    }
+    assert.deepEqual(await (await get('/api/platform/context', externalCookie)).json(), { enabled: false, schools: [], schoolAccess: false, backgroundAi: false });
+    assert.equal((await get('/api/progress', externalCookie)).status, 200, 'Learning progress stays accessible');
+    assert.equal((await get('/api/documents', externalCookie)).status, 200, 'Learning library stays accessible');
+    assert.equal((await post('/api/school/join-class', { classCode: '10A1', accountType: 'school' }, externalCookie)).status, 403, 'Request body cannot upgrade School access');
+    assert.equal((await fetch(origin + '/api/progress', { method: 'PUT', headers: { Origin: origin, Cookie: externalCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ itemType: 'test', itemId: '1' }) })).status, 403);
+    const schoolStudent = await post('/api/auth/register', { name: 'Học sinh trong trường', email: 'school-student@maihoc.test', password: 'student-fixture-password', accountType: 'school' });
+    assert.equal(schoolStudent.status, 201);
+    const schoolCookie = schoolStudent.headers.get('set-cookie').split(';')[0];
+    for (const session of [schoolCookie, cookie]) {
+      assert.equal((await get('/api/learning/timetable', session)).status, 200);
+      assert.equal((await get('/api/tests', session)).status, 200);
+      assert.equal((await get('/api/school/classes', session)).status, 200);
+    }
+    await fixture.db.query("INSERT INTO documents(id,subject,grade,category,title,filename,original_name,size) VALUES('school-test','Toán','10','test','School only','test.pdf','test.pdf',0),('learning-doc','Toán','10','theory','Learning','doc.pdf','doc.pdf',0)");
+    const library = await (await get('/api/documents', externalCookie)).json();
+    assert.ok(library.some(doc => doc.id === 'learning-doc'));
+    assert.ok(!library.some(doc => doc.id === 'school-test'));
+    assert.equal((await get('/api/documents/school-test/file', externalCookie)).status, 403);
+    assert.equal((await get('/api/documents/school-test/file')).status, 401);
     const email = teacher.email;
     fail = true;
     for (let attempt = 0; attempt < 2; attempt++) {

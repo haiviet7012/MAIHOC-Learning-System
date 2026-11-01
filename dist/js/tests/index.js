@@ -1,3 +1,4 @@
+import { canAccessSchool } from '../platform/school-access.js';
 import { escapeHTML, toast, openDialog, closeDialog } from "../ui.js";
 
 let cachedTests = [];
@@ -15,6 +16,14 @@ export function findCachedTest(id) {
 }
 
 export async function refreshTestsQueue() {
+  if (!canAccessSchool(window.maihocCurrentUser)) {
+    cachedTests = [];
+    cachedSummary = { total: 0, incompleteCount: 0, completedCount: 0, pendingGradingTotal: 0 };
+    window.__maihocTestsQueue = [];
+    const badge = document.getElementById('tests-new-count');
+    if (badge) badge.hidden = true;
+    return [];
+  }
   try {
     const response = await fetch("/api/tests", { credentials: "same-origin", cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
