@@ -89,6 +89,16 @@ try {
     () => document.querySelectorAll(".advisor-message").length >= 4,
   );
   await page.locator("[data-advisor-mode=charts]").click();
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+  const darkSurfaces = await page.locator('.advisor-chart, .advisor-chat, .advisor select').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).backgroundColor));
+  assert.ok(darkSurfaces.every(color => !['rgb(255, 255, 255)', 'rgb(248, 250, 248)', 'rgb(251, 252, 251)'].includes(color)), 'Advisor uses dark surfaces throughout');
+  for (const selector of ['.online-dashboard-fab', '.chat-launcher', '#notifications-open']) {
+    const node = page.locator(selector);
+    if (await node.count()) assert.equal(await node.evaluate(n => getComputedStyle(n).borderRadius), '50%');
+  }
+  await page.screenshot({ path: new URL('advisor-dark-surfaces.png', directory).pathname, fullPage: true });
+  await page.evaluate(() => document.documentElement.classList.remove('dark'));
+
   await page.screenshot({
     path: new URL("advisor-learning-desktop.png", directory).pathname,
     fullPage: true,

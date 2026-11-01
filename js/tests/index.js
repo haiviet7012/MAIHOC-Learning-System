@@ -322,7 +322,6 @@ export function renderTestsQueuePage(currentUser) {
               ? `
                 <button type="button" class="button secondary" data-export-teacher-sheets="xlsx">📊 Xuất bảng điểm giáo viên (.xlsx)</button>
                 <button type="button" class="button secondary" data-route="admin">📋 Bài chờ chấm (${cachedSummary.pendingGradingTotal || 0})</button>
-                <button type="button" class="button primary" data-open-create-test>＋ Thêm bài kiểm tra</button>
               `
               : ""
           }
@@ -365,6 +364,7 @@ export function renderTestsQueuePage(currentUser) {
         <div class="test-queue-list" id="test-queue-list">
           ${cellsHtml}
         </div>
+        ${isAdmin && filtered.length ? '<div class="test-queue-footer"><button type="button" class="button primary" data-open-create-test>＋ Thêm bài kiểm tra</button></div>' : ''}
       </div>
     </section>
   `;
