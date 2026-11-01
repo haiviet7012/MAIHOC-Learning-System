@@ -266,7 +266,7 @@ export function mountLearningAdvisor(container, options = {}) {
   const controller = new AbortController();
   const host = document.createElement('div'); host.className = 'advisor-drawer-host';
   const panelId = `advisor-panel-${Math.random().toString(36).slice(2)}`;
-  host.innerHTML = `<button type="button" class="advisor-pull" aria-expanded="false" aria-controls="${panelId}" aria-label="Mở Cố vấn học tập">❮ <span>Cố vấn học tập</span></button><aside id="${panelId}" class="advisor-drawer" aria-label="Cố vấn học tập" inert><button type="button" class="advisor-dismiss" aria-label="Đóng Cố vấn học tập">×</button><div class="advisor-drawer-content"></div></aside>`;
+  host.innerHTML = `<button type="button" class="advisor-pull" aria-expanded="false" aria-controls="${panelId}" aria-label="Mở Cố vấn học tập"><span aria-hidden="true">&lt;</span></button><aside id="${panelId}" class="advisor-drawer" aria-label="Cố vấn học tập" inert><button type="button" class="advisor-dismiss" aria-label="Đóng Cố vấn học tập">×</button><div class="advisor-drawer-content"></div></aside>`;
   document.body.append(host);
   const pull = host.querySelector('.advisor-pull'), panel = host.querySelector('.advisor-drawer');
   let dispose = null;
