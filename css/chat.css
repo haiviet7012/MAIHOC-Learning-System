@@ -28,7 +28,7 @@
   background: var(--primary);
   color: #ffffff;
   border: 1px solid var(--primary-2, var(--primary));
-  border-radius: 50% !important;
+  border-radius:0 !important;
   box-shadow: 0 10px 25px rgba(18, 59, 112, 0.28);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, background 0.2s ease;
@@ -94,7 +94,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px !important;
+  border-radius:0 !important;
   background: var(--danger, #d83242);
   color: #ffffff;
   font-size: 11px;
@@ -138,7 +138,7 @@
   background: var(--primary);
   color: #ffffff;
   border: 1px solid var(--primary-2, var(--primary));
-  border-radius: 50% !important;
+  border-radius:0 !important;
   box-shadow: 0 10px 25px rgba(18, 59, 112, 0.28);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, background 0.2s ease;
@@ -196,7 +196,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px !important;
+  border-radius:0 !important;
   background: var(--danger, #d83242);
   color: #ffffff;
   font-size: 11px;
@@ -225,7 +225,7 @@
   max-height: calc(100vh - 165px);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius:0;
   box-shadow: var(--shadow, 0 20px 50px rgba(0, 0, 0, 0.2));
   z-index: 995;
   display: flex;
@@ -274,7 +274,7 @@
   font-size: 18px;
   padding: 4px 6px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius:0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -311,7 +311,7 @@
 .chat-status-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius:0;
   background: #9ca3af;
   flex-shrink: 0;
 }
@@ -340,7 +340,7 @@
   height: 30px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius:0;
   color: var(--muted);
   font-size: 16px;
   display: flex;
@@ -372,7 +372,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  border-radius: 10px;
+  border-radius:0;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -395,7 +395,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 999px;
+  border-radius:0;
   background: var(--danger);
   color: #ffffff;
   font-size: 10px;
@@ -441,7 +441,7 @@
   padding: 8px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius:0;
   font-size: 13px;
   color: var(--text);
   outline: none;
@@ -480,7 +480,7 @@
 .chat-avatar {
   width: 38px;
   height: 38px;
-  border-radius: 12px;
+  border-radius:0;
   background: linear-gradient(135deg, var(--primary), var(--accent));
   color: #ffffff;
   font-weight: 700;
@@ -503,7 +503,7 @@
   right: -2px;
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius:0;
   border: 2px solid var(--surface);
   background: #9ca3af;
 }
@@ -622,7 +622,7 @@
 
 .chat-bubble {
   padding: 9px 13px;
-  border-radius: 16px;
+  border-radius:0;
   font-size: 13px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -632,7 +632,7 @@
 .chat-message-group.mine .chat-bubble {
   background: var(--primary);
   color: #ffffff;
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius:0;
 }
 
 :root.dark .chat-message-group.mine .chat-bubble {
@@ -644,7 +644,7 @@
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius:0;
 }
 
 .chat-message-time {
@@ -674,7 +674,7 @@
 .chat-typing-dot {
   width: 4px;
   height: 4px;
-  border-radius: 50%;
+  border-radius:0;
   background: var(--muted);
   animation: chatBounce 1.4s infinite ease-in-out both;
 }
@@ -703,7 +703,7 @@
   max-height: 110px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius:0;
   background: var(--surface-2);
   color: var(--text);
   font-size: 13px;
@@ -721,7 +721,7 @@
 .chat-send-btn {
   width: 38px;
   height: 38px;
-  border-radius: 12px;
+  border-radius:0;
   background: var(--primary);
   color: #ffffff;
   border: none;
@@ -757,7 +757,7 @@
   padding: 20px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius:0;
   box-shadow: var(--shadow);
   z-index: 996;
   display: flex;
@@ -824,7 +824,7 @@
     max-height: 90vh;
     bottom: 10px;
     right: 10px;
-    border-radius: 14px;
+    border-radius:0;
   }
   
   .chat-guest-notice {

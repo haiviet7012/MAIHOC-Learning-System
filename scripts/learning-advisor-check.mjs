@@ -63,6 +63,7 @@ try {
   await page.locator("#login-form button[type=submit]").click();
   await page.locator("#login-dialog").waitFor({ state: "hidden" });
   await page.locator('.education-sidebar nav [data-route="analytics"]').click();
+  await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
   assert.equal(await page.locator(".advisor-chart svg").count(), 1);
   await page.locator("[name=goal]").fill("Đạt 8 điểm Toán trong 4 tuần");
@@ -80,6 +81,7 @@ try {
     page.locator("[data-advisor-task]").check(),
   ]);
   await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-task]:checked").waitFor();
   await page.locator("[data-advisor-mode=evaluate]").click();
   await page.locator("[data-advisor-form] button[type=submit]").click();
@@ -104,10 +106,12 @@ try {
     "No mobile horizontal overflow",
   );
   await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.locator(".advisor-dismiss").click();
   await page.locator(".education-switch [data-space=school]").click();
   await page
     .locator('.education-sidebar nav [data-route="school-analytics"]')
     .click();
+  await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
   assert.equal(
     await page.locator(".advisor-message").count(),

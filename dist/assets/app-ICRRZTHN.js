@@ -825,7 +825,7 @@ C\xE2u 4. Cho A(1,2), B(4,6). T\xEDnh \u0111\u1ED9 d\xE0i AB.`}];function xa(){l
             <h1 style="margin:4px 0 6px;font-size:clamp(24px,3.5vw,32px);">${i==="periodic-table"?"B\u1EA3ng tu\u1EA7n ho\xE0n 118 nguy\xEAn t\u1ED1":"AI Gi\u1EA3i b\xE0i t\u1EADp H\xF3a h\u1ECDc"}</h1>
             <p class="muted" style="margin:0;">B\u1EA3ng tu\u1EA7n ho\xE0n t\u01B0\u01A1ng t\xE1c IUPAC &amp; Tr\u1EE3 l\xFD AI gi\u1EA3i b\xE0i t\u1EADp H\xF3a h\u1ECDc t\u1EEBng b\u01B0\u1EDBc.</p>
           </div>
-          <div class="inline-actions" style="background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:12px;box-shadow:var(--shadow);">
+          <div class="inline-actions" style="background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:0;box-shadow:var(--shadow);">
             <button type="button" class="button ${i==="periodic-table"?"primary":"ghost"} small" id="tab-ptable">\u{1F4CA} B\u1EA3ng tu\u1EA7n ho\xE0n</button>
             <button type="button" class="button ${i==="ai-solver"?"primary":"ghost"} small" id="tab-solver">\u2697\uFE0F AI Gi\u1EA3i b\xE0i t\u1EADp</button>
           </div>

@@ -18,17 +18,17 @@ export function renderSolutionHtml(solution) {
   const reqHtml = (summary?.requirements || []).map(r => `<li>${mathText(r)}</li>`).join("");
 
   const equationsHtml = (equations || []).map(eq => `
-    <div style="margin:6px 0;padding:8px 12px;background:#050b14;border-radius:8px;font-family:inherit;font-size:14px;color:#38bdf8;">
+    <div style="margin:6px 0;padding:8px 12px;background:#050b14;border-radius:0;font-family:inherit;font-size:14px;color:#38bdf8;">
       <strong>${mathText(eq.equation)}</strong>
       ${eq.condition ? `<span class="muted tiny" style="margin-left:8px;color:#94a3b8;">(${mathText(eq.condition)})</span>` : ''}
     </div>
   `).join("");
 
   const stepsHtml = (steps || []).map(step => `
-    <div style="margin-bottom:14px;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;">
+    <div style="margin-bottom:14px;padding:12px;background:rgba(255,255,255,0.03);border-radius:0;">
       <div style="font-weight:600;color:#7dd3fc;margin-bottom:4px;">Bước ${step.stepNumber}: ${mathText(step.title)}</div>
       <p style="margin:0 0 6px;">${mathText(step.explanation)}</p>
-      ${step.calculation ? `<div style="font-family:inherit;color:#facc15;font-size:13px;background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:6px;word-break:break-word;">👉 ${mathText(step.calculation)}</div>` : ''}
+      ${step.calculation ? `<div style="font-family:inherit;color:#facc15;font-size:13px;background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:0;word-break:break-word;">👉 ${mathText(step.calculation)}</div>` : ''}
       ${step.resultWithUnit ? `<div style="margin-top:6px;font-weight:600;color:#34d399;">↳ Kết quả: ${mathText(step.resultWithUnit)}</div>` : ''}
     </div>
   `).join("");
@@ -76,7 +76,7 @@ export function renderSolutionHtml(solution) {
       <div class="solution-section" style="border-left-color:#8b5cf6;">
         <h4>💡 5. Bản chất hóa học & Mở rộng</h4>
         <p style="margin:0;font-size:13px;color:#c4b5fd;">${mathText(deepDive.chemicalInsight)}</p>
-        ${deepDive.similarProblem ? `<div style="margin-top:10px;padding:8px;background:rgba(139,92,246,0.1);border-radius:6px;font-size:12px;color:#e9d5ff;"><strong>Bài tương tự luyện tập:</strong><br>${mathText(deepDive.similarProblem)}</div>` : ''}
+        ${deepDive.similarProblem ? `<div style="margin-top:10px;padding:8px;background:rgba(139,92,246,0.1);border-radius:0;font-size:12px;color:#e9d5ff;"><strong>Bài tương tự luyện tập:</strong><br>${mathText(deepDive.similarProblem)}</div>` : ''}
       </div>` : ''}
 
       <p class="muted tiny" style="text-align:center;margin-top:20px;color:#64748b;">
