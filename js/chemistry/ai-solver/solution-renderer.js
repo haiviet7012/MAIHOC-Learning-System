@@ -18,7 +18,7 @@ export function renderSolutionHtml(solution) {
   const reqHtml = (summary?.requirements || []).map(r => `<li>${mathText(r)}</li>`).join("");
 
   const equationsHtml = (equations || []).map(eq => `
-    <div style="margin:6px 0;padding:8px 12px;background:#050b14;border-radius:8px;font-family:monospace;font-size:14px;color:#38bdf8;">
+    <div style="margin:6px 0;padding:8px 12px;background:#050b14;border-radius:8px;font-family:inherit;font-size:14px;color:#38bdf8;">
       <strong>${mathText(eq.equation)}</strong>
       ${eq.condition ? `<span class="muted tiny" style="margin-left:8px;color:#94a3b8;">(${mathText(eq.condition)})</span>` : ''}
     </div>
@@ -28,7 +28,7 @@ export function renderSolutionHtml(solution) {
     <div style="margin-bottom:14px;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;">
       <div style="font-weight:600;color:#7dd3fc;margin-bottom:4px;">Bước ${step.stepNumber}: ${mathText(step.title)}</div>
       <p style="margin:0 0 6px;">${mathText(step.explanation)}</p>
-      ${step.calculation ? `<div style="font-family:monospace;color:#facc15;font-size:13px;background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:6px;word-break:break-word;">👉 ${mathText(step.calculation)}</div>` : ''}
+      ${step.calculation ? `<div style="font-family:inherit;color:#facc15;font-size:13px;background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:6px;word-break:break-word;">👉 ${mathText(step.calculation)}</div>` : ''}
       ${step.resultWithUnit ? `<div style="margin-top:6px;font-weight:600;color:#34d399;">↳ Kết quả: ${mathText(step.resultWithUnit)}</div>` : ''}
     </div>
   `).join("");
