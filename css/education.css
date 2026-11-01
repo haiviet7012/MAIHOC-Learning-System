@@ -586,6 +586,12 @@ a {
   color: #fff;
   font-weight: 800;
 }
+.portal-activity [data-portal-activity] {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
 .portal-activity article {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -838,10 +844,19 @@ a {
   flex-direction: column;
   align-items: stretch;
 }
+body.practice-open .education-sidebar,
 body.exam-open .education-sidebar,
 body.reader-open .education-sidebar {
   display: none;
 }
+body.practice-open .app-shell > .topbar,
+body.exam-open .app-shell > .topbar,
+body.reader-open .app-shell > .topbar {
+  left: 0;
+  width: 100%;
+  margin-left: 0;
+}
+body.practice-open .app-body,
 body.exam-open .app-body,
 body.reader-open .app-body {
   margin-left: 0;
@@ -972,7 +987,16 @@ body.reader-open .app-body {
     grid-template-columns: 1fr;
   }
   .portal-side-column {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .app-shell > .topbar {
+    padding-inline: 16px;
+    gap: 12px;
+  }
+  .education-top-title {
+    font-size: 16px;
+    padding-left: 0;
   }
   .portal-tip {
     grid-column: 1/-1;
@@ -981,7 +1005,7 @@ body.reader-open .app-body {
     display: none;
   }
   .portal-subjects {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .portal-subject {
     padding: 12px;
