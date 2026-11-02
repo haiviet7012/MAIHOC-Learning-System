@@ -198,6 +198,21 @@ a {
   color: var(--primary);
   display: block;
 }
+.education-sidebar-foot .privacy-policy-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.education-sidebar-foot .privacy-policy-link:hover,
+.education-sidebar-foot .privacy-policy-link:focus-visible {
+  color: var(--primary);
+}
+.education-sidebar-foot .privacy-policy-link span {
+  white-space: nowrap;
+}
 .education-top-title {
   margin-right: 0;
   padding-left: 18px;
