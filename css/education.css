@@ -169,7 +169,7 @@ a {
 }
 .education-sidebar nav button:hover {
   background: #e7ecf7;
-  color: var(--primary);
+  color: var(--primary-dark);
 }
 .education-sidebar nav button.active {
   background: #e1e7f5;
@@ -199,11 +199,26 @@ a {
   display: block;
 }
 .education-top-title {
-  margin-right: auto;
+  margin-right: 0;
   padding-left: 18px;
   font-size: 20px;
   font-weight: 800;
   color: var(--primary);
+}
+.education-home-link {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+}
+.education-home-link img {
+  display: none;
 }
 .education-mobile-menu {
   display: none;
@@ -891,8 +906,65 @@ body.reader-open .app-body {
 :root.dark .education-sidebar nav button:not(.active) .nav-glyph {
   color: #bdcce2;
 }
+:root.dark .education-sidebar nav button:not(.active):hover {
+  background: #e7ecf7;
+  color: var(--primary-dark);
+}
+:root.dark .education-sidebar nav button:not(.active):hover .nav-glyph {
+  color: var(--primary-dark);
+}
 :root.dark .education-sidebar nav button.active {
   color: #111827;
+}
+:root.dark .portal-panel .inline-actions > button[data-route="tests"] {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark :is(
+  button[data-school-request-leave],
+  button[data-school-back],
+  button[data-school-class-refresh]
+) {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .timetable-actions .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .tests-page .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .modal .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .resource-actions .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .subject-picker-bar .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .exam-card [data-action="evaluate"] {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .result-panel .modal-actions .button.secondary {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .account-section .button.secondary,
+:root.dark .admin-toolbar > .button.secondary[data-route="home"] {
+  color: #183c80;
+  font-weight: 700;
+}
+:root.dark .reader-fullscreen .modal-actions .button.secondary,
+:root.dark .online-drawer #online-drawer-close {
+  color: #183c80;
+  font-weight: 700;
 }
 :root.dark .portal-welcome,
 :root.dark .portal-shortcut,
@@ -1040,15 +1112,43 @@ body.reader-open .app-body {
   }
   .education-top-title {
     font-size: 12px;
-    padding-left: 4px;
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .education-home-link {
+    flex: 1 1 auto;
+    gap: 8px;
+    margin-right: 0;
+    cursor: pointer;
+  }
+  .education-home-link img {
+    display: block;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    background: #fff;
   }
   .app-shell > .topbar {
     padding: 10px 14px;
     min-height: 64px;
   }
-  .topbar #theme-toggle,
+  .app-shell > .topbar .topbar-actions {
+    flex: 0 0 auto;
+    margin-left: 0;
+  }
   .topbar #menu-toggle {
     display: none;
+  }
+  .app-shell > .topbar .topbar-actions > #theme-toggle {
+    display: inline-flex;
+    flex: 0 0 48px;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
   }
   .topbar #logout-button {
     font-size: 10px;
@@ -1167,6 +1267,39 @@ body.reader-open .app-body {
     display: none;
   }
 }
+
+@media (max-width: 420px) {
+  .education-user {
+    display: none;
+  }
+  .education-home-link {
+    gap: 6px;
+  }
+  .education-home-link img {
+    flex-basis: 30px;
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:focus:not(:focus-visible),
+  a:focus:not(:focus-visible),
+  [role="button"]:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
@@ -1657,7 +1790,6 @@ button,input,select,textarea {font-family:inherit;}
 :root .chat-launcher,
 :root #notifications-open {
   border-radius:50% !important;
-  border:2px solid #b4d7ff !important;
 }
 :root.dark .advisor .button.secondary { background:var(--surface-2); color:var(--text); border-color:var(--border); }
 :root.dark .advisor .button.primary { background:#315fa8; color:#fff; border-color:#80baff; }
@@ -1684,6 +1816,8 @@ button,input,select,textarea {font-family:inherit;}
   transition:transform .2s cubic-bezier(.2,0,0,1),box-shadow .2s ease,background .2s ease;
   animation:none; filter:none; outline:none;
 }
+:root :is(.online-dashboard-fab,.chat-launcher,#notifications-open) { border:4px solid #b4d7ff !important; }
+:root.dark :is(.online-dashboard-fab,.chat-launcher,#notifications-open) { border:3px solid #fff !important; }
 :root :is(.online-dashboard-fab,.chat-launcher,#notifications-open,.advisor-pull):hover {
   transform:translateY(-2px) scale(1.05); box-shadow:var(--floating-action-hover-shadow); filter:none;
 }

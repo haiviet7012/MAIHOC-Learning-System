@@ -706,6 +706,26 @@ export function mountStudyRooms(container, user) {
       if (localMic) localMic.hidden = micOn;
     }
 
+    const remoteStudents = visibleStudents.filter(
+      member => member.participantId !== participant?.participantId
+    );
+    let emptyPeer = grid.querySelector("[data-empty-peer]");
+    const isSolo = Boolean(local && remoteStudents.length === 0);
+    if (isSolo && !emptyPeer) {
+      emptyPeer = document.createElement("article");
+      emptyPeer.className = "study-room-video-tile study-room-video-empty";
+      emptyPeer.dataset.emptyPeer = "true";
+      emptyPeer.innerHTML = `
+        <div class="study-room-empty-icon" aria-hidden="true">◉</div>
+        <h3>Chưa có ai khác trong phòng</h3>
+        <p>Màn hình của người tham gia sẽ hiện ở đây khi họ vào phòng.</p>
+      `;
+      grid.append(emptyPeer);
+    } else if (!isSolo && emptyPeer) {
+      emptyPeer.remove();
+    }
+    grid.classList.toggle("is-solo", isSolo);
+
     // Empty state for stealth Admin when no students are in the room yet
     let emptyStage = grid.querySelector("[data-stage-empty]");
     const totalTiles = grid.querySelectorAll(".study-room-video-tile").length;
@@ -1154,7 +1174,7 @@ export function mountStudyRooms(container, user) {
     });
   }
 
-  container.addEventListener("click", async event => {
+  const handleContainerClick = async event => {
     if (
       event.target.closest("[data-room-create-toggle]") ||
       event.target.closest("[data-room-create-cancel]") ||
@@ -1303,9 +1323,10 @@ export function mountStudyRooms(container, user) {
       sendEvent("emote", { emoji }).catch(error => showError(error.message));
       return;
     }
-  });
+  };
+  container.addEventListener("click", handleContainerClick);
 
-  container.addEventListener("submit", async event => {
+  const handleContainerSubmit = async event => {
     if (event.target.matches("[data-room-create-form]")) {
       event.preventDefault();
       event.stopPropagation();
@@ -1353,7 +1374,8 @@ export function mountStudyRooms(container, user) {
         if (button) button.disabled = false;
       }
     }
-  });
+  };
+  container.addEventListener("submit", handleContainerSubmit);
 
   loadRooms();
   roomRefreshTimer = setInterval(() => {
@@ -1408,6 +1430,8 @@ export function mountStudyRooms(container, user) {
 
   return async function disposeStudyRooms() {
     disposed = true;
+    container.removeEventListener("click", handleContainerClick);
+    container.removeEventListener("submit", handleContainerSubmit);
     clearTimeout(pollTimer);
     clearInterval(roomRefreshTimer);
     document.removeEventListener("visibilitychange", onVisibilityChange);

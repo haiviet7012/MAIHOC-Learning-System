@@ -80,7 +80,7 @@
     launcher.id = "chat-launcher";
     launcher.setAttribute("aria-label", "Mở khung chat");
     launcher.innerHTML = `
-      <svg class="chat-launcher-icon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+      <svg class="chat-launcher-icon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-8 8 8.6 8.6 0 0 1-3.4-.7L4 20l1.2-4.1A7.7 7.7 0 0 1 4 11.5a8 8 0 0 1 8-8 8 8 0 0 1 8 8Z"/><circle cx="9" cy="12" r=".8"/><circle cx="12" cy="12" r=".8"/><circle cx="15" cy="12" r=".8"/></svg>
 
       <span class="chat-unread-badge" id="chat-total-badge" hidden>0</span>
     `;
@@ -332,6 +332,18 @@
     isWindowOpen = false;
     dom.window.hidden = true;
   }
+
+  window.addEventListener("maihoc-close-chat", closeChatWindow);
+  document.addEventListener("click", event => {
+    if (
+      isWindowOpen &&
+      dom.window &&
+      !dom.window.contains(event.target) &&
+      !dom.launcher?.contains(event.target)
+    ) {
+      closeChatWindow();
+    }
+  });
 
   function switchTab(tab) {
     activeTab = tab;

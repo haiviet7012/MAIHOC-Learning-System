@@ -155,7 +155,7 @@ function go(route, params = {}) {
             }
         });
     }
-    if (route === "exam") window.scrollTo(0, 0);
+    if (route === "exam" || route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
 }
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
 history.replaceState(saveRouteHistory(), "", window.location.href);
@@ -173,7 +173,7 @@ window.addEventListener("popstate", function (event) {
         Object.assign(state, saved.appState);
         state.timer = null;
         render();
-        if (state.route === "exam") window.scrollTo(0, 0);
+        if (state.route === "exam" || state.route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
         return;
     }
     // Không tự chuyển hướng khi gặp trạng thái không xác định.
