@@ -29,12 +29,16 @@ try {
   await page.screenshot({ path: 'test-results/signup-teacher-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.locator('#register-form [value=teacher]').check();
-  await page.locator('#register-form [name=name]').fill('Giáo viên đăng ký');
-  await page.locator('#register-form [name=email]').fill('signup-teacher@maihoc.test');
-  await page.locator('#register-form [name=password]').fill(password);
-  await page.locator('#register-form [name=confirmPassword]').fill(password);
-  await page.locator('#register-form button[type=submit]').click();
-  await page.waitForURL('**/school/assignment-management');
+  assert.equal(await page.locator('[data-registration-details]').isVisible(), false);
+  await page.locator('#register-form [name=email]').fill('invalid@gmail.com');
+  await page.locator('[data-teacher-send]').click();
+  await page.locator('[data-teacher-status]').filter({hasText:'.edu.vn'}).waitFor();
+  await page.locator('#register-dialog [data-close]').first().click();
+  await page.locator('#login-open').click();
+  await page.locator('#login-form [name=email]').fill('teacher@maihoc.test');
+  await page.locator('#login-form [name=password]').fill(password);
+  await page.locator('#login-form button[type=submit]').click();
+  await page.locator('#education-user').filter({hasText:'Thầy Hải Việt'}).waitFor();
   const me = (await (await page.request.get(origin + '/api/auth/me')).json()).user;
   assert.equal(me.isTeacher, true); assert.equal(me.isSuperAdmin, false);
   await page.locator('#notifications-open').click();
@@ -45,7 +49,7 @@ try {
   await close.click(); assert.equal(await page.locator('#notifications-dialog').evaluate(n => n.open), false);
   await page.locator('#logout-button').click(); await page.locator('#login-open').click();
   await page.locator('#login-dialog [data-open-forgot-password]').click();
-  await page.locator('#forgot-password-form [name=email]').fill('signup-teacher@maihoc.test');
+  await page.locator('#forgot-password-form [name=email]').fill('teacher@maihoc.test');
   // Test both proper HTTP failure and old deployments returning sentByEmail:false with HTTP 200.
   for (const status of [503, 200]) {
     await page.route('**/api/auth/forgot-password', r => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(status === 503 ? { error: 'Email chưa sẵn sàng.' } : { sentByEmail: false, message: 'Email chưa sẵn sàng.' }) }));

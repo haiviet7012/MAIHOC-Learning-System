@@ -22,12 +22,17 @@ test('teacher signup and recovery email success/failure preserve roles, OTP priv
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
     const post = (path, body, cookie) => fetch(origin + path, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
-    const register = await post('/api/auth/register', { name: 'Giáo viên mới', email: 'new-teacher@maihoc.test', password: 'teacher-fixture-password', accountType: 'teacher', role: 'admin', adminLevel: 2, classCode: '10A1' });
+    const challenge = await post('/api/auth/teacher/request-code', {email:'new-teacher@school.edu.vn'});
+    const {challengeId} = await challenge.json();
+    const signupCode = sent.at(-1).text.match(/\b\d{6}\b/)[0];
+    const verification = await post('/api/auth/teacher/verify-code',{challengeId,code:signupCode});
+    const {token} = await verification.json();
+    const register = await post('/api/auth/teacher/register', { challengeId,token,name:'Giáo viên mới',password:'teacher-fixture-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1'] });
     assert.equal(register.status, 201); const teacher = (await register.json()).user;
-    assert.equal(teacher.isTeacher, true); assert.equal(teacher.isSuperAdmin, false); assert.equal(teacher.adminLevel, 1); assert.equal(teacher.classCode, undefined);
+    assert.equal(teacher.isTeacher,true);assert.equal(teacher.isSuperAdmin,false);
     const cookie = register.headers.get('set-cookie').split(';')[0];
     assert.equal((await fetch(origin + '/api/admin/users', { headers: { Cookie: cookie } })).status, 403);
-    assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1', [teacher.id])).rows.length, 0);
+    assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1', [teacher.id])).rows.length, 1);
     const student = await post('/api/auth/register', { name: 'Học sinh mới', email: 'new-student@maihoc.test', password: 'student-fixture-password', accountType: 'external', role: 'admin', adminLevel: 2 });
     assert.equal((await student.json()).user.adminLevel, 0);
     const externalCookie = student.headers.get('set-cookie').split(';')[0];
@@ -45,6 +50,8 @@ test('teacher signup and recovery email success/failure preserve roles, OTP priv
     const schoolStudent = await post('/api/auth/register', { name: 'Học sinh trong trường', email: 'school-student@maihoc.test', password: 'student-fixture-password', accountType: 'school' });
     assert.equal(schoolStudent.status, 201);
     const schoolCookie = schoolStudent.headers.get('set-cookie').split(';')[0];
+    const paidStudent = (await schoolStudent.clone().json()).user;
+    await fixture.db.query("UPDATE users SET school_plan='standard',account_type='school' WHERE id=$1",[paidStudent.id]);
     for (const session of [schoolCookie, cookie]) {
       assert.equal((await get('/api/learning/timetable', session)).status, 200);
       assert.equal((await get('/api/tests', session)).status, 200);

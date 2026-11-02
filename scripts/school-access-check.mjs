@@ -29,12 +29,10 @@ try {
   const schoolButton = page.locator('[data-space="school"]');
   async function learningOnly(path) {
     await page.goto(origin + path);
-    await page.waitForURL(origin + '/learning');
-    await page.getByRole('heading', { name: /hôm nay học gì|Mỗi ngày, tiến bộ/ }).waitFor();
-    assert.equal(await schoolButton.isVisible(), false);
-    assert.equal(await page.locator('[data-sidebar-space="school"]').first().isVisible(), false);
-    assert.equal(await page.locator('[data-personal-timetable]').isVisible(), false);
-    assert.equal(await page.evaluate(() => sessionStorage.getItem('maihoc-sidebar-space')), 'learning');
+    await page.getByRole('heading', { name: 'Tài khoản dành riêng cho trường học' }).waitFor();
+    assert.equal(await schoolButton.isVisible(), true);
+    assert.equal(await page.getByText('Đang cập nhật giá', { exact: true }).count(), 2);
+    assert.equal(await page.locator('[data-personal-timetable]').count(), 0);
   }
   await learningOnly('/school/timetable');
   const registered = await context.request.post(origin + '/api/auth/register', {
@@ -53,7 +51,7 @@ try {
     assert.equal((await context.request.get(origin + '/api/tests')).status(), 200);
     await page.locator('#logout-button').click();
     await page.waitForURL(origin + '/learning');
-    assert.equal(await schoolButton.isVisible(), false);
+    assert.equal(await schoolButton.isVisible(), true);
   }
   assert.deepEqual(errors, []);
   console.log('School access: guest/external redirects, API denial, school student/teacher/admin access and logout passed.');
