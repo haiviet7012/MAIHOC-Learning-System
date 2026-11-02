@@ -28,6 +28,6 @@ try{
  await page.locator('#account-progress-list').filter({hasNotText:'Đang tải'}).waitFor();
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
  await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
- await page.goto(origin+'/school/advisor');await page.getByRole('button',{name:'Mở Cố vấn giảng dạy',exact:true}).waitFor();
+ await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
  assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, verified email before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked.');
 }finally{await browser?.close();preview.kill('SIGTERM');}

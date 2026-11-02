@@ -212,6 +212,7 @@ function mountAdvisorContent(
 }
 
 export function mountLearningAdvisor(container, options = {}) {
+  if (options.inline) return (options.teaching ? mountTeachingAdvisor : mountAdvisorContent)(container, options);
   const title = options.teaching ? 'Cố vấn giảng dạy' : 'Cố vấn học tập';
   const controller = new AbortController();
   const host = document.createElement('div'); host.className = 'advisor-drawer-host';

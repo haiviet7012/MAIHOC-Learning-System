@@ -1856,3 +1856,14 @@ button,input,select,textarea {font-family:inherit;}
 /* Preserve the registration rhythm after verification unlocks the profile. */
 #register-form [data-registration-details]:not([hidden]) { display:grid; gap:14px; }
 #register-form [data-registration-details] fieldset { display:grid; gap:8px; }
+
+/* Reserve the document scrollbar and give the space title a stable header slot. */
+html { scrollbar-gutter: stable; }
+@media (min-width: 701px) {
+  .app-shell > .topbar { display:grid; grid-template-columns:200px minmax(0,1fr) auto; }
+  .app-shell > .topbar .education-home-link { margin-right:0; }
+  .app-shell > .topbar .education-user { justify-self:center; text-align:center; }
+}
+@media (min-width: 1001px) {
+  .app-shell > .topbar { grid-template-columns:250px minmax(0,1fr) auto; }
+}
