@@ -4,13 +4,10 @@ export function canAccessSchool(user) {
   const level = Number(user.admin_level ?? user.adminLevel ?? 0);
   if (user.role === 'admin' && level >= 1) return true;
   if (user.role === 'teacher') return true;
-  return user.role === 'user' && (
-    (user.account_type ?? user.accountType) === 'school' ||
-    Boolean(user.student_class ?? user.class_code ?? user.classCode)
-  );
+  return user.role === 'user' && ['legacy','standard','premium'].includes(user.schoolPlan ?? user.school_plan);
 }
 
 export const schoolRoutes = new Set([
-  'school-announcements', 'organization', 'school', 'school-class', 'student-progress', 'question-bank',
+  'school-plans', 'school-advisor', 'school-ielts', 'school-announcements', 'organization', 'school', 'school-class', 'student-progress', 'question-bank',
   'admin', 'assignments', 'assignment-management', 'school-analytics', 'tests', 'timetable',
 ]);

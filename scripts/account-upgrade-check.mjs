@@ -1,0 +1,33 @@
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { writeFile, readFile, mkdir } from 'node:fs/promises';
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+await mkdir('test-results',{recursive:true});
+const key=randomUUID(), password=randomUUID(), origin='http://127.0.0.1:4186';
+const provider=new URL('../test-results/account-mail-provider.mjs',import.meta.url);
+const mailbox=new URL(`../test-results/account-mail-${key}.json`,import.meta.url);
+await writeFile(provider,`import {createRequire} from 'node:module';import fs from 'node:fs';const require=createRequire(new URL('../server/server.js',import.meta.url));const mail=require('nodemailer');mail.createTransport=()=>({sendMail:async message=>{fs.writeFileSync(${JSON.stringify(mailbox.pathname)},JSON.stringify(message));return{accepted:message.to,rejected:[]}},close(){}});`);
+const preview=spawn(process.execPath,['--import',provider.pathname,'scripts/dev-preview.mjs'],{env:{...process.env,PREVIEW_PORT:'4186',MAIHOC_PREVIEW_PASSWORD:password,SMTP_USER:'test@gmail.com',SMTP_PASS:'fixture',MAIL_PROVIDER:'smtp',APP_PUBLIC_URL:origin},stdio:['ignore','pipe','pipe']});
+let browser;
+try{
+ await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(Error('timeout')),60000);preview.stdout.on('data',b=>{out+=b;if(out.includes('isolated preview ready')){clearTimeout(t);resolve()}});preview.stderr.on('data',b=>process.stderr.write(b));preview.on('exit',c=>reject(Error('preview exit '+c)));});
+ browser=await chromium.launch({headless:true,args:['--no-sandbox']});const context=await browser.newContext({viewport:{width:1440,height:1050}}),page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/,r=>r.abort());
+ await page.goto(origin+'/learning');await page.locator('[data-space=school]').click();await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).waitFor();assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
+ await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
+ await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
+ await page.locator('#register-form [name=email]').fill('verified@school.edu.vn');
+ const emailSent=page.waitForResponse(r=>r.url().endsWith('/teacher/request-code')&&r.status()===200);await page.locator('[data-teacher-send]').click();await emailSent;
+ const message=JSON.parse(await readFile(mailbox,'utf8')),code=message.text.match(/\b\d{6}\b/)[0];
+ await page.locator('[data-teacher-code]').fill(code);await page.locator('[data-teacher-verify]').click();await page.locator('[data-registration-details]').waitFor({state:'visible'});
+ await page.locator('#register-form [name=name]').fill('Giáo viên xác minh');await page.locator('#register-form [name=password]').fill(password);await page.locator('#register-form [name=confirmPassword]').fill(password);
+ await page.locator('#register-form [name=subjects][value="Toán"]').check();await page.locator('#register-form [name=teachingClasses][value="10A1"]').check();
+ await page.locator('#register-form button[type=submit]').click();await page.waitForURL(origin+'/school/classes');await page.getByRole('heading',{name:'Lớp của bạn',exact:true}).waitFor();
+ const user=(await (await context.request.get(origin+'/api/auth/me')).json()).user;assert.equal(user.isTeacher,true);assert.equal(user.email,'verified@school.edu.vn');
+ await page.goto(origin+'/account');await page.getByRole('heading',{name:'Trung tâm tài khoản',exact:true}).waitFor();await page.locator('#view .role-chip').filter({hasText:'Giáo viên'}).waitFor();
+ await page.locator('#account-progress-list').filter({hasNotText:'Đang tải'}).waitFor();
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
+ await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
+ await page.goto(origin+'/school/advisor');await page.getByRole('button',{name:'Mở Cố vấn giảng dạy',exact:true}).waitFor();
+ assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, verified email before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked.');
+}finally{await browser?.close();preview.kill('SIGTERM');}

@@ -31,6 +31,7 @@ for (const [id, name, email, role, level] of [
     "INSERT INTO users(id,name,email,password_hash,role,admin_level,account_type) VALUES($1,$2,$3,$4,$5,$6,$7)",
     [id, name, email, hash, role, level, "school"],
   );
+await fixture.db.query("UPDATE users SET school_plan='legacy' WHERE id IN (100,101,102)");
 const school = (
   await fixture.db.query(
     "INSERT INTO schools(code,name) VALUES('PREVIEW','Trường THPT MAIHOC · Kiểm thử') RETURNING id",

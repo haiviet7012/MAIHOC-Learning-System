@@ -1,3 +1,4 @@
+import { schoolPlansMarkup, wireAccountUpgrade } from './account-upgrade.js';
 import { mountSchoolAnnouncements } from './school-announcements.js';
 import { canAccessSchool, schoolRoutes } from './platform/school-access.js';
 import { mountLearningAdvisor } from './platform/learning-advisor.js';
@@ -79,6 +80,11 @@ let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
+function canRefreshBackgroundView() {
+    // Mounted portal views fetch their own content, including drawers outside
+    // #view; recreating them would close dialogs and discard their draft state.
+    return !view.querySelector('form') && (!activePortalCleanup || state.route === 'home');
+}
 async function initRemoteData() {
     try {
         const subjectResponse = await fetch("/configs/subjects.json", { cache: "no-store" });
@@ -96,7 +102,9 @@ async function initRemoteData() {
         console.warn("Could not load assessment layout config:", error.message);
     }
     await Promise.all([refreshDocuments().catch(() => {}), refreshTestsQueue().catch(() => {})]);
-    render();
+    // Mounted forms own their data loading. A late catalogue refresh must not
+    // replace their DOM and discard edits (or interrupt a form submission).
+    if (canRefreshBackgroundView()) render();
     resumePendingTest();
 }
 // Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
@@ -141,7 +149,7 @@ function go(route, params = {}) {
         state.assignmentId = null;
         state.targetSchoolId = null;
     }
-    if (route === "account-center" && currentUser?.role === "admin") {
+    if (route === "account-center" && Number(currentUser?.adminLevel) >= 2) {
         route = "admin";
     }
     if (state.route === "reader" && (route !== "reader" || String(params.docId ?? state.docId) !== String(state.docId))) {
@@ -192,7 +200,7 @@ function breadcrumb(title) { return `<div class="breadcrumb"><button data-route=
 function homePage() { return dashboardMarkup(currentUser, docs(), window.__maihocTestsQueue || []); }
 
 function subjectPickerPage() {
-    const subjects = SUBJECT_CATALOG.map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử"] : ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] }));
+    const subjects = SUBJECT_CATALOG.filter(subject => subject.name !== 'IELTS').map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử"] : ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] }));
     return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">MÔN HỌC THEO CẤU HÌNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
 function subjectPage() {
@@ -602,10 +610,10 @@ function accountCenterPage() {
     if (!currentUser) {
         return `${pageHeading("Trung tâm tài khoản", "Bạn cần đăng nhập để quản lý tài khoản và xem tiến trình học tập.")}<div class="empty-state"><h3>Chưa đăng nhập</h3><p>Hãy đăng nhập để xem tiến trình học tập thời gian thực, đổi Gmail, đổi mật khẩu hoặc quản lý tài khoản.</p><button class="button primary" type="button" onclick="document.querySelector('#login-open')?.click()">Đăng nhập ngay</button></div>`;
     }
-    if (currentUser.role === "admin") {
+    if (Number(currentUser.adminLevel) >= 2) {
         return adminPage();
     }
-    const roleName = currentUser.classCode ? `Học sinh trong trường · Lớp ${currentUser.classCode}` : currentUser.accountType === "school" ? "Học sinh trong trường" : "Học sinh ngoài trường";
+    const roleName = currentUser.isTeacher ? 'Giáo viên' : 'Học sinh';
     return `
       ${pageHeading("Trung tâm tài khoản", "Quản lý thông tin bảo mật và theo dõi tiến trình học tập theo thời gian thực.")}
       <div class="admin-toolbar">
@@ -617,6 +625,7 @@ function accountCenterPage() {
         <button class="button secondary" data-route="home">← Về trang học tập</button>
       </div>
 
+      <section class="account-section card"><h2>Quyền truy cập</h2><p>Learning: đầy đủ</p><p>School: ${escapeHTML(currentUser.isTeacher ? 'Dành cho giáo viên — miễn phí' : ({none:'Chưa có gói',legacy:'Quyền School được giữ từ tài khoản hiện có',standard:'School Standard',premium:'School Premium'}[currentUser.schoolPlan] || 'Chưa có gói'))}</p><button class="button secondary" data-route="school-plans">Xem các gói School</button></section>
       <section class="account-section card">
         <div class="account-section-head">
           <div>
@@ -745,7 +754,7 @@ function adminPage() {
   if (isTeacher) {
     return `<div id="admin-users-table" hidden></div>`;
   }
-  return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và phân quyền hệ thống.")}<div class="admin-toolbar"><div><span class="pill">QUẢN TRỊ HỆ THỐNG</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Phân quyền rõ ràng giữa Quản trị MAI HỌC, Giáo viên (Chủ nhiệm / Bộ môn) và Học sinh (Trong trường / Ngoài trường).</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Phân quyền</span><strong>Admin · Giáo viên · Học sinh</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;
+  return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và phân quyền hệ thống.")}<div class="admin-toolbar"><div><span class="pill">QUẢN TRỊ HỆ THỐNG</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Phân quyền rõ ràng giữa Quản trị MAI HỌC, Giáo viên (Chủ nhiệm / Bộ môn) và Học sinh (Learning / School).</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Phân quyền</span><strong>Admin · Quản lý · Giáo viên · Học sinh</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;
 }
 async function loadAdminUsers() {
   if (state.route !== "admin") return;
@@ -768,7 +777,7 @@ async function loadAdminUsers() {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
       const isTeacher = Boolean(u.isTeacher || u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2));
-      const roleLabel = isSuper
+      const roleLabel = u.isManager ? "Quản lý" : isSuper
         ? "Quản trị MAI HỌC"
         : isTeacher
           ? (u.homeroomClass
@@ -779,44 +788,13 @@ async function loadAdminUsers() {
           : (u.accountType === "school" || u.classCode)
             ? (u.classCode ? `Học sinh trong trường · Lớp ${u.classCode}` : "Học sinh trong trường")
             : "Học sinh ngoài trường";
-      const canRequestDelete = Number(u.id) !== Number(payload.currentUserId) && !isSuper;
+      const canRequestDelete = !currentUser.isManager && Number(u.id) !== Number(payload.currentUserId) && !isSuper;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
 
     let extra = "";
     if (payload.isSuperAdmin) {
-      const schoolClasses = ["10A", "11B", "12C"].flatMap((prefix) =>
-        Array.from({ length: 9 }, (_, index) => prefix + (index + 1))
-      );
-      const classOptions = schoolClasses.map((code) => `<option value="${code}">${code}</option>`).join("");
-      const subjectNames = ["Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học", "IELTS"];
-      const subjectCheckboxes = subjectNames.map((subject) =>
-        `<label class="teacher-check-option"><input type="checkbox" name="subjects" value="${subject}"><span>${subject}</span></label>`
-      ).join("");
-      const classCheckboxes = schoolClasses.map((code) =>
-        `<label class="teacher-check-option"><input type="checkbox" name="teachingClasses" value="${code}"><span>${code}</span></label>`
-      ).join("");
-
-      extra = `<section class="admin-submissions teacher-create-section" style="margin-top:20px">
-        <div class="teacher-create-toggle-row">
-          <div><h2>Quản lý giáo viên</h2><p class="muted tiny">Tạo tài khoản mới hoặc phân công giáo viên hiện có.</p></div>
-          <button class="button primary" type="button" id="teacher-create-toggle" aria-expanded="false">＋ Tạo giáo viên</button>
-        </div>
-        <div id="teacher-create-panel" hidden>
-          <form id="create-subadmin-form" class="admin-form-grid teacher-create-form">
-            <label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
-            <label>Họ và tên <span class="muted tiny">(bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label>
-            <label>Mật khẩu tạm thời <span class="muted tiny">(bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
-            <fieldset class="teacher-check-group"><legend>Bộ môn giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-check-grid">${subjectCheckboxes}</div></fieldset>
-            <label>Loại giáo viên<select name="teacherKind" id="teacher-kind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select></label>
-            <label id="homeroom-class-field" hidden>Lớp chủ nhiệm<select name="homeroomClass"><option value="">Chọn lớp chủ nhiệm</option>${classOptions}</select></label>
-            <fieldset class="teacher-check-group" id="teaching-classes-group"><legend>Các lớp đang giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-class-grid">${classCheckboxes}</div></fieldset>
-            <button class="button primary" type="submit">Cấp quyền / Tạo giáo viên</button>
-          </form>
-          <p class="muted tiny">Nếu email đã có tài khoản, hệ thống giữ nguyên mật khẩu và lịch sử học tập, đồng thời chuyển tài khoản thành giáo viên của trường.</p>
-        </div>
-      </section>
-      <section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
+      extra = `<section class="portal-panel"><h2>Thêm người quản lý</h2><p>Nhập Gmail để cấp quyền. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm người quản lý</button></form></section><section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
     }
 
     if (container) {
@@ -834,7 +812,7 @@ async function loadAdminUsers() {
 }
 
 function render() {
-    if (schoolRoutes.has(state.route) && !authResolved) {
+    if ((schoolRoutes.has(state.route) || state.route === "analytics") && !authResolved) {
         view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
         return;
     }
@@ -844,13 +822,11 @@ function render() {
         view.innerHTML = '<section class="portal-panel"><h1>Đăng nhập để xem nội dung</h1><p>Vui lòng dùng tài khoản nhận email. Sau khi đăng nhập, nội dung được liên kết sẽ mở tại đây.</p><button class="button primary" data-portal-login>Đăng nhập</button></section>';
         return;
     }
-    if (schoolRoutes.has(state.route) && !canAccessSchool(currentUser)) {
-        state.route = 'home';
-        history.replaceState(saveRouteHistory(), '', routeUrl({ route: 'home' }));
-    }
+    const schoolIelts = state.subject === 'IELTS' && ['subject','theory','practice','exam-select','exam','reader','grade-picker','theory-list','practice-list','exam-list'].includes(state.route);
+    if ((schoolRoutes.has(state.route) || schoolIelts) && !canAccessSchool(currentUser)) state.route = 'school-plans';
     disposeTeachingAdvisor?.(); disposeTeachingAdvisor = null;
-    if (currentUser?.isTeacher) disposeTeachingAdvisor = mountLearningAdvisor(document.getElementById('view'), { teaching: true });
-    if (state.route === "account-center" && currentUser?.role === "admin") {
+
+    if (state.route === "account-center" && Number(currentUser?.adminLevel) >= 2) {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
@@ -858,10 +834,10 @@ function render() {
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
-    const sidebarSpace = !canAccessSchool(currentUser) ? 'learning' : schoolRoutes.has(state.route) ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
-    document.querySelectorAll('[data-space]').forEach(button => { button.hidden = button.dataset.space === 'school' && !canAccessSchool(currentUser); const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+    document.querySelectorAll('[data-space]').forEach(button => { button.hidden = false; const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
     document.getElementById('education-sidebar')?.classList.remove('is-open');
     document.getElementById('education-menu')?.setAttribute('aria-expanded','false');
     const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
@@ -892,7 +868,10 @@ function render() {
     document.body.classList.toggle("exam-open", fullscreenExam);
     document.body.classList.toggle("practice-open", state.route === "exam" && !fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
-    if (state.route === "home") {
+    if (state.route === 'school-plans') view.innerHTML = schoolPlansMarkup();
+    else if (state.route === 'school-advisor') activePortalCleanup = mountLearningAdvisor(view, { teaching: Boolean(currentUser?.isTeacher) });
+    else if (state.route === 'school-ielts') { state.subject='IELTS'; view.innerHTML=subjectPage(); }
+    else if (state.route === "home") {
         view.innerHTML = homePage();
         activePortalCleanup = mountTimetablePreview(view, currentUser);
     }
@@ -1716,7 +1695,7 @@ function applyAuthUI() {
     $("#upload-open").hidden = !signedIn;
     $("#notifications-open").hidden = !signedIn;
     if ($("#tests-open")) $("#tests-open").hidden = !canAccessSchool(currentUser);
-    if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || !isStudentAccount;
+    if ($("#account-center-open")) $("#account-center-open").hidden = !signedIn || isSuperAdmin;
     if ($("#upload-category-test-opt")) $("#upload-category-test-opt").hidden = !(isSuperAdmin || isTeacherAccount);
 
     const adminButton = $("#admin-open");
@@ -1742,6 +1721,7 @@ function applyAuthUI() {
     $("#user-greeting").hidden = !signedIn;
     const greetingRole = !currentUser
         ? ""
+        : currentUser.isManager ? ' · Quản lý'
         : isSuperAdmin
             ? " · Quản trị MAI HỌC"
             : isTeacherAccount
@@ -1770,7 +1750,7 @@ async function refreshAuthUI() {
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     resumePendingTest();
-    if (schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) render();
+    if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1858,8 +1838,7 @@ $("#logout-button").addEventListener("click", async () => {
         currentUser = null;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
-        if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center" || state.route === "tests")
-            go("home");
+        go("home");
         toast("Bạn đã đăng xuất.", "success");
     }
     catch (error) {
@@ -1904,7 +1883,7 @@ document.addEventListener("change", e => {
   const field = document.getElementById("homeroom-class-field");
   const select = field?.querySelector("select");
   const isHomeroom = e.target.value === "homeroom";
-  if (field) field.hidden = !isHomeroom;  
+  if (field) field.hidden = !isHomeroom;
   const teachingClassesGroup = document.getElementById("teaching-classes-group");
   if (select) select.required = isHomeroom;
   if (teachingClassesGroup) teachingClassesGroup.hidden = isHomeroom;
@@ -1920,7 +1899,7 @@ document.addEventListener("submit",async e=>{
     body.teachingClasses=[...form.querySelectorAll('input[name="teachingClasses"]:checked')].map(input=>input.value);
     const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Không tạo/cấp quyền được Giáo viên.");
+    if(!response.ok)throw new Error(data.error||"Không cấp được quyền quản lý.");
     form.reset();
     const homeroomField = document.getElementById("homeroom-class-field");
     const homeroomSelect = homeroomField?.querySelector("select");
@@ -1928,9 +1907,9 @@ document.addEventListener("submit",async e=>{
     if (homeroomField) homeroomField.hidden = true;
     if (homeroomSelect) homeroomSelect.required = false;
     if (teachingClassesGroup) teachingClassesGroup.hidden = false;
-    toast(data.message || (data.action==="promoted"?"Đã cập nhật phân công Giáo viên.":"Đã tạo tài khoản Giáo viên mới."),"success");
+    toast(data.message || (data.action==="promoted"?"Đã cập nhật phân công Giáo viên.":"Đã cấp quyền quản lý."),"success");
     await loadAdminUsers();
-  }catch(error){toast(error.message||"Không tạo được Giáo viên.","error");}
+  }catch(error){toast(error.message||"Không cấp được quyền quản lý.","error");}
   finally{button.disabled=false;}
 });
 document.addEventListener("click",async e=>{
@@ -1994,7 +1973,7 @@ window.addEventListener("maihoc-tests-rerender", () => {
 });
 window.addEventListener("maihoc-auth-changed", async () => {
     await refreshTestsQueue();
-    if (schoolRoutes.has(state.route) || state.route === "home") render();
+    if ((schoolRoutes.has(state.route) || state.route === "home") && canRefreshBackgroundView()) render();
 });
 window.addEventListener("maihoc-admin-panel-mounted", () => {
     loadAdminTestsAndPendingGrading();
@@ -2016,3 +1995,5 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape')syncEducatio
 syncEducationSidebar();
 
 window.addEventListener("maihoc-timetable-home", () => go("home", { newTimetable: false }));
+
+wireAccountUpgrade();

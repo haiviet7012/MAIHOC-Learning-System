@@ -1852,3 +1852,7 @@ button,input,select,textarea {font-family:inherit;}
 .teaching-advisor [data-teaching-result] { margin-top:20px; }
 .teaching-reply { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:600px) { .teaching-advisor .advisor-options { grid-template-columns:1fr; } }
+
+/* Preserve the registration rhythm after verification unlocks the profile. */
+#register-form [data-registration-details]:not([hidden]) { display:grid; gap:14px; }
+#register-form [data-registration-details] fieldset { display:grid; gap:8px; }

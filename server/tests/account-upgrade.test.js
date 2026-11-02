@@ -1,0 +1,67 @@
+import test from 'node:test';import assert from 'node:assert/strict';import nodemailer from 'nodemailer';
+import { testDatabase } from '../platform/test-db.js';import { setTestPool } from '../postgres.js';
+import { isEducationEmail, ensureAccountUpgrade } from '../account-upgrade.js';
+import { canAccessSchool } from '../../js/platform/school-access.js';
+test('account upgrade: preserves old users, student gate, verified edu teacher and manager restrictions',async()=>{
+  delete process.env.DATABASE_URL;delete process.env.MAIHOC_TEST_DATABASE_URL;
+  process.env.MAIHOC_SKIP_AUTO_LISTEN='1';process.env.NODE_ENV='test';process.env.MAIHOC_PLATFORM_ENABLED='0';
+  for(const key of ['R2_ACCOUNT_ID','R2_BUCKET_NAME','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'])process.env[key]='test';
+  Object.assign(process.env,{SMTP_USER:'fixture@gmail.com',SMTP_PASS:'fixture-password',SMTP_HOST:'smtp.gmail.com',MAIL_PROVIDER:'smtp'});
+  const fixture=await testDatabase({memoryOnly:true});setTestPool(fixture.pool);
+  await fixture.db.query("INSERT INTO users(id,name,email,password_hash,account_type) VALUES(50,'Old','old@test.local','unchanged','school')");
+  const original=nodemailer.createTransport,sent=[];let failMail=false;
+  nodemailer.createTransport=()=>({sendMail:async mail=>{if(failMail)throw Error("fixture email failure");sent.push(mail);return{accepted:mail.to,rejected:[]}},close(){}});
+  let runtime;
+  try{
+    runtime=await import('../server.js');await runtime.initializeApplicationRuntime();
+    await new Promise(resolve=>runtime.server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${runtime.server.address().port}`;
+    const post=(path,body,cookie)=>fetch(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(body)});
+    const get=(path,cookie)=>fetch(origin+path,{headers:{Cookie:cookie}});
+    const old=(await fixture.db.query('SELECT * FROM users WHERE id=50')).rows[0];assert.equal(old.password_hash,'unchanged');assert.equal(old.school_plan,'legacy');
+    await ensureAccountUpgrade(fixture.db);
+    const student=await post('/api/auth/register',{name:'Student',email:'student@gmail.com',password:'student-password',accountType:'school',schoolPlan:'premium',role:'admin'});
+    assert.equal(student.status,201);const studentUser=(await student.json()).user,cookie=student.headers.get('set-cookie').split(';')[0];assert.equal(studentUser.schoolPlan,'none');assert.equal(canAccessSchool(studentUser),false);
+    assert.equal((await get('/api/progress',cookie)).status,200);assert.equal((await get('/api/tests',cookie)).status,403);assert.equal((await get('/api/learning-advisor/snapshot?scope=learning',cookie)).status,403);
+    await ensureAccountUpgrade(fixture.db);assert.equal((await fixture.db.query('SELECT school_plan FROM users WHERE id=$1',[studentUser.id])).rows[0].school_plan,'none');
+    assert.equal((await post('/api/auth/register',{name:'Teacher',email:'x@school.edu.vn',password:'test-password',accountType:'teacher'})).status,400);
+    assert.equal(isEducationEmail('x@school.edu.vn.evil.com'),false);assert.equal(isEducationEmail('x@gmail.com'),false);
+    const challenge=await post('/api/auth/teacher/request-code',{email:'teacher@school.edu.vn'});assert.equal(challenge.status,200);const {challengeId}=await challenge.json();
+    const code=sent.at(-1).text.match(/\b\d{6}\b/)[0];
+    const verify=await post('/api/auth/teacher/verify-code',{challengeId,code});assert.equal(verify.status,200);const {token}=await verify.json();
+    const profile={challengeId,token,email:'attacker@gmail.com',name:'Teacher',password:'teacher-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1']};
+    const teacher=await post('/api/auth/teacher/register',profile);assert.equal(teacher.status,201,await teacher.clone().text());const teacherUser=(await teacher.json()).user;assert.equal(teacherUser.email,'teacher@school.edu.vn');assert.equal(teacherUser.isTeacher,true);
+    assert.equal((await post('/api/auth/teacher/register',profile)).status,400);
+    assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1',[teacherUser.id])).rows.length,1);
+    await fixture.db.query("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=$1",[studentUser.id]);
+    const manager=(await (await get('/api/auth/me',cookie)).json()).user;assert.equal(manager.isManager,true);
+    assert.equal((await get('/api/admin/users',cookie)).status,200);
+    assert.equal((await post('/api/admin/admins',{email:'other@gmail.com'},cookie)).status,403);
+    assert.equal((await fetch(origin+'/api/admin/users/50',{method:'DELETE',headers:{Origin:origin,Cookie:cookie}})).status,403);
+    assert.equal((await (await get('/api/study-rooms',cookie)).json()).isAdmin,false);
+    await fixture.db.query('UPDATE users SET is_manager=false WHERE id=$1',[studentUser.id]);
+    process.env.APP_PUBLIC_URL=origin;
+    const invite=await post('/api/admin/admins',{email:'new-manager@gmail.com'},cookie);
+    assert.equal(invite.status,201,await invite.clone().text());
+    assert.ok(sent.at(-1).text.includes('/account'));
+    assert.equal((await fixture.db.query("SELECT is_manager FROM users WHERE email='new-manager@gmail.com'")).rows[0].is_manager,true);
+    const grant=await fetch(origin+`/api/admin/users/${teacherUser.id}/school-plan`,{method:'PUT',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({plan:'premium'})});
+    assert.equal(grant.status,404,'Paid plans apply to students only');
+    const newStudent=await post('/api/auth/register',{name:'Paid Student',email:'paid@gmail.com',password:'paid-password'});
+    const newStudentBody=await newStudent.json(),paidCookie=newStudent.headers.get('set-cookie').split(';')[0];
+    for(const [plan,status] of [['standard',200],['none',403]]){
+      const response=await fetch(origin+`/api/admin/users/${newStudentBody.user.id}/school-plan`,{method:'PUT',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({plan})});
+      assert.equal(response.status,200);assert.equal((await get('/api/tests',paidCookie)).status,status);
+    }
+    const locked=await post('/api/auth/teacher/request-code',{email:'locked@school.edu.vn'}),lockedBody=await locked.json();
+    const lockedCode=sent.at(-1).text.match(/\b\d{6}\b/)[0];
+    assert.equal((await post('/api/auth/teacher/request-code',{email:'locked@school.edu.vn'})).status,429);
+    for(let i=0;i<5;i++)assert.equal((await post('/api/auth/teacher/verify-code',{challengeId:lockedBody.challengeId,code:'000000'})).status,400);
+    assert.equal((await post('/api/auth/teacher/verify-code',{challengeId:lockedBody.challengeId,code:lockedCode})).status,400);
+    failMail=true;
+    assert.equal((await post('/api/auth/teacher/request-code',{email:'failed@school.edu.vn'})).status,503);
+    assert.equal((await fixture.db.query("SELECT id FROM users WHERE email='failed@school.edu.vn'")).rows.length,0);
+
+
+    assert.equal((await fixture.db.query('SELECT password_hash FROM users WHERE id=50')).rows[0].password_hash,'unchanged');
+  }finally{nodemailer.createTransport=original;runtime?.stopPresenceCleanup();if(runtime?.server.listening)await new Promise(r=>runtime.server.close(r));await fixture.close();}
+});

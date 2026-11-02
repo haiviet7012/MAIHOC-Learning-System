@@ -63,7 +63,7 @@ test("publicUser separates Admin, Homeroom Teacher, Subject Teacher, School Stud
   assert.equal(schoolStudent.accountRole, "student");
   assert.equal(schoolStudent.accountType, "school");
   assert.equal(schoolStudent.classCode, "10A1");
-  assert.equal(schoolStudent.roleLabel, "Học sinh trong trường · Lớp 10A1");
+  assert.equal(schoolStudent.roleLabel, "Học sinh · Lớp 10A1");
 
   const externalStudent = publicUser({
     id: 16,
@@ -74,7 +74,7 @@ test("publicUser separates Admin, Homeroom Teacher, Subject Teacher, School Stud
     account_type: "external"
   });
   assert.equal(externalStudent.accountType, "external");
-  assert.equal(externalStudent.roleLabel, "Học sinh ngoài trường");
+  assert.equal(externalStudent.roleLabel, "Học sinh");
 });
 
 test("Homeroom teacher can add student by email and Student can join class via /api/school/join-class", async () => {

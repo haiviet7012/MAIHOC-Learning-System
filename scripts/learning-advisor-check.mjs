@@ -62,7 +62,7 @@ try {
   await page.locator("#login-form [name=password]").fill(password);
   await page.locator("#login-form button[type=submit]").click();
   await page.locator("#login-dialog").waitFor({ state: "hidden" });
-  await page.locator('.education-sidebar nav [data-route="analytics"]').click();
+  await page.goto(origin + '/school/advisor');
   await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
   assert.equal(await page.locator('[data-advisor-activity], .advisor-chart, .advisor table').count(), 0);
@@ -150,7 +150,7 @@ try {
   await teacherContext.request.post(origin + '/api/auth/login', { headers: { Origin: origin }, data: { email: 'teacher@maihoc.test', password } });
   const teacherPage = await teacherContext.newPage();
   await teacherPage.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
-  await teacherPage.goto(origin + '/school/assignment-management');
+  await teacherPage.goto(origin + '/school/advisor');
   await teacherPage.getByRole('button', { name: 'Mở Cố vấn giảng dạy', exact: true }).click();
   await teacherPage.locator('.teaching-advisor h2').waitFor();
   await teacherPage.locator('.teaching-advisor [name=classKey] option').nth(1).waitFor({ state: 'attached' });

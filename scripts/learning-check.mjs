@@ -135,10 +135,7 @@ try {
     const edge = n.getBoundingClientRect().left + n.clientLeft + n.clientWidth;
     return [...n.querySelectorAll('progress')].every(p => p.getBoundingClientRect().right <= edge - 23);
   }), 'Progress tracks reserve 24px before the scrollbar gutter');
-  await page.locator('.advisor-pull').click();
-  await page.locator('.advisor-drawer .advisor-workspace').waitFor();
-  await page.locator('.advisor-dismiss').click();
-  assert.equal(await page.locator('.advisor-drawer').evaluate(n => n.inert), true);
+  assert.equal(await page.locator('.advisor-pull').count(), 0, 'Cố vấn AI chỉ xuất hiện trong School');
   assert.ok(!(await page.locator('#view').textContent()).includes('School mới chưa được bật'));
   assert.ok((await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).includes('Montserrat'));
   const teacher = await browser.newContext();

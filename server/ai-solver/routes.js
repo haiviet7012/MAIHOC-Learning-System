@@ -1,3 +1,4 @@
+import { canAccessSchool } from '../../js/platform/school-access.js';
 import express from "express";
 import multer from "multer";
 import crypto from "node:crypto";
@@ -125,7 +126,9 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
     const validation = validateUniversalSolveRequest(body);
     if (!validation.valid) return res.status(400).json({ error: validation.error });
     const input = validation.data;
+    if (input.subject === 'IELTS' && !canAccessSchool(req.user)) return res.status(403).json({error:'IELTS chỉ có trong School.'});
     const solution = await solveUniversalProblem(input);
+    if (solution.subject === 'IELTS' && !canAccessSchool(req.user)) return res.status(403).json({error:'IELTS chỉ có trong School.'});
     let historyId = null;
     let historySaved = null;
 

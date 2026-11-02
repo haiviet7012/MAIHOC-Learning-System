@@ -1,4 +1,5 @@
-import { installSchoolAnnouncementRoutes, createSchoolMailWorker } from './school-notifications.js';
+import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
+import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
 import { geminiConfig, geminiClient, providerError } from './ai-provider.js';
 import { schoolAccessGuard } from './school-access.js';
 import { canAccessSchool } from '../js/platform/school-access.js';
@@ -515,6 +516,20 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "30mb" }));
 app.use(loadCurrentUser);
 app.use(schoolAccessGuard);
+app.use(async(req,res,next)=>{
+  try {
+    if(canAccessSchool(req.user)) return next();
+    if(String(req.body?.subject || req.query?.subject || '').toUpperCase()==='IELTS')return res.status(req.user?403:401).json({error:'IELTS chỉ có trong MAIHOC School.'});
+    const match=req.path.match(/^\/api\/documents\/([^/]+)/);
+    if(match){const doc=await db.prepare('SELECT subject FROM documents WHERE id=?').get(decodeURIComponent(match[1]));if(doc?.subject==='IELTS')return res.status(req.user?403:401).json({error:'IELTS chỉ có trong MAIHOC School.'});}
+    next();
+  } catch(error){next(error);}
+});
+app.use((req,res,next)=>{
+  if(req.user?.isManager && ((req.method==='DELETE' && req.path.startsWith('/api/admin/users/')) || req.path.startsWith('/api/admin/account-deletion-requests') || req.path==='/api/admin/admins'))
+    return res.status(403).json({error:'Quản lý không có quyền xóa tài khoản hoặc cấp quyền quản lý.'});
+  next();
+});
 app.use(["/api/ai/solve","/api/chemistry/solve","/api/ai/evaluate"], (req,res,next)=>req.method === "POST" ? requireSameOrigin(req,res,next) : next(), aiExamGuard(db));
 
 setupChat(server, app);
@@ -1121,7 +1136,7 @@ async function deleteAccountPermanently(id) {
 app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
     .prepare(`
-      SELECT id,name,email,role,admin_level,account_type,created_at,
+      SELECT id,name,email,role,admin_level,account_type,school_plan,is_manager,created_at,
         (SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class,
         (SELECT class_code FROM school_class_members m WHERE m.user_id=users.id ORDER BY m.created_at DESC LIMIT 1) AS student_class
       FROM users ORDER BY id DESC LIMIT 500
@@ -1170,120 +1185,33 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     users: formattedUsers,
     total,
     currentUserId: req.user.id,
-    isSuperAdmin: Number(req.user.adminLevel) >= 2
+    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager
   });
 });
 
-// Only the configured super admin can appoint or update teachers.
-app.post("/api/admin/admins", requireSameOrigin, requireSuperAdmin, async (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const name = String(req.body?.name || "").trim();
-  const password = String(req.body?.password || "");
-  const teacherProfile = {
-    subjects: Array.isArray(req.body?.subjects) ? req.body.subjects : [],
-    teacherKind: String(req.body?.teacherKind || "subject"),
-    homeroomClass: String(req.body?.homeroomClass || ""),
-    teachingClasses: Array.isArray(req.body?.teachingClasses) ? req.body.teachingClasses : []
-  };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-    return res.status(400).json({ error: "Email không hợp lệ." });
+// Only the owner may promote an existing account to manager.
+app.post('/api/admin/admins',requireSameOrigin,requireSuperAdmin,async(req,res)=>{
+  if(req.user.isManager)return res.status(403).json({error:'Quản lý không được cấp quyền quản lý.'});
+  const email=String(req.body.email||'').trim().toLowerCase();
+  if(!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(email))return res.status(400).json({error:'Nhập địa chỉ Gmail hợp lệ.'});
+  const target=await db.prepare('SELECT * FROM users WHERE email=? COLLATE NOCASE').get(email);
+  if(!target){
+    const origin=publicAppOrigin();
+    if(!origin)return res.status(503).json({error:'Cần cấu hình APP_PUBLIC_URL trước khi gửi lời mời quản lý.'});
+    try {
+      await db.transaction(async()=>{
+        const passwordHash=await hashPassword(crypto.randomBytes(48).toString('hex'));
+        await db.prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type,is_manager) VALUES(?,?,?,'admin',2,'school',true)").run(email.split('@')[0],email,passwordHash);
+        await deliverMail({to:email,subject:'MAIHOC — Lời mời quản lý',text:`Bạn được cấp quyền quản lý MAIHOC. Mở ${origin}/account rồi chọn Quên mật khẩu để xác minh Gmail và đặt mật khẩu riêng. Không có mật khẩu tạm thời trong email.`});
+      })();
+      return res.status(201).json({ok:true,message:'Đã tạo quản lý và gửi lời mời đặt mật khẩu qua Gmail.'});
+    }catch{return res.status(503).json({error:'Chưa gửi được lời mời; chưa tạo tài khoản quản lý. Vui lòng thử lại.'});}
   }
-
-  const existing = await db
-    .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE email=? COLLATE NOCASE")
-    .get(email);
-  if (existing) {
-    if (Number(existing.admin_level) >= 2) {
-      return res.status(409).json({ error: "Email này thuộc Quản trị MAI HỌC; không thể chuyển thành giáo viên." });
-    }
-    await validateTeacherProfile(db, teacherProfile, existing.id);
-    let savedTeacherProfile = null;
-    const promote = db.transaction(async () => {
-      await db
-        .prepare("UPDATE users SET role='admin',admin_level=1,account_type='school' WHERE id=? AND admin_level<2")
-        .run(existing.id);
-      savedTeacherProfile = await saveTeacherAssignments(db, existing.id, teacherProfile);
-      const updated = await db
-        .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?")
-        .get(existing.id);
-      await notifyAdmins(
-        "admin_promoted",
-        "Đã phân công tài khoản giáo viên",
-        `Tài khoản ${updated.name} (${updated.email}) đã được cập nhật phân công giáo viên.`,
-        "admin"
-      );
-      return updated;
-    });
-    const updated = await promote();
-    const formatted = publicUser({
-      ...updated,
-      account_type: "school",
-      homeroom_class: savedTeacherProfile?.homeroomClass || null,
-      teacher_kind: savedTeacherProfile?.teacherKind || "subject"
-    });
-    return res.json({
-      ok: true,
-      action: "promoted",
-      user: { ...formatted, teacherProfile: savedTeacherProfile },
-      message: "Đã cập nhật quyền và phân công lớp cho giáo viên."
-    });
-  }
-
-  if (name.length < 2 || name.length > 80) {
-    return res.status(400).json({ error: "Với email chưa có tài khoản, họ tên cần từ 2 đến 80 ký tự." });
-  }
-  if (password.length < 8 || password.length > 128) {
-    return res
-      .status(400)
-      .json({ error: "Với email chưa có tài khoản, mật khẩu tạm thời cần từ 8 đến 128 ký tự." });
-  }
-  await validateTeacherProfile(db, teacherProfile, null);
-  const passwordHash = await hashPassword(password);
-  let created = null;
-  let savedTeacherProfile = null;
-  try {
-    const createTx = db.transaction(async () => {
-      const result = await db
-        .prepare("INSERT INTO users(name,email,password_hash,role,admin_level,account_type) VALUES(?,?,?,'admin',1,'school')")
-        .run(name, email, passwordHash);
-      const row = await db
-        .prepare("SELECT id,name,email,role,admin_level,account_type,created_at FROM users WHERE id=?")
-        .get(result.lastInsertRowid);
-      savedTeacherProfile = await saveTeacherAssignments(db, row.id, teacherProfile);
-      return row;
-    });
-    created = await createTx();
-  } catch (error) {
-    if (String(error.code || "").includes("CONSTRAINT") || error.pgCode === "23505") {
-      return res
-        .status(409)
-        .json({ error: "Tài khoản vừa được tạo hoặc thay đổi đồng thời. Hãy tải lại danh sách rồi thử lại." });
-    }
-    throw error;
-  }
-  await notifyAdmins(
-    "admin_created",
-    "Đã tạo tài khoản giáo viên",
-    `Tài khoản giáo viên ${name} (${email}) đã được tạo mới.`,
-    "admin"
-  );
-  const formattedCreated = publicUser({
-    ...created,
-    account_type: "school",
-    homeroom_class: savedTeacherProfile?.homeroomClass || null,
-    teacher_kind: savedTeacherProfile?.teacherKind || "subject"
-  });
-  res.status(201).json({
-    ok: true,
-    action: "created",
-    user: { ...formattedCreated, teacherProfile: savedTeacherProfile },
-    message: savedTeacherProfile?.teacherKind === "homeroom"
-      ? `Đã tạo tài khoản Giáo viên chủ nhiệm lớp ${savedTeacherProfile.homeroomClass}.`
-      : "Đã tạo tài khoản Giáo viên bộ môn mới."
-  });
+  if(Number(target.admin_level)>=2)return res.status(409).json({error:'Tài khoản đã có quyền quản trị.'});
+  await db.prepare("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=?").run(target.id);
+  res.json({ok:true,message:'Đã cấp quyền quản lý; giữ nguyên mật khẩu và dữ liệu.'});
 });
 
-// A subordinate admin may only request deletion. No account is deleted until super-admin approval.
 app.delete("/api/admin/users/:id", requireSameOrigin, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "ID tài khoản không hợp lệ." });
@@ -2378,7 +2306,7 @@ app.get("/api/documents", async (req, res) => {
     ? await db.prepare(sql).all(req.user.id)
     : await db.prepare(sql).all();
   res.setHeader("Cache-Control", "private, no-store");
-  res.json(documents.filter(doc => doc.category !== "test" || canAccessSchool(req.user)).map(documentResponse));
+  res.json(documents.filter(doc => (doc.category !== "test" && doc.subject !== "IELTS") || canAccessSchool(req.user)).map(documentResponse));
 });
 
 app.get("/api/admin/answer-keys", requireAdmin, async (req, res) => {
@@ -3049,6 +2977,7 @@ testsModule = installTestsModule({
   notifyUser,
   notifyAdmins
 });
+installAccountUpgrade(app, { db, requireAuth, requireSameOrigin });
 installSchoolAnnouncementRoutes(app, { db, requireAuth, requireSameOrigin });
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
@@ -3086,6 +3015,7 @@ export async function initializeApplicationRuntime() {
   await initAuthDatabase();
   await ensureLearningSchema(db);
   await initSchoolSystemDatabase(db);
+  await ensureAccountUpgrade(db);
   await initChatDatabase();
   if (testsModule?.initTestsModuleDatabase) {
     await testsModule.initTestsModuleDatabase();
