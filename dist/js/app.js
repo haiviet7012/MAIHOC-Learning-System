@@ -155,7 +155,7 @@ function go(route, params = {}) {
             }
         });
     }
-    if (route === "exam") window.scrollTo(0, 0);
+    if (route === "exam" || route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
 }
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
 history.replaceState(saveRouteHistory(), "", window.location.href);
@@ -173,7 +173,7 @@ window.addEventListener("popstate", function (event) {
         Object.assign(state, saved.appState);
         state.timer = null;
         render();
-        if (state.route === "exam") window.scrollTo(0, 0);
+        if (state.route === "exam" || state.route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
         return;
     }
     // Không tự chuyển hướng khi gặp trạng thái không xác định.
@@ -1447,12 +1447,6 @@ document.addEventListener("click", async (e) => {
     }
 });
 $("#brand-home").addEventListener("click", () => go("home"));
- document.getElementById("education-home")?.addEventListener("click", () => {
-    if (!matchMedia('(max-width:700px)').matches) return;
-    window.dispatchEvent(new Event("maihoc-close-chat"));
-    window.dispatchEvent(new Event("maihoc-close-online-drawer"));
-    go("home");
-});
 $("#menu-toggle").addEventListener("click", () => $("#subject-menu").classList.toggle("open"));
 document.addEventListener("click", e => { if (!e.target.closest("#subject-menu") && !e.target.closest("#menu-toggle") && !e.target.closest('[data-action="browse-subjects"]'))
     $("#subject-menu").classList.remove("open"); });
@@ -1994,20 +1988,6 @@ window.addEventListener("maihoc-admin-panel-mounted", () => {
 });
 
 document.getElementById('education-menu')?.addEventListener('click', () => { const opened=document.getElementById('education-sidebar').classList.toggle('is-open'); document.getElementById('education-menu').setAttribute('aria-expanded',String(opened)); });
-document.addEventListener('click', event => {
-    const sidebar = document.getElementById('education-sidebar');
-    const menuButton = document.getElementById('education-menu');
-    if (
-        matchMedia('(max-width:700px)').matches &&
-        sidebar?.classList.contains('is-open') &&
-        !sidebar.contains(event.target) &&
-        !menuButton?.contains(event.target)
-    ) {
-        sidebar.classList.remove('is-open');
-        menuButton?.setAttribute('aria-expanded', 'false');
-        syncEducationSidebar();
-    }
-});
 document.addEventListener('keydown', event=>{if(event.key==='Escape'){document.getElementById('education-sidebar')?.classList.remove('is-open');document.getElementById('education-menu')?.setAttribute('aria-expanded','false');}});
 document.addEventListener('click',event=>{if(event.target.closest('[data-portal-login]'))openDialog('login-dialog');const test=event.target.closest('[data-portal-test]');if(test)startTest(test.dataset.portalTest);});
 

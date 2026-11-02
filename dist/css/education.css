@@ -365,6 +365,19 @@ a {
   color: var(--muted);
   text-align: right;
 }
+/* Share row boundaries so dashboard cards align across both columns. */
+@media (min-width: 1001px) {
+  .portal-dashboard {
+    grid-template-rows: repeat(4, auto);
+  }
+  .portal-dashboard > :is(.portal-main-column, .portal-side-column) {
+    grid-row: 1 / span 4;
+    grid-template-rows: subgrid;
+    row-gap: inherit;
+  }
+  .portal-dashboard > .portal-main-column { grid-column: 1; }
+  .portal-dashboard > .portal-side-column { grid-column: 2; }
+}
 .portal-dashboard {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
