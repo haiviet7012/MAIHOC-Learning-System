@@ -869,7 +869,7 @@ function render() {
     document.body.classList.toggle("practice-open", state.route === "exam" && !fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === 'school-plans') view.innerHTML = schoolPlansMarkup();
-    else if (state.route === 'school-advisor') activePortalCleanup = mountLearningAdvisor(view, { teaching: Boolean(currentUser?.isTeacher) });
+    else if (state.route === 'school-advisor') activePortalCleanup = mountLearningAdvisor(view, { teaching: Boolean(currentUser?.isTeacher), inline: true });
     else if (state.route === 'school-ielts') { state.subject='IELTS'; view.innerHTML=subjectPage(); }
     else if (state.route === "home") {
         view.innerHTML = homePage();

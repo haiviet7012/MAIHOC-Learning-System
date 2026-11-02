@@ -62,9 +62,11 @@ try {
   await page.locator("#login-form [name=password]").fill(password);
   await page.locator("#login-form button[type=submit]").click();
   await page.locator("#login-dialog").waitFor({ state: "hidden" });
+  const learningUsername = await page.locator('#education-user').boundingBox();
   await page.goto(origin + '/school/advisor');
-  await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-form]").waitFor();
+  const schoolUsername = await page.locator('#education-user').boundingBox();
+  assert.ok(Math.abs(learningUsername.x-schoolUsername.x)<1 && Math.abs(learningUsername.y-schoolUsername.y)<1, 'Username stays aligned across Learning and School');
   assert.equal(await page.locator('[data-advisor-activity], .advisor-chart, .advisor table').count(), 0);
   assert.equal(await page.locator('.advisor details').count(), 0);
   assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
@@ -84,7 +86,6 @@ try {
     page.locator("[data-advisor-task]").check(),
   ]);
   await page.reload({ waitUntil: "networkidle" });
-  await page.locator(".advisor-pull").click();
   await page.locator("[data-advisor-task]:checked").waitFor();
   await page.locator("[data-advisor-mode=evaluate]").click();
   await page.locator("[data-advisor-form] button[type=submit]").click();
@@ -104,7 +105,7 @@ try {
   }));
   assert.equal(actions.length, 3);
   for (const style of actions) assert.deepEqual(style, actions[0], 'Floating actions share chat colors, border, shadow and animation');
-  assert.ok((await page.locator('.advisor-pull-arrow').evaluate(n => getComputedStyle(n).clipPath)).startsWith('polygon('));
+  assert.equal(await page.locator('.advisor-pull, .advisor-drawer').count(), 0, 'Advisor route mounts content inline');
   await page.screenshot({ path: new URL('advisor-dark-surfaces.png', directory).pathname, fullPage: true });
   await page.evaluate(() => document.documentElement.classList.remove('dark'));
 
@@ -125,7 +126,6 @@ try {
     "No mobile horizontal overflow",
   );
   await page.setViewportSize({ width: 1440, height: 1050 });
-  await page.locator(".advisor-dismiss").click();
   await page.locator(".education-switch [data-space=school]").click();
   await page
     .locator('.education-sidebar nav [data-route="school-analytics"]')
@@ -151,7 +151,6 @@ try {
   const teacherPage = await teacherContext.newPage();
   await teacherPage.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
   await teacherPage.goto(origin + '/school/advisor');
-  await teacherPage.getByRole('button', { name: 'Mở Cố vấn giảng dạy', exact: true }).click();
   await teacherPage.locator('.teaching-advisor h2').waitFor();
   await teacherPage.locator('.teaching-advisor [name=classKey] option').nth(1).waitFor({ state: 'attached' });
   await teacherPage.locator('.teaching-advisor [name=classKey]').selectOption({ index: 1 });
