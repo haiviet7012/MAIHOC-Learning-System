@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = new URL("../", import.meta.url),
   dist = new URL("dist/", root);
-const sources = ["js", "css", "configs", "study-rooms", "public"];
+const sources = ["js", "css", "configs", "study-rooms", "public", "physics-lab"];
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
 const check = process.argv.includes("--check");
 let index = await readFile(new URL("index.html", root), "utf8");

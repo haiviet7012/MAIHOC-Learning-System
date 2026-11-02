@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phòng Thí Nghiệm Vật Lí Ảo 2D — MAIHOC Learning System</title>
+  <link rel="icon" type="image/png" href="/images/mai-hoc-favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/physics-lab/styles/physics-lab.css">
+  <link rel="stylesheet" href="/physics-lab/styles/components.css">
+  <link rel="stylesheet" href="/physics-lab/styles/responsive.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="lab-header">
+    <div class="header-left">
+      <a href="/learning?subject=Vật%20lý" class="brand-badge">
+        <div class="brand-icon">⚛</div>
+        <span>MAIHOC</span>
+      </a>
+      <div class="lab-title-box">
+        <h1>PHÒNG THÍ NGHIỆM VẬT LÍ ẢO 2D</h1>
+        <p>Chương trình Vật lí 12 — Bộ sách Kết nối tri thức với cuộc sống</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary btn-sm" id="btn-instruction">📖 Hướng dẫn thí nghiệm</button>
+      <button class="btn-icon" id="btn-theme" title="Đổi chế độ sáng / tối">🌓</button>
+      <button class="btn-icon" id="btn-fullscreen" title="Toàn màn hình">⛶</button>
+      <button class="btn btn-primary btn-sm" id="btn-back">← Quay lại MAIHOC</button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="lab-workspace">
+
+    <!-- SIDEBAR (25 EXPERIMENTS IN 4 CHAPTERS) -->
+    <aside class="lab-sidebar">
+      <div class="sidebar-head">
+        <input type="text" id="exp-search" class="sidebar-search" placeholder="🔍 Tìm kiếm trong 25 thí nghiệm...">
+      </div>
+      <div class="sidebar-catalog" id="catalog-list">
+        <!-- Rendered by physics-lab.js -->
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE -->
+    <section class="stage-container">
+
+      <!-- BANNER BAR -->
+      <div class="exp-banner">
+        <div class="banner-title-box">
+          <h2 id="view-title">
+            <span class="banner-chapter-pill" id="view-chapter">CHƯƠNG II: KHÍ LÍ TƯỞNG</span>
+            <span id="view-name">Thí nghiệm 7: Khảo sát định luật Boyle</span>
+          </h2>
+          <p class="banner-desc" id="view-desc">Khảo sát mối quan hệ giữa áp suất p và thể tích V của một lượng khí xác định ở nhiệt độ không đổi.</p>
+        </div>
+        <div>
+          <button class="btn btn-secondary btn-sm" id="btn-toggle-graph">📊 Hiện/Ẩn Đồ Thị</button>
+        </div>
+      </div>
+
+      <!-- GRID: CANVAS + DOCK -->
+      <div class="lab-grid-stage">
+
+        <!-- SIMULATION VIEWPORT -->
+        <div class="simulation-box">
+          <div class="sim-canvas-wrap" id="canvas-container">
+            <canvas id="simCanvas"></canvas>
+          </div>
+
+          <!-- TOOLBAR -->
+          <div class="sim-toolbar">
+            <div class="toolbar-group">
+              <button class="btn btn-primary btn-sm" id="ctrl-play">▶ Bắt đầu</button>
+              <button class="btn btn-secondary btn-sm" id="ctrl-pause" style="display:none;">⏸ Tạm dừng</button>
+              <button class="btn btn-secondary btn-sm" id="ctrl-reset">↺ Đặt lại</button>
+              <div class="speed-selector">
+                <span>Tốc độ:</span>
+                <button class="speed-btn" data-speed="0.5">0.5x</button>
+                <button class="speed-btn active" data-speed="1.0">1.0x</button>
+                <button class="speed-btn" data-speed="2.0">2.0x</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <span style="font-size:11px;color:var(--muted);font-weight:600;" id="fps-counter">60 FPS · Tương tác thời gian thực</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT DOCK: CONTROLS & MEASUREMENTS -->
+        <div class="data-dock">
+          <div class="dock-body">
+
+            <!-- FORMULA CARD -->
+            <div class="dock-card">
+              <div class="dock-card-head">
+                <span>CÔNG THỨC VẬT LÍ TRỌNG TÂM</span>
+                <span>SI</span>
+              </div>
+              <div class="formula-box" id="formula-text">p₁ · V₁ = p₂ · V₂ = const</div>
+              <div class="formula-explanation" id="formula-desc">
+                Trong quá trình đẳng nhiệt (T = hằng số), áp suất p của một lượng khí xác định tỉ lệ nghịch với thể tích V của nó.
+              </div>
+            </div>
+
+            <!-- PARAMETERS CARD -->
+            <div class="dock-card">
+              <div class="dock-card-head">
+                <span>ĐIỀU CHỈNH THAM SỐ THỰC NGHIỆM</span>
+                <span id="param-count">3 tham số</span>
+              </div>
+              <div id="dynamic-params">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+            <!-- RESULTS CARD -->
+            <div class="dock-card">
+              <div class="dock-card-head">
+                <span>DỮ LIỆU ĐO ĐẠC &amp; TÍNH TOÁN</span>
+                <span style="color:var(--success);">Thời gian thực</span>
+              </div>
+              <div class="res-grid" id="dynamic-results">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+            <!-- REAL-TIME GRAPH CARD -->
+            <div class="dock-card" id="graph-panel-box">
+              <div class="dock-card-head">
+                <span id="graph-title">ĐỒ THỊ THỰC NGHIỆM</span>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-points" style="padding:2px 6px;font-size:10px;">Xóa điểm</button>
+              </div>
+              <div class="graph-card">
+                <canvas id="graphCanvas"></canvas>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- STEM INSTRUCTIONS MODAL -->
+  <div class="modal-overlay" id="guide-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-exp-title">Hướng dẫn thực hành STEM</h3>
+        <button class="btn-icon" id="btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body" id="modal-exp-content">
+        <!-- Content injected dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="btn-got-it">Đã hiểu, bắt đầu thí nghiệm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast-msg">Thông báo thí nghiệm</div>
+
+  <script type="module" src="/physics-lab/physics-lab.js"></script>
+</body>
+</html>
+

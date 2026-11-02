@@ -232,13 +232,13 @@ function subjectPage() {
           <p>Không gian tra cứu công thức, đại lượng, đơn vị và các ví dụ áp dụng theo từng chủ đề Vật lý.</p>
           <p class="natural-science-card-link">Đang phát triển · Sắp ra mắt</p>
         </article>
-        <article class="card natural-science-card is-coming" aria-disabled="true">
-          <div class="card-icon">🧪</div>
-          <span class="pill coming-pill">COMING SOON</span>
-          <h3>Mô hình thí nghiệm Vật lý</h3>
-          <p>Phòng thí nghiệm mô phỏng tương tác sẽ được bổ sung trong giai đoạn tiếp theo.</p>
-          <p class="natural-science-card-link">Sắp ra mắt</p>
-        </article>
+        <a href="/physics-lab/" target="_blank" rel="noopener noreferrer" class="card clickable resource-card natural-science-card" style="text-decoration:none;">
+          <div class="card-icon">🔬</div>
+          <span class="pill natural-science-feature">✨ PHÒNG THÍ NGHIỆM ẢO</span>
+          <h3>Phòng thí nghiệm Vật lí 2D</h3>
+          <p>25 mô hình thí nghiệm tương tác theo SGK Vật lí 12 (Kết nối tri thức): Nhiệt học, Khí lí tưởng, Từ trường và Hạt nhân.</p>
+          <p class="natural-science-card-link">Vào phòng thí nghiệm (Tab mới) →</p>
+        </a>
       </div>
       <section class="section-head">
         <div>

@@ -956,13 +956,13 @@ C\xE2u 4. Cho A(1,2), B(4,6). T\xEDnh \u0111\u1ED9 d\xE0i AB.`}];function La(){l
           <p>Kh\xF4ng gian tra c\u1EE9u c\xF4ng th\u1EE9c, \u0111\u1EA1i l\u01B0\u1EE3ng, \u0111\u01A1n v\u1ECB v\xE0 c\xE1c v\xED d\u1EE5 \xE1p d\u1EE5ng theo t\u1EEBng ch\u1EE7 \u0111\u1EC1 V\u1EADt l\xFD.</p>
           <p class="natural-science-card-link">\u0110ang ph\xE1t tri\u1EC3n \xB7 S\u1EAFp ra m\u1EAFt</p>
         </article>
-        <article class="card natural-science-card is-coming" aria-disabled="true">
-          <div class="card-icon">\u{1F9EA}</div>
-          <span class="pill coming-pill">COMING SOON</span>
-          <h3>M\xF4 h\xECnh th\xED nghi\u1EC7m V\u1EADt l\xFD</h3>
-          <p>Ph\xF2ng th\xED nghi\u1EC7m m\xF4 ph\u1ECFng t\u01B0\u01A1ng t\xE1c s\u1EBD \u0111\u01B0\u1EE3c b\u1ED5 sung trong giai \u0111o\u1EA1n ti\u1EBFp theo.</p>
-          <p class="natural-science-card-link">S\u1EAFp ra m\u1EAFt</p>
-        </article>
+        <a href="/physics-lab/" target="_blank" rel="noopener noreferrer" class="card clickable resource-card natural-science-card" style="text-decoration:none;">
+          <div class="card-icon">🔬</div>
+          <span class="pill natural-science-feature">✨ PHÒNG THÍ NGHIỆM ẢO</span>
+          <h3>Phòng thí nghiệm Vật lí 2D</h3>
+          <p>25 mô hình thí nghiệm tương tác theo SGK Vật lí 12 (Kết nối tri thức): Nhiệt học, Khí lí tưởng, Từ trường và Hạt nhân.</p>
+          <p class="natural-science-card-link">Vào phòng thí nghiệm (Tab mới) →</p>
+        </a>
       </div>
       <section class="section-head">
         <div>
