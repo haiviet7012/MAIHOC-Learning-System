@@ -13,7 +13,7 @@ export const EXPERIMENT_CATALOG = [
     chapterName: "Chương I: Vật lí nhiệt",
     idx: 1,
     title: "Xác định nhiệt dung riêng của một chất",
-    desc: "Mô phỏng bình nhiệt lượng kế, que khuấy, nhiệt kế và nguồn nhiệt điện trở để xác định nhiệt dung riêng c của chất lỏng.",
+    desc: "Mô phỏng 3D tương tác 360° máy biến áp với lõi thép ghép kín kỹ thuật điện, cuộn sơ cấp N₁ và cuộn thứ cấp N₂, đường sức từ thông xoay chiều khép kín trong lõi sắt.",
     formula: "c = Q / [m · (T₂ - T₁)] = (P · t) / [m · ΔT]",
     formulaDesc: "Nhiệt lượng Q cấp bởi nguồn nhiệt P·t làm khối lượng m tăng nhiệt độ từ T₁ lên T₂. Bỏ qua nhiệt lượng thất thoát ra môi trường.",
     siUnits: "c: J/(kg·K); P: Watt; m: kg; T: K hoặc °C",
@@ -316,9 +316,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Trục của kim nam châm nằm cân bằng luôn tiếp tuyến với đường sức từ tại điểm đó. Cực Bắc của kim chỉ chiều của vector cảm ứng từ.",
     siUnits: "B: Tesla (T) hoặc mT; Góc θ: độ",
     params: [
-      { id: "magnetB0", label: "Từ tính nam châm (B₀)", unit: "mT", min: 10, max: 100, step: 5, defaultValue: 50 },
-      { id: "magnetDist", label: "Chiều dài thanh nam châm", unit: "cm", min: 6, max: 16, step: 1, defaultValue: 10 }
-    ],
+        {"id":"magnetB0","label":"Từ tính nam châm (B₀)","unit":"mT","min":10,"max":100,"step":5,"defaultValue":50},
+        {"id":"magnetDist","label":"Chiều dài thanh nam châm","unit":"cm","min":6,"max":16,"step":1,"defaultValue":10},
+        {"id":"needleDist","label":"Khoảng cách kim đo (r)","unit":"cm","min":4,"max":25,"step":1,"defaultValue":12},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Độ lớn cảm ứng từ B theo khoảng cách r", xLabel: "r (cm)", yLabel: "B (mT)", type: "decay-1/r3" },
     instructions: {
       goal: "Dùng kim la bàn để phát hiện và xác định hướng của từ trường.",
@@ -342,9 +344,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Các đường sức từ là những đường cong khép kín. Nơi nào từ trường mạnh thì đường sức mau (dày), nơi nào từ trường yếu thì đường sức thưa.",
     siUnits: "Mật độ đường sức: Weber/m²",
     params: [
-      { id: "magnetShape", label: "Dạng nam châm (1: Thẳng, 2: Chữ U)", unit: "", min: 1, max: 2, step: 1, defaultValue: 1 },
-      { id: "filingDensity", label: "Mật độ mạt sắt", unit: "hạt", min: 200, max: 1000, step: 100, defaultValue: 500 }
-    ],
+        {"id":"magnetShape","label":"Dạng nam châm (1: Thẳng, 2: Chữ U)","unit":"","min":1,"max":2,"step":1,"defaultValue":1},
+        {"id":"filingDensity","label":"Mật độ mạt sắt","unit":"hạt","min":200,"max":1000,"step":100,"defaultValue":500},
+        {"id":"showFieldLines","label":"Hiện đường sức từ (1: Có, 0: Ẩn)","unit":"","min":0,"max":1,"step":1,"defaultValue":1},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Mật độ đường sức từ theo bán kính", xLabel: "Khoảng cách r", yLabel: "Mật độ", type: "field-density" },
     instructions: {
       goal: "Quan sát từ phổ và quy ước chiều của đường sức từ.",
@@ -368,9 +372,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Đường sức từ là các đường tròn đồng tâm nằm trong mặt phẳng vuông góc với dòng điện, tâm nằm trên dây dẫn. I: cường độ dòng điện, r: khoảng cách.",
     siUnits: "B: Tesla (T); I: Ampe (A); r: mét (m)",
     params: [
-      { id: "wireCurrent", label: "Cường độ dòng điện (I)", unit: "A", min: 1, max: 20, step: 1, defaultValue: 5 },
-      { id: "currentDir", label: "Chiều dòng điện (1: Lên, -1: Xuống)", unit: "", min: -1, max: 1, step: 2, defaultValue: 1 }
-    ],
+        {"id":"wireCurrent","label":"Cường độ dòng điện (I)","unit":"A","min":1,"max":20,"step":1,"defaultValue":5},
+        {"id":"currentDir","label":"Chiều dòng điện (1: Lên, -1: Xuống)","unit":"","min":-1,"max":1,"step":2,"defaultValue":1},
+        {"id":"ringRadius","label":"Bán kính vòng đo (r)","unit":"cm","min":2,"max":15,"step":1,"defaultValue":5},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Cảm ứng từ B theo khoảng cách r (1/r)", xLabel: "r (cm)", yLabel: "B (μT)", type: "hyperbola-1/r" },
     instructions: {
       goal: "Khảo sát từ trường của dòng điện thẳng dài và vận dụng quy tắc nắm tay phải.",
@@ -395,9 +401,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Bên trong lòng ống dây hình trụ dài, từ trường là từ trường đều, các đường sức từ là những đường thẳng song song cùng chiều.",
     siUnits: "B: T; N: số vòng; ℓ: mét; n: vòng/m; I: A",
     params: [
-      { id: "solCurrent", label: "Dòng điện (I)", unit: "A", min: 0.5, max: 8.0, step: 0.5, defaultValue: 3.0 },
-      { id: "solTurns", label: "Mật độ vòng dây (n)", unit: "vòng/m", min: 400, max: 2000, step: 100, defaultValue: 1000 }
-    ],
+        {"id":"solCurrent","label":"Dòng điện (I)","unit":"A","min":0.5,"max":8,"step":0.5,"defaultValue":3},
+        {"id":"solTurns","label":"Mật độ vòng dây (n)","unit":"vòng/m","min":400,"max":2000,"step":100,"defaultValue":1000},
+        {"id":"solLength","label":"Chiều dài ống dây (L)","unit":"cm","min":10,"max":30,"step":2,"defaultValue":20},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Cảm ứng từ B theo cường độ dòng điện I", xLabel: "I (A)", yLabel: "B (mT)", type: "linear" },
     instructions: {
       goal: "Khảo sát đặc điểm từ trường bên trong và bên ngoài ống dây mang dòng điện.",
@@ -422,10 +430,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Lực từ F vuông góc với mặt phẳng chứa đoạn dòng điện IL và vector B. Chiều xác định theo quy tắc bàn tay trái. F đạt cực đại khi α = 90°.",
     siUnits: "F: Newton (N); I: A; B: T; L: m; α: độ",
     params: [
-      { id: "ampereI", label: "Dòng điện (I)", unit: "A", min: 0.5, max: 8.0, step: 0.5, defaultValue: 4.0 },
-      { id: "ampereB", label: "Cảm ứng từ (B)", unit: "T", min: 0.1, max: 1.0, step: 0.05, defaultValue: 0.5 },
-      { id: "ampereAngle", label: "Góc nghiêng (α)", unit: "độ", min: 0, max: 90, step: 5, defaultValue: 90 }
-    ],
+        {"id":"ampereI","label":"Dòng điện (I)","unit":"A","min":0.5,"max":8,"step":0.5,"defaultValue":4},
+        {"id":"ampereB","label":"Cảm ứng từ (B)","unit":"T","min":0.1,"max":1,"step":0.05,"defaultValue":0.5},
+        {"id":"ampereAngle","label":"Góc nghiêng dây (α)","unit":"độ","min":0,"max":90,"step":5,"defaultValue":90},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Lực từ F theo góc nghiêng α", xLabel: "α (độ)", yLabel: "F (N)", type: "sine" },
     instructions: {
       goal: "Xác định hướng và độ lớn của lực từ Am-pe tác dụng lên đoạn dây dẫn.",
@@ -450,9 +459,12 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Mỗi khi từ thông qua mạch kín biến thiên theo thời gian thì trong mạch xuất hiện một dòng điện cảm ứng.",
     siUnits: "Φ: Weber (Wb); ec: Volt (V); i: Ampe (A)",
     params: [
-      { id: "magnetSpeed", label: "Tốc độ nam châm", unit: "m/s", min: 0.1, max: 2.0, step: 0.1, defaultValue: 0.8 },
-      { id: "coilTurns", label: "Số vòng dây cuộn (N)", unit: "vòng", min: 50, max: 500, step: 50, defaultValue: 200 }
-    ],
+        {"id":"magnetSpeed","label":"Tốc độ di chuyển nam châm","unit":"m/s","min":0.1,"max":2.5,"step":0.1,"defaultValue":1},
+        {"id":"coilTurns","label":"Số vòng dây cuộn (N)","unit":"vòng","min":50,"max":500,"step":50,"defaultValue":200},
+        {"id":"magnetPole","label":"Cực đưa vào (1: Cực Bắc N, -1: Cực Nam S)","unit":"","min":-1,"max":1,"step":2,"defaultValue":1},
+        {"id":"autoOscillate","label":"Chuyển động (1: Dao động, 0: Một chiều)","unit":"","min":0,"max":1,"step":1,"defaultValue":1},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Dòng điện cảm ứng i(t) theo chuyển động", xLabel: "t (s)", yLabel: "i (mA)", type: "ac-pulse" },
     instructions: {
       goal: "Khảo sát điều kiện xuất hiện dòng điện cảm ứng trong mạch kín.",
@@ -477,8 +489,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Định luật Lenz thực chất là hệ quả của định luật bảo toàn năng lượng: công cơ học bỏ ra để thắng lực cản từ trường biến thành điện năng.",
     siUnits: "Chiều dòng điện: Ampe (A); Lực cản: Newton (N)",
     params: [
-      { id: "motionState", label: "Chế độ (0: Lại gần, 1: Ra xa)", unit: "", min: 0, max: 1, step: 1, defaultValue: 0 }
-    ],
+        {"id":"motionState","label":"Chuyển động nam châm (0: Lại gần, 1: Ra xa)","unit":"","min":0,"max":1,"step":1,"defaultValue":0},
+        {"id":"ringType","label":"Loại vòng (1: Vòng nhôm kín, 2: Vòng xẻ rãnh)","unit":"","min":1,"max":2,"step":1,"defaultValue":1},
+        {"id":"magnetPole","label":"Cực nam châm (1: Cực Bắc N, -1: Cực Nam S)","unit":"","min":-1,"max":1,"step":2,"defaultValue":1},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Từ thông và chiều dòng cảm ứng", xLabel: "Khoảng cách", yLabel: "Từ thông Φ", type: "flux-lenz" },
     instructions: {
       goal: "Xác định chiều dòng điện cảm ứng bằng định luật Lenz.",
@@ -497,13 +512,15 @@ export const EXPERIMENT_CATALOG = [
     chapterName: "Chương III: Từ trường",
     idx: 19,
     title: "Thí nghiệm khảo sát suất điện động cảm ứng",
-    desc: "Khảo sát suất điện động sinh ra khi từ thông qua khung dây biến thiên tuần hoàn theo thời gian.",
-    formula: "e_c = - dΦ/dt = E₀ · sin(ωt + φ₀)",
-    formulaDesc: "Độ lớn suất điện động cảm ứng tỉ lệ với tốc độ biến thiên của từ thông qua mạch. e_c vuông pha với từ thông Φ.",
-    siUnits: "ec: Volt (V); ω: rad/s; Φ: Wb",
+    desc: "Mô phỏng 3D tương tác 360° khung dây quay trong từ trường đều sinh ra suất điện động cảm ứng xoay chiều hình sin e(t) lệch pha π/2 với từ thông Φ(t).",
+    formula: "Φ(t) = N·B·S·cos(ωt);  e(t) = -dΦ/dt = E₀·sin(ωt)",
+    formulaDesc: "Suất điện động cảm ứng e(t) vuông pha (lệch π/2) so với từ thông Φ(t). Biên độ cực đại: E₀ = N·B·S·ω.",
+    siUnits: "e: Volt (V); Φ: Weber (Wb); ω: rad/s; B: Tesla",
     params: [
-      { id: "rotSpeed", label: "Tốc độ quay (ω)", unit: "rad/s", min: 10, max: 80, step: 5, defaultValue: 30 },
-      { id: "magB", label: "Cảm ứng từ (B)", unit: "T", min: 0.2, max: 1.0, step: 0.1, defaultValue: 0.5 }
+      { id: "rotSpeed", label: "Tốc độ góc (ω)", unit: "rad/s", min: 1.0, max: 15.0, step: 0.5, defaultValue: 4.0 },
+      { id: "magB", label: "Cảm ứng từ (B)", unit: "T", min: 0.1, max: 1.5, step: 0.05, defaultValue: 0.5 },
+      { id: "coilTurnsN", label: "Số vòng dây (N)", unit: "vòng", min: 20, max: 200, step: 10, defaultValue: 100 },
+      { id: "viewMode3D", label: "Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)", unit: "", min: 0, max: 1, step: 1, defaultValue: 1 }
     ],
     graph: { title: "Dạng sóng từ thông Φ(t) và suất điện động e(t)", xLabel: "t (s)", yLabel: "e_c (V)", type: "sine-wave" },
     instructions: {
@@ -528,10 +545,11 @@ export const EXPERIMENT_CATALOG = [
     formulaDesc: "Máy tăng áp khi N₂ > N₁ (U₂ > U₁); máy hạ áp khi N₂ < N₁ (U₂ < U₁). Tần số dòng điện không đổi: f₁ = f₂.",
     siUnits: "U: Volt; I: Ampe; N: vòng",
     params: [
-      { id: "primaryN1", label: "Cuộn sơ cấp (N₁)", unit: "vòng", min: 200, max: 2000, step: 100, defaultValue: 1000 },
-      { id: "secondaryN2", label: "Cuộn thứ cấp (N₂)", unit: "vòng", min: 100, max: 1500, step: 50, defaultValue: 500 },
-      { id: "inputU1", label: "Điện áp vào (U₁)", unit: "V", min: 50, max: 220, step: 10, defaultValue: 220 }
-    ],
+        {"id":"primaryN1","label":"Cuộn sơ cấp (N₁)","unit":"vòng","min":200,"max":2000,"step":100,"defaultValue":1000},
+        {"id":"secondaryN2","label":"Cuộn thứ cấp (N₂)","unit":"vòng","min":100,"max":2000,"step":50,"defaultValue":500},
+        {"id":"inputU1","label":"Điện áp vào (U₁)","unit":"V","min":50,"max":220,"step":10,"defaultValue":220},
+        {"id":"viewMode3D","label":"Chế độ (1: 3D Không gian, 0: 2D Mặt cắt)","unit":"","min":0,"max":1,"step":1,"defaultValue":1}
+      ],
     graph: { title: "Dạng sóng điện áp xoay chiều u₁(t) và u₂(t)", xLabel: "t (ms)", yLabel: "u (V)", type: "transformer-waves" },
     instructions: {
       goal: "Nắm vững nguyên tắc hoạt động của máy biến áp dựa trên hiện tượng cảm ứng điện từ.",

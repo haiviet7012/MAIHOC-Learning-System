@@ -3,11 +3,11 @@
  * Điểm khởi chạy chính (Orchestrator) của Phòng thí nghiệm Vật lí ảo 2D MAIHOC
  */
 
-import { LAB_CONFIG } from "./config/lab.config.js";
-import { ExperimentRegistry } from "./core/experiment-registry.js";
-import { SimulationRenderer } from "./core/simulation-renderer.js";
-import { GraphManager } from "./core/graph-manager.js";
-import { SimulationManager } from "./core/simulation-manager.js";
+import { LAB_CONFIG } from "./config/lab.config.js?v=20261102v4";
+import { ExperimentRegistry } from "./core/experiment-registry.js?v=20261102v4";
+import { SimulationRenderer } from "./core/simulation-renderer.js?v=20261102v4";
+import { GraphManager } from "./core/graph-manager.js?v=20261102v4";
+import { SimulationManager } from "./core/simulation-manager.js?v=20261102v4";
 
 // DOM Elements
 const simCanvas = document.getElementById("simCanvas");

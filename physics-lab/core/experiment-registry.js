@@ -3,11 +3,11 @@
  * Đăng ký và quản lý tất cả 25 mô phỏng thí nghiệm từ 4 chương
  */
 
-import { EXPERIMENT_CATALOG } from "../config/experiment-catalog.config.js";
-import { thermalSimulations } from "../simulations/ch1-thermal.js";
-import { idealGasSimulations } from "../simulations/ch2-ideal-gas.js";
-import { magnetismSimulations } from "../simulations/ch3-magnetism.js";
-import { nuclearSimulations } from "../simulations/ch4-nuclear.js";
+import { EXPERIMENT_CATALOG } from "../config/experiment-catalog.config.js?v=20261102v4";
+import { thermalSimulations } from "../simulations/ch1-thermal.js?v=20261102v4";
+import { idealGasSimulations } from "../simulations/ch2-ideal-gas.js?v=20261102v4";
+import { magnetismSimulations } from "../simulations/ch3-magnetism.js?v=20261102v4";
+import { nuclearSimulations } from "../simulations/ch4-nuclear.js?v=20261102v4";
 
 const simulationsMap = {
   ...thermalSimulations,

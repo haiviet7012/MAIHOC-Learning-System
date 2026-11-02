@@ -3,8 +3,8 @@
  * Quản lý vòng đời thí nghiệm hiện tại, chuyển đổi mượt mà giữa 25 bài và dọn dẹp bộ nhớ
  */
 
-import { ExperimentRegistry } from "./experiment-registry.js";
-import { SimulationEngine } from "./simulation-engine.js";
+import { ExperimentRegistry } from "./experiment-registry.js?v=20261102v4";
+import { SimulationEngine } from "./simulation-engine.js?v=20261102v4";
 
 export class SimulationManager {
   constructor({ renderer, graphManager, onStateChange, onResultsUpdate }) {
