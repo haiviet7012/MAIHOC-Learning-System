@@ -182,14 +182,14 @@ async function enrichUserSchoolFields(user) {
   };
 }
 
-export async function registerUser({ name, email, password, accountType, classCode }, { teacherProfileValidated = false } = {}) {
+export async function registerUser({ name, email, password, accountType, classCode }, { teacherProfileValidated = false, teacherEmailVerified = false } = {}) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim().toLowerCase();
   const secret = String(password || "");
   const normalizedClassCode = String(classCode || "").trim().toUpperCase();
   const hasValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode);
   const teacherRegistration = accountType === "teacher";
-  if (teacherRegistration && !teacherProfileValidated) throw new Error("Vui lòng đăng ký qua form hồ sơ giáo viên.");
+  if (teacherRegistration && (!teacherProfileValidated || !teacherEmailVerified)) throw new Error("Vui lòng đăng ký qua form hồ sơ giáo viên.");
   if (teacherRegistration && !isEducationEmail(safeEmail)) throw new Error("Giáo viên cần email của trường có đuôi .edu.vn.");
   const normalizedAccountType = teacherRegistration ? "school" : "external";
   if (!teacherRegistration && normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {

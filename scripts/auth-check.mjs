@@ -33,7 +33,8 @@ try {
   await page.locator('#register-form [name=email]').fill('invalid@gmail.com');
   assert.equal(await page.locator('#register-form button[type=submit]').isDisabled(),true);
   await page.locator('#register-form [name=email]').fill('teacher@school.edu.vn');
-  await page.locator('[data-registration-details]').waitFor({state:'visible'});
+  assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
+  assert.equal(await page.locator('[data-teacher-send-link]').isEnabled(),true);
   assert.equal(await page.locator('[data-teacher-code]').count(),0);
   await page.locator('#register-dialog [data-close]').first().click();
   await page.locator('#login-open').click();

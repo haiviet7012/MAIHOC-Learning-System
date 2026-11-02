@@ -1,6 +1,8 @@
 # Kiểm tra gửi email
 
-Đăng ký giáo viên chỉ yêu cầu email trường có đuôi `.edu.vn` và hồ sơ hợp lệ, không gửi hoặc nhập OTP. Kiểm tra hậu tố không xác nhận quyền sở hữu hộp thư hay tư cách giáo viên. Tài khoản và dữ liệu cũ được giữ nguyên.
+Đăng ký giáo viên yêu cầu email trường có đuôi `.edu.vn` và link xác nhận gửi đến hộp thư (không cần nhập mã). Mở link, bấm Xác nhận email rồi hoàn tất hồ sơ. Chỉ sau khi xác nhận mới có thể tạo tài khoản giáo viên. Link hết hạn sau 10 phút và bị vô hiệu khi đăng ký thành công. Token chỉ lưu dạng hash trong DB; link không chứa mật khẩu hay hồ sơ. Không tự xác nhận khi tải trang để tránh trình quét link của email kích hoạt trước người dùng.
+
+Cần cấu hình mail hoạt động và `APP_PUBLIC_URL` trỏ đến website public HTTPS (cũng hỗ trợ `RENDER_EXTERNAL_URL`/`PUBLIC_ORIGIN`). Không lấy host từ request để tạo link. Email giả không nhận được thư sẽ không thể hoàn tất xác nhận. Việc xác nhận hộp thư không chứng minh người dùng có tư cách giáo viên; địa chỉ catch-all hoặc bí danh nhận được thư vẫn có thể xác nhận. Tài khoản và dữ liệu cũ được giữ nguyên.
 
 Engine email chung vẫn phục vụ quên mật khẩu, đổi email và thông báo School. SMTP và Resend đều được hỗ trợ. Không bỏ xác minh ở các thao tác khôi phục hoặc thay đổi tài khoản.
 
