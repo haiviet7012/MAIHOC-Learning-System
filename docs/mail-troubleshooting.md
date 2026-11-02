@@ -28,3 +28,31 @@ Các lệnh không gửi thư, không in mật khẩu, API key hay OTP. `CONFIG_
 Log server `Verification email failed` chỉ ghi provider và mã lỗi, không ghi mã xác minh hay thông tin đăng nhập. Thông báo cũ “Chưa gửi được email xác minh…” không đủ để xác định nguyên nhân cụ thể.
 
 Kiểm tra giao nhận cuối cùng bằng tính năng Quên mật khẩu với tài khoản của bạn: nhận thư, nhập mã, đặt lại mật khẩu và đăng nhập. Kiểm tra cả Spam. Không gửi OTP vào log hoặc chia sẻ OTP khi báo lỗi.
+
+## Gmail API trên Render Free, không cần tên miền
+
+Sau khi deploy bản hỗ trợ Gmail API, cấu hình trong Environment của backend:
+
+```env
+MAIL_PROVIDER=gmail
+GMAIL_API_USER=dia-chi-gmail-da-cap-quyen@gmail.com
+GMAIL_CLIENT_ID=<OAuth client ID>
+GMAIL_CLIENT_SECRET=<OAuth client secret>
+GMAIL_REFRESH_TOKEN=<refresh token>
+APP_PUBLIC_URL=https://dia-chi-frontend-cua-ban
+```
+
+Không commit thông tin thực. Giữ start command `node server.js`. SMTP/Resend vẫn hỗ trợ nếu chọn provider tương ứng. Gmail API luôn gửi từ GMAIL_API_USER; MAIL_FROM/SMTP_FROM cũ không được dùng cho provider này. GMAIL_API_USER phải là tài khoản đã cấp refresh token, không phải email người nhận.
+
+Cần bật Gmail API trong Google Cloud, cấp scope `https://www.googleapis.com/auth/gmail.send` và lấy refresh token qua OAuth client của chính bạn với access type Offline. Không dùng token mặc định của OAuth Playground (bị thu hồi sau 24 giờ). Project External ở trạng thái Testing có thể hết hạn refresh token sau 7 ngày; cần xử lý trạng thái xuất bản/chính sách OAuth phù hợp trước khi vận hành lâu dài. Không cần học sinh/giáo viên cấp quyền Gmail: chỉ Gmail của hệ thống cấp quyền gửi. Vẫn chịu quota và giới hạn gửi của tài khoản Gmail, không phải dịch vụ gửi số lượng không giới hạn.
+
+Lưu biến và redeploy. Nếu có Shell, chạy `node check-mail.js --verify` tại thư mục server. `GMAIL_OAUTH_VERIFIED` chỉ xác nhận đổi token thành công, không xác nhận quyền gửi hoặc thư đến inbox. Kiểm tra giao nhận thực bằng Quên mật khẩu với tài khoản của bạn hoặc đăng ký giáo viên bằng email edu của bạn. Không đổi mật khẩu/người dùng hiện có để kiểm tra.
+
+- `GMAIL_REAUTHORIZE`: refresh token hết hạn/bị thu hồi; cấp quyền và lấy lại token.
+- `GMAIL_OAUTH_FAILED`: kiểm tra client ID/secret, project và kết nối OAuth.
+- `GMAIL_HTTP_403`: kiểm tra đã bật Gmail API, quyền gmail.send và giới hạn/chính sách tài khoản.
+- `GMAIL_HTTP_429`: giới hạn tần suất/quota, chờ trước khi gửi lại.
+
+Gửi qua HTTPS; không dùng cổng SMTP. Token và phản hồi OAuth không được đưa vào log/lỗi trả cho người dùng. Không tự gửi lại sau timeout để tránh gửi trùng khi nhà cung cấp đã nhận thư.
+
+Tài liệu Google: https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send và https://developers.google.com/identity/protocols/oauth2.

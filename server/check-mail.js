@@ -1,3 +1,4 @@
+import { gmailAccessToken } from './gmail-mail.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import nodemailer from 'nodemailer';
@@ -11,13 +12,17 @@ const result = { provider: config.provider, configured: config.configured };
 try {
   if (!config.configured) {
     result.status = 'MAIL_NOT_CONFIGURED';
-    result.message = config.provider === 'resend'
+    result.message = config.provider === 'gmail' ? 'Kiểm tra GMAIL_API_USER, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN.' : config.provider === 'resend'
       ? 'Kiểm tra RESEND_API_KEY và MAIL_FROM/RESEND_FROM.'
       : 'Kiểm tra MAIL_PROVIDER, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS và MAIL_FROM. Gmail cần mật khẩu ứng dụng.';
     process.exitCode = 1;
   } else if (!process.argv.includes('--verify')) {
     result.status = 'CONFIG_PRESENT';
     result.message = 'Có cấu hình. Dùng --verify để kiểm tra kết nối và xác thực; không gửi email.';
+  } else if (config.provider === 'gmail') {
+    await gmailAccessToken(config);
+    result.status = 'GMAIL_OAUTH_VERIFIED';
+    result.message = 'Đổi refresh token thành access token thành công; chưa xác nhận quyền gửi hay giao nhận thư.';
   } else if (config.provider === 'resend') {
     const response = await fetch('https://api.resend.com/domains', {
       headers: { Authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(10000)
