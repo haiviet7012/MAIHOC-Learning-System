@@ -67,7 +67,7 @@ export function hydrateActivity(container, user) {
   };
 }
 
-export function mountPortal(container, route, user, onNavigate) {
+export function mountPortal(container, route, user, onNavigate, target = {}) {
   if (route === "school-analytics") route = "analytics";
   const management = route === 'assignment-management';
   if (management) route = 'assignments';
@@ -81,7 +81,7 @@ export function mountPortal(container, route, user, onNavigate) {
   const controller = new AbortController();
   let disposeAdvisor = () => {};
   let context;
-  let schoolId = "";
+  let schoolId = String(target.targetSchoolId || "");
   let activeAttempt = null;
   let saveTimer;
   let version = 0;
@@ -181,6 +181,10 @@ export function mountPortal(container, route, user, onNavigate) {
       content.innerHTML = `<div class="portal-form-grid"><section class="portal-panel"><h2>Câu hỏi của trường</h2>${list(data.items, (q) => `<article class="portal-record"><div><small>${e(q.subject)} · ${e(q.status)} · v${q.version}</small><h3>${e(q.stem)}</h3><p>${e(q.topic_name || "Chưa gắn chuyên đề")}</p></div>${staff && q.status === "draft" ? button("Duyệt", `data-platform-approve="${id(q.id)}"`) : ""}${staff ? button("Tạo phiên bản mới", `data-platform-revise="${id(q.id)}"`) : ""}</article>`)}</section>${staff ? form("question", "Soạn câu hỏi", '<button type="button" class="button secondary small" data-platform-ai-author>Nhờ trợ giảng AI gợi ý</button>' + input("subject", "Môn học") + input("grade", "Khối lớp", "number") + `<label>Loại câu<select name="type"><option value="multiple_choice">Trắc nghiệm</option><option value="true_false">Đúng/sai 4 mệnh đề</option><option value="short_answer">Trả lời ngắn</option><option value="essay">Tự luận</option></select></label><label>Nội dung<textarea name="stem" required maxlength="12000"></textarea></label><label>Các lựa chọn (mỗi dòng một đáp án)<textarea name="choices" placeholder="A. …&#10;B. …"></textarea></label>${input("answer", "Đáp án: vị trí 0, 1…; đúng/sai: [true,false,true,false]; hoặc rubric")}${select("curriculumNodeId", "Chuyên đề", taxonomy.nodes)}${input("source", "Nguồn học liệu")}`) : ""}</div>${staff ? form("topic", "Thêm chuyên đề", input("subject", "Môn học") + input("grade", "Khối lớp", "number") + input("name", "Tên chuyên đề") + input("version", "Phiên bản chương trình")) : ""}`;
     } else if (route === "assignments") {
       const data = await request(schoolUrl("/assignments"));
+      if (target.assignmentId) {
+        data.items = data.items.filter(a => String(a.id) === String(target.assignmentId));
+        if (!data.items.length) throw new Error('Bài được giao không tồn tại hoặc bạn không thuộc nhóm nhận.');
+      }
       content.innerHTML = `<section class="portal-panel"><h2>Nhiệm vụ học tập</h2>${list(data.items, (a) => `<article class="portal-record"><div><small>${e(a.subject)} · ${e(a.class_name)}</small><h3>${e(a.title)}</h3><p>${dt(a.open_at)} – ${dt(a.close_at)}</p></div>${button(staff ? "Kết quả" : "Mở bài", staff ? `data-platform-results="${id(a.id)}"` : `data-platform-start="${id(a.id)}"`)}</article>`)}</section>`;
       if (staff) {
         const [q, o] = await Promise.all([

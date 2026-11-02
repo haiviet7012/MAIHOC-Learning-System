@@ -846,7 +846,7 @@ async function refreshNotifications() {
       list.innerHTML=items.length?items.map(n=>{
         const display = notificationDisplayContent(n);
         const date = formatVietnameseDate(n.createdAt);
-        return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(display.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(display.message)+'</p>'+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
+        return '<article class="notification-item '+(n.readAt?"is-read":"is-unread")+'"><div class="notification-item-head"><strong>'+esc(display.title)+'</strong><span>'+esc(date)+'</span></div><p>'+esc(display.message)+'</p>'+(/^\/school\/(?:tests|announcements|assignments)\//.test(n.link || '') ? '<a class="text-button" href="'+esc(n.link)+'">Xem nội dung</a> ' : '')+(n.readAt?'':'<button class="text-button" data-notification-read="'+n.id+'">Đánh dấu đã đọc</button>')+'</article>';
       }).join(""):'<p class="muted">Bạn chưa có thông báo nào.</p>';
     }
   } catch(e) { console.warn("Notifications:",e.message); }

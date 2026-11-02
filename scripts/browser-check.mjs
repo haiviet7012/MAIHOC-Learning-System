@@ -225,10 +225,16 @@ try {
   await assignmentForm.locator('[name="questionIds"]').check();
   await assignmentForm.locator('button[type="submit"]').click();
   await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
-  await page.locator('#logout-button').click();await page.locator('#login-open').click();
+  const linkedAssignment = await page.locator('[data-platform-results]').getAttribute('data-platform-results');
+  const linkedSchool = await page.locator('[data-platform-school]').inputValue();
+  await page.locator('#logout-button').click();
+  await page.goto(`${origin}/school/assignments/${linkedAssignment}?schoolId=${linkedSchool}`);
+  await page.getByRole('heading',{name:'Đăng nhập để xem nội dung'}).waitFor();
+  await page.locator('#login-open').click();
   await page.locator('#login-form [name="email"]').fill('student@maihoc.test');await page.locator('#login-form [name="password"]').fill(previewPassword);await page.locator('#login-form button[type="submit"]').click();
   await page.locator('#education-user').filter({hasText:'Nguyễn Minh Anh'}).waitFor();
-  await clickSidebar("assignments");
+  await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
+  assert.equal(new URL(page.url()).pathname, `/school/assignments/${linkedAssignment}`);
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
   await page.locator('[data-attempt-form] textarea').fill('1/2');
   await page.reload({waitUntil:'networkidle'});

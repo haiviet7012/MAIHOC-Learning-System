@@ -1,3 +1,4 @@
+import { mountSchoolAnnouncements } from './school-announcements.js';
 import { canAccessSchool, schoolRoutes } from './platform/school-access.js';
 import { mountLearningAdvisor } from './platform/learning-advisor.js';
 let disposeTeachingAdvisor = null;
@@ -136,6 +137,10 @@ function saveRouteHistory() {
     };
 }
 function go(route, params = {}) {
+    if (route === 'assignments' && !Object.hasOwn(params, 'assignmentId')) {
+        state.assignmentId = null;
+        state.targetSchoolId = null;
+    }
     if (route === "account-center" && currentUser?.role === "admin") {
         route = "admin";
     }
@@ -833,6 +838,12 @@ function render() {
         view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
         return;
     }
+    if (activeActivityCleanup) { activeActivityCleanup(); activeActivityCleanup = null; }
+    if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
+    if (!currentUser && (state.route === 'school-announcements' || (state.route === 'assignments' && state.assignmentId) || (state.route === 'tests' && state.pendingTestId))) {
+        view.innerHTML = '<section class="portal-panel"><h1>Đăng nhập để xem nội dung</h1><p>Vui lòng dùng tài khoản nhận email. Sau khi đăng nhập, nội dung được liên kết sẽ mở tại đây.</p><button class="button primary" data-portal-login>Đăng nhập</button></section>';
+        return;
+    }
     if (schoolRoutes.has(state.route) && !canAccessSchool(currentUser)) {
         state.route = 'home';
         history.replaceState(saveRouteHistory(), '', routeUrl({ route: 'home' }));
@@ -843,8 +854,6 @@ function render() {
         state.route = "admin";
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
-    if (activeActivityCleanup) { activeActivityCleanup(); activeActivityCleanup = null; }
-    if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
@@ -887,6 +896,7 @@ function render() {
         view.innerHTML = homePage();
         activePortalCleanup = mountTimetablePreview(view, currentUser);
     }
+    else if (state.route === 'school-announcements') activePortalCleanup = mountSchoolAnnouncements(view, currentUser, state.announcementId);
     else if (state.route === "analytics") activePortalCleanup = mountLearningProgress(view, currentUser);
     else if (state.route === "timetable") {
         const createNew = Boolean(state.newTimetable);
@@ -894,7 +904,7 @@ function render() {
         activePortalCleanup = mountTimetable(view, currentUser, { createNew });
     }
     else if (['organization','question-bank','assignments','assignment-management','school-analytics'].includes(state.route)) {
-        activePortalCleanup = mountPortal(view, state.route, currentUser, go);
+        activePortalCleanup = mountPortal(view, state.route, currentUser, go, state);
     }
     else if (state.route === "physics-formulas") {
         view.innerHTML = "";
@@ -1775,6 +1785,8 @@ $("#switch-to-register").addEventListener("click", () => { closeDialog("login-di
 $("#switch-to-login").addEventListener("click", () => { closeDialog("register-dialog"); openDialog("login-dialog"); });
 $("#login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const emailDestination = (state.route === 'school-announcements' || (state.route === 'tests' && state.pendingTestId) || (state.route === 'assignments' && state.assignmentId))
+        ? { route: state.route, announcementId: state.announcementId, pendingTestId: state.pendingTestId, assignmentId: state.assignmentId, targetSchoolId: state.targetSchoolId } : null;
     const form = event.currentTarget;
     const submit = form.querySelector('button[type="submit"]');
     const error = $("#login-error");
@@ -1790,7 +1802,8 @@ $("#login-form").addEventListener("submit", async (event) => {
         closeDialog("login-dialog");
         form.reset();
         toast("Đăng nhập thành công.", "success");
-        go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
+        if (emailDestination && canAccessSchool(currentUser)) go(emailDestination.route, emailDestination);
+        else go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
     }
     catch (err) {
         error.textContent = err.message;

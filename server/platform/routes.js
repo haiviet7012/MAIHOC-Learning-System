@@ -1,3 +1,4 @@
+import { enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
@@ -740,6 +741,13 @@ export function createPlatformRouter({
         await audit(db, req.user, sid, "publish", "assignment", assignment.id, {
           assessmentId: assessment.id,
         });
+        const userIds = (await rows(db, `SELECT DISTINCT u.id FROM student_enrollments e
+          JOIN school_memberships m ON m.school_id=e.school_id AND m.user_id=e.student_id AND m.status='active' AND m.role='student'
+          JOIN users u ON u.id=e.student_id WHERE e.school_id=$1 AND e.class_id=$2 AND e.status='active'
+          AND u.role='user' AND u.account_type='school' AND COALESCE(u.admin_level,0)=0`, [sid, cls])).map(u => u.id);
+        await enqueueSchoolNotice(db, { eventKey: `assignment:${assignment.id}`, userIds,
+          title: `Bài được giao mới: ${req.body.title}`, message: `${req.user.name} giao bài môn ${subject}. Hạn nộp: ${schoolMailDate(close)}.`,
+          link: `/school/assignments/${assignment.id}?schoolId=${sid}` });
         return assignment;
       })();
       res.status(201).json(result);

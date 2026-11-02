@@ -11,6 +11,6 @@ export function canAccessSchool(user) {
 }
 
 export const schoolRoutes = new Set([
-  'organization', 'school', 'school-class', 'student-progress', 'question-bank',
+  'school-announcements', 'organization', 'school', 'school-class', 'student-progress', 'question-bank',
   'admin', 'assignments', 'assignment-management', 'school-analytics', 'tests', 'timetable',
 ]);

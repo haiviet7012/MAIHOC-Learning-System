@@ -1,3 +1,4 @@
+import { targetClasses, schoolRecipients, enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAnswerKeyDocument, gradeAnswers, extractDocxText, answersMatch } from "../grading/engine.js";
@@ -1145,7 +1146,7 @@ export function installTestsModule({
             visibleRows = rows.filter(row => {
               if (!row.class_code) return true;
               const code = String(row.class_code).toUpperCase();
-              return code === "ALL" || classCodes.includes(code);
+              return code === "ALL" ? classCodes.some(c => c.startsWith(String(row.grade))) : classCodes.includes(code);
             });
           } else {
             visibleRows = rows.filter(row => !row.class_code || String(row.class_code).toUpperCase() === "ALL");
@@ -1312,6 +1313,7 @@ export function installTestsModule({
             }
           }
         }
+        if (isValidClass) targetClasses({ classCode, grade });
         if (classCode && !isValidClass) return res.status(400).json({ error: "Lớp nhận bài kiểm tra không hợp lệ." });
         if (!openAt || !closeAt) {
           return res
@@ -1465,33 +1467,6 @@ export function installTestsModule({
         });
         await saveTx();
 
-        try {
-          if (isAllGrade) {
-            await db.prepare(`
-              INSERT INTO notifications (user_id, type, title, message, link)
-              SELECT id, 'new_class_test', ?, ?, '/'
-              FROM users
-              WHERE role NOT IN ('admin', 'teacher') AND COALESCE(admin_level, 0) < 1
-            `).run(
-              `Bài kiểm tra mới: ${title}`,
-              `Khối ${grade} (Cả khối) có bài kiểm tra môn ${subject} mới.`
-            );
-          } else if (isValidSpecificClass) {
-            await db.prepare(`
-              INSERT INTO notifications (user_id, type, title, message, link)
-              SELECT m.user_id, 'new_class_test', ?, ?, '/'
-              FROM school_class_members m
-              JOIN users u ON u.id = m.user_id
-              WHERE m.class_code = ? AND u.account_type = 'school'
-            `).run(
-              `Bài kiểm tra mới: ${title}`,
-              `Lớp ${classCode} có bài kiểm tra môn ${subject} mới.`,
-              classCode
-            );
-          }
-        } catch (notifyErr) {
-          console.warn("Could not insert test notifications:", notifyErr.message);
-        }
 
         if (answerKeyFile) {
           await saveAnswerKeyRecord(id, answerKeyFile, req.user.id, parsedAnswerKey, answerKeyR2Key);
@@ -1522,6 +1497,14 @@ export function installTestsModule({
             solutionJob = { id, status: "review", mode: "manual", phase: "Nhập và xác nhận đáp án chuẩn" };
           }
         }
+
+        if (isValidClass) await db.transaction(async () => {
+          const userIds = await schoolRecipients(db, targetClasses({ classCode, grade }));
+          await enqueueSchoolNotice(db, { eventKey: `test:${id}`, userIds,
+            title: `Bài kiểm tra mới: ${title}`,
+            message: `${req.user.name} giao bài kiểm tra môn ${subject} cho ${isAllGrade ? `khối ${grade}` : `lớp ${classCode}`}. Mở: ${schoolMailDate(openAt)}. Hạn nộp: ${schoolMailDate(closeAt)}.`,
+            link: `/school/tests/${encodeURIComponent(id)}` });
+        })();
 
         return res.status(201).json({
           ok: true,
