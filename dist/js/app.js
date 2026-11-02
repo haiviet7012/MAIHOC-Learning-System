@@ -812,7 +812,7 @@ async function loadAdminUsers() {
 }
 
 function render() {
-    if (schoolRoutes.has(state.route) && !authResolved) {
+    if ((schoolRoutes.has(state.route) || state.route === "analytics") && !authResolved) {
         view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
         return;
     }
