@@ -323,7 +323,7 @@ document.addEventListener("click", async event => {
     return;
   }
   if (event.target.closest("[data-account-delete-open]")) {
-    if (!activeUser || activeUser.role === "admin") return;
+    if (!activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2)) return;
     openGmailVerificationDialog({
       purpose: "delete_account",
       email: activeUser.email
@@ -478,7 +478,7 @@ document.addEventListener("submit", async event => {
   const changeEmailForm = event.target.closest("#account-change-email-form");
   if (changeEmailForm) {
     event.preventDefault();
-    if (!activeUser || activeUser.role === "admin") return;
+    if (!activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2)) return;
     const errNode = $("#account-email-error");
     if (errNode) errNode.hidden = true;
     const newEmail = String(new FormData(changeEmailForm).get("newEmail") || "").trim().toLowerCase();
@@ -501,7 +501,7 @@ document.addEventListener("submit", async event => {
   const changePasswordForm = event.target.closest("#account-change-password-form");
   if (changePasswordForm) {
     event.preventDefault();
-    if (!activeUser || activeUser.role === "admin") return;
+    if (!activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2)) return;
     const errNode = $("#account-password-error");
     if (errNode) errNode.hidden = true;
     const fd = new FormData(changePasswordForm);
@@ -553,7 +553,7 @@ function formatVietnameseDate(value) {
 
 async function loadAccountCenterProgress() {
   const list = $("#account-progress-list");
-  if (!list || !activeUser || activeUser.role === "admin") return;
+  if (!list || !activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2)) return;
   try {
     const data = await request("/api/progress");
     if (!$("#account-progress-list")) return;
@@ -631,7 +631,7 @@ async function loadAccountCenterProgress() {
 async function loadAccountAiHistory() {
   const list = $("#account-ai-history-list");
   const summary = $("#account-ai-history-summary");
-  if (!list || !activeUser || activeUser.role === "admin") return;
+  if (!list || !activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2)) return;
   list.setAttribute("aria-busy", "true");
   try {
     const data = await request("/api/ai/history");
@@ -803,13 +803,13 @@ async function loadUser() {
   if (bell) bell.hidden = !activeUser;
   if (upload) upload.hidden = !activeUser;
   if (testsBtn) testsBtn.hidden = !activeUser;
-  if (accountCenter) accountCenter.hidden = !activeUser || activeUser.role === "admin";
+  if (accountCenter) accountCenter.hidden = !activeUser || (activeUser.role === "admin" && Number(activeUser.adminLevel) >= 2);
   if (activeUser) {
     refreshNotifications();
     const reader = $("#reader-layout");
     if (reader && activeReaderRoot !== reader) startReaderTracking(reader);
-    if (activeUser.role !== "admin" && $("#account-progress-list")) loadAccountCenterProgress();
-    if (activeUser.role !== "admin" && $("#account-ai-history-list")) loadAccountAiHistory();
+    if (Number(activeUser.adminLevel) < 2 && $("#account-progress-list")) loadAccountCenterProgress();
+    if (Number(activeUser.adminLevel) < 2 && $("#account-ai-history-list")) loadAccountAiHistory();
   }
 
 }
@@ -1516,12 +1516,12 @@ window.addEventListener("maihoc-auth-changed",loadUser);
 
 
 window.addEventListener("maihoc-account-center-open", () => {
-  if (activeUser?.role === "admin") return;
+  if ((activeUser?.role === "admin" && Number(activeUser?.adminLevel) >= 2)) return;
   loadAccountCenterProgress();
   loadAccountAiHistory();
 });
 window.addEventListener("maihoc-ai-solution-saved", () => {
-  if ($("#account-ai-history-list") && activeUser?.role !== "admin") loadAccountAiHistory();
+  if ($("#account-ai-history-list") && Number(activeUser?.adminLevel) < 2) loadAccountAiHistory();
 });
 document.addEventListener("click", async event => {
   const link = event.target.closest("[data-ai-history-open]");
@@ -1559,8 +1559,8 @@ if (localStorage.getItem("maihoc-online-sidebar-collapsed") === "1") {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshOnlineDashboard();
-    if ($("#account-progress-list") && activeUser && activeUser.role !== "admin") loadAccountCenterProgress();
-    if ($("#account-ai-history-list") && activeUser && activeUser.role !== "admin") loadAccountAiHistory();
+    if ($("#account-progress-list") && activeUser && Number(activeUser.adminLevel) < 2) loadAccountCenterProgress();
+    if ($("#account-ai-history-list") && activeUser && Number(activeUser.adminLevel) < 2) loadAccountAiHistory();
   }
 });
 

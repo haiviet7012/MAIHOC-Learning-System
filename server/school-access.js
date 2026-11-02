@@ -1,6 +1,6 @@
 import { canAccessSchool } from '../js/platform/school-access.js';
 
-const schoolPaths = ['/api/school', '/api/platform', '/api/tests', '/api/test-submissions', '/api/learning/timetable'];
+const schoolPaths = ['/api/school', '/api/platform', '/api/tests', '/api/test-submissions', '/api/learning/timetable', '/api/learning-advisor'];
 export function schoolAccessGuard(req, res, next) {
   const path = req.path.replace(/\/+$/, '');
   // Context is also queried by the Learning solver; return no School data there.

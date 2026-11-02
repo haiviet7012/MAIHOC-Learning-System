@@ -86,9 +86,7 @@ export function publicUser(user) {
           : teacherKind === "homeroom"
             ? "Giáo viên chủ nhiệm"
             : "Giáo viên bộ môn")
-      : accountType === "school"
-        ? (classCode ? `Học sinh trong trường · Lớp ${classCode}` : "Học sinh trong trường")
-        : "Học sinh ngoài trường";
+      : (classCode ? `Học sinh · Lớp ${classCode}` : 'Học sinh');
 
   return {
     id: Number(user.id),
@@ -99,11 +97,13 @@ export function publicUser(user) {
     isSuperAdmin,
     isTeacher,
     adminLevel,
+    isManager: Boolean(user.is_manager ?? user.isManager),
+    schoolPlan: user.school_plan ?? user.schoolPlan ?? "none",
     accountType,
     ...(teacherKind ? { teacherKind } : {}),
     ...(homeroomClass ? { homeroomClass } : {}),
     ...(classCode ? { classCode } : {}),
-    roleLabel,
+    roleLabel: (user.is_manager ?? user.isManager) ? "Quản lý" : roleLabel,
     createdAt
   };
 }
@@ -180,14 +180,15 @@ async function enrichUserSchoolFields(user) {
   };
 }
 
-export async function registerUser({ name, email, password, accountType, classCode }) {
+export async function registerUser({ name, email, password, accountType, classCode }, { verifiedTeacher = false } = {}) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim().toLowerCase();
   const secret = String(password || "");
   const normalizedClassCode = String(classCode || "").trim().toUpperCase();
   const hasValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode);
   const teacherRegistration = accountType === "teacher";
-  const normalizedAccountType = (teacherRegistration || accountType === "school" || hasValidClass) ? "school" : "external";
+  if (teacherRegistration && !verifiedTeacher) throw new Error("Vui lòng xác minh email .edu.vn trước khi đăng ký giáo viên.");
+  const normalizedAccountType = teacherRegistration ? "school" : "external";
   if (!teacherRegistration && normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {
     throw new Error("Học sinh của trường cần chọn lớp hợp lệ (10A1–12C9).");
   }
@@ -274,7 +275,7 @@ export async function loadCurrentUser(req, res, next) {
     if (token && /^[a-f0-9]{64}$/i.test(token)) {
       const session = await db
         .prepare(`
-          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.account_type,u.created_at,s.expires_at
+          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.account_type,u.school_plan,u.is_manager,u.created_at,s.expires_at
           FROM sessions s JOIN users u ON u.id=s.user_id
           WHERE s.token_hash=?
         `)
