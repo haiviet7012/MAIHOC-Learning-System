@@ -666,6 +666,7 @@ async function sendVerificationCodeEmail({
     } catch {}
   }
   if (!smtp.configured) {
+    console.warn("Verification email failed", { provider: smtp.provider, category: "MAIL_NOT_CONFIGURED" });
     return {
       sentByEmail: false,
       ...(isRecoveryFlow || process.env.NODE_ENV === "production" ? {} : { devCode: code }),

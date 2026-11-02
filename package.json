@@ -22,6 +22,7 @@
     "test:learning": "node scripts/learning-check.mjs",
     "test:advisor": "node scripts/learning-advisor-check.mjs",
     "test:auth": "node scripts/auth-check.mjs",
+    "mail:check": "node server/check-mail.js",
     "ai:check": "node server/check-ai.js"
   },
   "devDependencies": {

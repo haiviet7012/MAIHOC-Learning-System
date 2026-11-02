@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { db, pool, initPostgresSchema } from "./postgres.js";
 
+export const isEducationEmail = email => /^[^\s@]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+edu\.vn$/i.test(String(email || ''));
+
 export { db, pool, initPostgresSchema };
 
 const scrypt = promisify(crypto.scrypt);
@@ -180,14 +182,15 @@ async function enrichUserSchoolFields(user) {
   };
 }
 
-export async function registerUser({ name, email, password, accountType, classCode }, { verifiedTeacher = false } = {}) {
+export async function registerUser({ name, email, password, accountType, classCode }, { teacherProfileValidated = false } = {}) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim().toLowerCase();
   const secret = String(password || "");
   const normalizedClassCode = String(classCode || "").trim().toUpperCase();
   const hasValidClass = /^(10A[1-9]|11B[1-9]|12C[1-9])$/.test(normalizedClassCode);
   const teacherRegistration = accountType === "teacher";
-  if (teacherRegistration && !verifiedTeacher) throw new Error("Vui lòng xác minh email .edu.vn trước khi đăng ký giáo viên.");
+  if (teacherRegistration && !teacherProfileValidated) throw new Error("Vui lòng đăng ký qua form hồ sơ giáo viên.");
+  if (teacherRegistration && !isEducationEmail(safeEmail)) throw new Error("Giáo viên cần email của trường có đuôi .edu.vn.");
   const normalizedAccountType = teacherRegistration ? "school" : "external";
   if (!teacherRegistration && normalizedAccountType === "school" && normalizedClassCode && !hasValidClass) {
     throw new Error("Học sinh của trường cần chọn lớp hợp lệ (10A1–12C9).");

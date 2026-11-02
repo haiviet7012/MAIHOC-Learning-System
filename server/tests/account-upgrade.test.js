@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import node
 import { testDatabase } from '../platform/test-db.js';import { setTestPool } from '../postgres.js';
 import { isEducationEmail, ensureAccountUpgrade } from '../account-upgrade.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
-test('account upgrade: preserves old users, student gate, verified edu teacher and manager restrictions',async()=>{
+test('account upgrade: preserves old users, student gate, edu teacher without OTP and manager restrictions',async()=>{
   delete process.env.DATABASE_URL;delete process.env.MAIHOC_TEST_DATABASE_URL;
   process.env.MAIHOC_SKIP_AUTO_LISTEN='1';process.env.NODE_ENV='test';process.env.MAIHOC_PLATFORM_ENABLED='0';
   for(const key of ['R2_ACCOUNT_ID','R2_BUCKET_NAME','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'])process.env[key]='test';
@@ -25,11 +25,13 @@ test('account upgrade: preserves old users, student gate, verified edu teacher a
     await ensureAccountUpgrade(fixture.db);assert.equal((await fixture.db.query('SELECT school_plan FROM users WHERE id=$1',[studentUser.id])).rows[0].school_plan,'none');
     assert.equal((await post('/api/auth/register',{name:'Teacher',email:'x@school.edu.vn',password:'test-password',accountType:'teacher'})).status,400);
     assert.equal(isEducationEmail('x@school.edu.vn.evil.com'),false);assert.equal(isEducationEmail('x@gmail.com'),false);
-    const challenge=await post('/api/auth/teacher/request-code',{email:'teacher@school.edu.vn'});assert.equal(challenge.status,200);const {challengeId}=await challenge.json();
-    const code=sent.at(-1).text.match(/\b\d{6}\b/)[0];
-    const verify=await post('/api/auth/teacher/verify-code',{challengeId,code});assert.equal(verify.status,200);const {token}=await verify.json();
-    const profile={challengeId,token,email:'attacker@gmail.com',name:'Teacher',password:'teacher-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1']};
+    const profile={email:'teacher@school.edu.vn',name:'Teacher',password:'teacher-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1']};
+    for(const email of ['x@gmail.com','x@school.edu.vn.evil.com','x@edu.vn'])assert.equal((await post('/api/auth/teacher/register',{...profile,email})).status,400);
+    assert.equal((await post('/api/auth/teacher/register',{...profile,email:'invalid-profile@school.edu.vn',subjects:[]})).status,400);
+    assert.equal((await fixture.db.query("SELECT id FROM users WHERE email='invalid-profile@school.edu.vn'")).rows.length,0);
+    failMail=true;const beforeSignup=sent.length;
     const teacher=await post('/api/auth/teacher/register',profile);assert.equal(teacher.status,201,await teacher.clone().text());const teacherUser=(await teacher.json()).user;assert.equal(teacherUser.email,'teacher@school.edu.vn');assert.equal(teacherUser.isTeacher,true);
+    assert.equal(sent.length,beforeSignup,'Teacher signup never sends mail');failMail=false;
     assert.equal((await post('/api/auth/teacher/register',profile)).status,400);
     assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1',[teacherUser.id])).rows.length,1);
     await fixture.db.query("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=$1",[studentUser.id]);
