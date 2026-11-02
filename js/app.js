@@ -26,6 +26,7 @@ import {
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
+import { mountPhysicsFormulasModule } from "./physics/index.js?v=20261102v1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
 import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");
@@ -41,11 +42,19 @@ let activeTestDraft = null;
 let testStarting = false;
 let activeStudyRoomsCleanup = null;
 let activeChemistryCleanup = null;
+let activePhysicsCleanup = null;
 let activeUniversalAiCleanup = null;
 function stopUniversalAiIfActive() {
     if (activeUniversalAiCleanup) {
         const cleanup = activeUniversalAiCleanup;
         activeUniversalAiCleanup = null;
+        try { cleanup(); } catch {}
+    }
+}
+function stopPhysicsIfActive() {
+    if (activePhysicsCleanup) {
+        const cleanup = activePhysicsCleanup;
+        activePhysicsCleanup = null;
         try { cleanup(); } catch {}
     }
 }
@@ -225,12 +234,12 @@ function subjectPage() {
         <span class="pill natural-science-feature">✨ CÔNG CỤ HỌC TẬP</span>
       </section>
       <div class="grid two natural-science-grid" style="margin-bottom:28px;">
-        <article class="card clickable resource-card natural-science-card" data-action="coming-natural-tool" data-tool="physics-formulas" role="button" tabindex="0">
+        <article class="card clickable resource-card natural-science-card" data-route="physics-formulas" role="button" tabindex="0">
           <div class="card-icon">⚡</div>
           <span class="pill">VẬT LÝ · TRA CỨU</span>
           <h3>Công thức Vật lý</h3>
-          <p>Không gian tra cứu công thức, đại lượng, đơn vị và các ví dụ áp dụng theo từng chủ đề Vật lý.</p>
-          <p class="natural-science-card-link">Đang phát triển · Sắp ra mắt</p>
+          <p>Không gian tra cứu công thức, đại lượng, đơn vị và các ví dụ áp dụng theo từng chủ đề Vật lý (Lớp 10, 11, 12).</p>
+          <p class="natural-science-card-link">Mở Thư viện công thức →</p>
         </article>
         <a href="/physics-lab/" target="_blank" rel="noopener noreferrer" class="card clickable resource-card natural-science-card" style="text-decoration:none;">
           <div class="card-icon">🔬</div>
@@ -849,6 +858,7 @@ function render() {
     const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
     stopStudyRoomsIfActive();
     stopChemistryIfActive();
+    stopPhysicsIfActive();
     stopUniversalAiIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
@@ -865,6 +875,7 @@ function render() {
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
     view.classList.toggle("chemistry-workspace", state.route === "chemistry");
+    view.classList.toggle("physics-workspace", state.route === "physics-formulas");
     view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
@@ -884,6 +895,14 @@ function render() {
     }
     else if (['organization','question-bank','assignments','assignment-management','school-analytics'].includes(state.route)) {
         activePortalCleanup = mountPortal(view, state.route, currentUser, go);
+    }
+    else if (state.route === "physics-formulas") {
+        view.innerHTML = "";
+        activePhysicsCleanup = mountPhysicsFormulasModule(view, {
+            initialGrade: state.physicsGrade ? parseInt(state.physicsGrade, 10) : (state.grade ? parseInt(state.grade, 10) : 10),
+            onNavigate: (r, p) => go(r, p),
+            onBack: () => go("subject", { subject: "Vật lý" })
+        });
     }
     else if (state.route === "chemistry") {
         view.innerHTML = "";
@@ -1345,6 +1364,10 @@ document.addEventListener("click", async (e) => {
             return;
         }
         if (a === "coming-natural-tool") {
+            if (action.dataset.tool === "physics-formulas") {
+                go("physics-formulas", { subject: "Vật lý" });
+                return;
+            }
             toast(action.dataset.tool === "physics-formulas"
                 ? "Công thức Vật lý đang được phát triển và sẽ sớm ra mắt."
                 : "Công cụ này đang được phát triển.");
