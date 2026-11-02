@@ -20,6 +20,13 @@ const paths = {
   admin: "/school/admin",
 };
 export function routeUrl(state) {
+  if (state.route === 'school-announcements' && state.announcementId)
+    return `/school/announcements/${encodeURIComponent(state.announcementId)}`;
+  if (state.route === 'school-announcements') return '/school/announcements';
+  if (state.route === 'assignments' && state.assignmentId)
+    return `/school/assignments/${encodeURIComponent(state.assignmentId)}?schoolId=${encodeURIComponent(state.targetSchoolId || '')}`;
+  if (state.route === 'tests' && state.pendingTestId)
+    return `/school/tests/${encodeURIComponent(state.pendingTestId)}`;
   if (state.route === "exam" && state.examDocId)
     return `/learning/tests/${encodeURIComponent(state.examDocId)}`;
   if (state.route === "reader")
@@ -43,6 +50,9 @@ export function parseRoute(url) {
       subject: url.searchParams.get("subject") || "Toán",
       grade: url.searchParams.get("grade") || "10",
     };
+  if (path === '/school/announcements') return { route: 'school-announcements', announcementId: null };
+  if (path.startsWith('/school/announcements/')) return { route: 'school-announcements', announcementId: decodeURIComponent(path.slice(22)) };
+  if (path.startsWith('/school/assignments/')) return { route: 'assignments', assignmentId: decodeURIComponent(path.slice(20)), targetSchoolId: url.searchParams.get('schoolId') };
   if (path === "/learning/timetable") return { route: "timetable" };
   if (path === "/learning/assignments") return { route: "assignments" };
   if (path === "/learning/tests") return { route: "tests" };

@@ -175,7 +175,7 @@ export async function mountSchoolPage(view, user, classCode = "") {
     }
 
     const adminTools = data.allClasses ? await renderAdminTools() : "";
-    const teacherNotice = isTeacher ? renderTeacherMessageForm() : "";
+    const teacherNotice = (isTeacher || isSuper ? renderAnnouncementForm(classes) : '') + (isTeacher ? renderTeacherMessageForm() : '');
 
     const emptyClassesHtml = isStudent
       ? ''
@@ -196,6 +196,7 @@ export async function mountSchoolPage(view, user, classCode = "") {
       homeroomRosterBlock +
       (cards ? '<section class="school-roster-section"><h2>' + (data.homeroomDetail ? 'Các lớp được phân công' : 'Danh sách lớp của bạn') + '</h2><div class="school-class-grid">' + cards + '</div></section>' : (!homeroomRosterBlock ? emptyClassesHtml : '')) +
       studentClassBlock +
+      '<p><a class="button secondary" href="/school/announcements">Thông báo từ giáo viên</a></p>' +
       teacherNotice +
       adminTools +
       '</section>';
@@ -309,6 +310,11 @@ async function renderStudentProgressPage(view, classCode, studentId) {
 
 export async function mountStudentProgressPage(view, classCode, studentId) {
   await renderStudentProgressPage(view, classCode, studentId);
+}
+
+function renderAnnouncementForm(classes) {
+  const options = classes.map(c => `<option value="class:${esc(c.classCode)}">Lớp ${esc(c.classCode)}</option>`).join('');
+  return `<form id="school-announcement-form" class="school-inline-form"><h3>Gửi thông báo cho học sinh</h3><label>Đối tượng nhận<select name="target" required><option value="">Chọn lớp hoặc khối</option>${options}<option value="grade:10">Cả khối 10</option><option value="grade:11">Cả khối 11</option><option value="grade:12">Cả khối 12</option></select></label><label>Tiêu đề<input name="title" required maxlength="120"></label><label>Nội dung<textarea name="message" required maxlength="2000" rows="4"></textarea></label><p class="muted">Chỉ học sinh thuộc lớp/khối đã chọn nhận thông báo trên web và email tại địa chỉ đăng ký. Email có liên kết mở nội dung.</p><p data-announcement-status role="status"></p><button class="button primary" type="submit">Gửi thông báo và email</button></form>`;
 }
 
 function renderTeacherMessageForm() {
@@ -549,6 +555,22 @@ export function wireSchoolEvents(onNavigate) {
       } finally {
         if (submitBtn) submitBtn.disabled = false;
       }
+      return;
+    }
+
+    if (event.target.id === 'school-announcement-form') {
+      event.preventDefault();
+      const form = event.target, button = form.querySelector('[type=submit]'), status = form.querySelector('[data-announcement-status]');
+      if (button.disabled) return;
+      const data = Object.fromEntries(new FormData(form)), [kind, value] = data.target.split(':');
+      const body = { title: data.title, message: data.message, classCode: kind === 'grade' ? 'ALL' : value, grade: kind === 'grade' ? value : value.slice(0, 2) };
+      button.disabled = true; status.textContent = 'Đang gửi thông báo…';
+      try {
+        const result = await request('/api/school/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        form.reset();
+        status.textContent = `Đã tạo thông báo cho ${result.recipients} học sinh. Email được xếp hàng gửi; có thể chậm nếu dịch vụ mail chưa sẵn sàng.`;
+      } catch (error) { status.textContent = error.message; }
+      finally { button.disabled = false; }
       return;
     }
 

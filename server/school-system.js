@@ -1,3 +1,4 @@
+import { ensureSchoolNotifications } from './school-notifications.js';
 import crypto from "node:crypto";
 import { publicUser, isSuperAdminUser, isTeacherUser } from "./auth.js";
 
@@ -11,6 +12,7 @@ const CLASS_SET = new Set(SCHOOL_CLASSES);
 const isClassCode = value => CLASS_SET.has(String(value || "").trim().toUpperCase());
 
 export async function initSchoolSystemDatabase(db) {
+  await ensureSchoolNotifications(db);
   try {
     await db.exec("ALTER TABLE users ADD COLUMN account_type TEXT NOT NULL DEFAULT 'external'");
   } catch {

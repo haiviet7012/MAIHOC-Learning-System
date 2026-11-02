@@ -33,6 +33,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
         u.adminLevel || 0,
       ],
     );
+  await db.query("UPDATE users SET account_type='school' WHERE id IN (2,4)");
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
@@ -383,6 +384,9 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
           )
         ).data;
         assert.ok(assignment.id);
+        const emailTargets = (await db.query("SELECT user_id,link FROM school_mail_outbox WHERE event_key=$1", [`assignment:${assignment.id}`])).rows;
+        assert.deepEqual(emailTargets.map(r => Number(r.user_id)), [2]);
+        assert.equal(emailTargets[0].link, `/school/assignments/${assignment.id}?schoolId=${schoolA.id}`);
         const snapshot = (
           await db.query(
             "SELECT snapshot FROM assessment_items WHERE assessment_id=$1",
