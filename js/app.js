@@ -26,12 +26,13 @@ import {
     loadAdminTestsAndPendingGrading
 } from "./tests/index.js";
 import { mountChemistryModule } from "./chemistry/index.js?v=20261029aihistory1";
+import { mountPhysicsFormulasModule } from "./physics/index.js?v=20261102v1";
 import { mountUniversalAiSolver } from "./ai-solver/index.js?v=20261029loader1";
 import { mountSchoolPage, mountStudentProgressPage, wireSchoolEvents } from "./school-system.js?v=20261030classjoin2";
 const view = $("#view");
 const progressTabParams = new URLSearchParams(window.location.search);
 const standaloneStudentProgress = progressTabParams.get("maihoc-view") === "student-progress";
-const state = { route: standaloneStudentProgress ? "student-progress" : "home", subject: "ToÃ¡n", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
+const state = { route: standaloneStudentProgress ? "student-progress" : "home", subject: "Toán", grade: "10", category: "theory", docId: null, examDocId: null, answers: {}, gradeResult: null, savedExamResult: null, timer: null, remaining: 5400, elapsedSeconds: 0, timerCountUp: false, examStartedAtMs: 0, warningShown: false, examStarted: false, examFinished: false };
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
 let authResolved = false;
@@ -41,11 +42,19 @@ let activeTestDraft = null;
 let testStarting = false;
 let activeStudyRoomsCleanup = null;
 let activeChemistryCleanup = null;
+let activePhysicsCleanup = null;
 let activeUniversalAiCleanup = null;
 function stopUniversalAiIfActive() {
     if (activeUniversalAiCleanup) {
         const cleanup = activeUniversalAiCleanup;
         activeUniversalAiCleanup = null;
+        try { cleanup(); } catch {}
+    }
+}
+function stopPhysicsIfActive() {
+    if (activePhysicsCleanup) {
+        const cleanup = activePhysicsCleanup;
+        activePhysicsCleanup = null;
         try { cleanup(); } catch {}
     }
 }
@@ -68,7 +77,7 @@ function stopStudyRoomsIfActive() {
 let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
-const gradeLabel = g => `Lá»›p ${g}`;
+const gradeLabel = g => `Lớp ${g}`;
 async function initRemoteData() {
     try {
         const subjectResponse = await fetch("/configs/subjects.json", { cache: "no-store" });
@@ -89,7 +98,7 @@ async function initRemoteData() {
     render();
     resumePendingTest();
 }
-// LuÃ´n Ä‘á»c danh sÃ¡ch má»›i nháº¥t tá»« documents.js vÃ  bá»™ nhá»› Ä‘á»‡m bÃ i kiá»ƒm tra.
+// Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
 const docs = () => getDocuments();
 const findDoc = id =>
     findCachedTest(id) || docs().find(d => String(d.id) === String(id));
@@ -119,7 +128,7 @@ function setUploadCategory(category) {
 }
 function saveRouteHistory() {
     const savedState = { ...state, timer: null };
-    // Sao lÆ°u Ä‘Ã¡p Ã¡n Ä‘á»ƒ cÃ³ thá»ƒ khÃ´i phá»¥c khi quay láº¡i.
+    // Sao lưu đáp án để có thể khôi phục khi quay lại.
     savedState.answers = { ...state.answers };
     return {
         maihoc: true,
@@ -136,7 +145,7 @@ function go(route, params = {}) {
     stopTimerIfLeaving(route);
     Object.assign(state, params);
     state.route = route;
-    // Ghi trang má»›i vÃ o lá»‹ch sá»­ Ä‘iá»u hÆ°á»›ng cá»§a Chrome.
+    // Ghi trang mới vào lịch sử điều hướng của Chrome.
     history.pushState(saveRouteHistory(), "", routeUrl(state));
     render();
     if (route === "tests") {
@@ -148,13 +157,13 @@ function go(route, params = {}) {
     }
     if (route === "exam" || route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
 }
-// Khá»Ÿi táº¡o lá»‹ch sá»­ cho trang MAI Há»ŒC hiá»‡n táº¡i.
+// Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
 history.replaceState(saveRouteHistory(), "", window.location.href);
-// KhÃ´i phá»¥c trang khi nháº¥n Back hoáº·c Forward.
+// Khôi phục trang khi nhấn Back hoặc Forward.
 window.addEventListener("popstate", function (event) {
     const saved = event.state;
-    // Náº¿u tráº¡ng thÃ¡i trÆ°á»›c Ä‘Ã³ thuá»™c MAI Há»ŒC,
-    // khÃ´i phá»¥c trang Ä‘Ã³ vÃ  khÃ´ng chuyá»ƒn sang Google.
+    // Nếu trạng thái trước đó thuộc MAI HỌC,
+    // khôi phục trang đó và không chuyển sang Google.
     if (saved?.maihoc && saved.appState) {
         const previousRoute = saved.appState.route;
         if (state.route === "reader" && (previousRoute !== "reader" || String(saved.appState.docId) !== String(state.docId))) {
@@ -167,106 +176,106 @@ window.addEventListener("popstate", function (event) {
         if (state.route === "exam" || state.route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
         return;
     }
-    // KhÃ´ng tá»± chuyá»ƒn hÆ°á»›ng khi gáº·p tráº¡ng thÃ¡i khÃ´ng xÃ¡c Ä‘á»‹nh.
-    // Äá»ƒ Chrome xá»­ lÃ½ lá»‹ch sá»­ Ä‘iá»u hÆ°á»›ng bÃ¬nh thÆ°á»ng.
+    // Không tự chuyển hướng khi gặp trạng thái không xác định.
+    // Để Chrome xử lý lịch sử điều hướng bình thường.
 });
 function stopTimerIfLeaving(route) { if (state.route === "exam" && route !== "exam" && state.timer) {
     clearInterval(state.timer);
     state.timer = null;
 } }
-function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chá»§</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
+function breadcrumb(title) { return `<div class="breadcrumb"><button data-route="home">Trang chủ</button><span>/</span><button data-route="subject">${escapeHTML(state.subject)}</button><span>/</span><span>${escapeHTML(title)}</span></div>`; }
 function homePage() { return dashboardMarkup(currentUser, docs(), window.__maihocTestsQueue || []); }
 
 function subjectPickerPage() {
-    const subjects = SUBJECT_CATALOG.map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ã”n táº­p theo ká»¹ nÄƒng", "ThÆ° viá»‡n tÃ i liá»‡u", "PhÃ²ng thi thá»­"] : ["Ã”n táº­p lÃ½ thuyáº¿t", "LÃ m Ä‘á» Ã´n táº­p", "PhÃ²ng thi thá»­ (cÃ³ tÃ­nh giá»)"] }));
-    return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÃM PHÃ CÃC MÃ”N Há»ŒC</span><button class="button secondary small" data-route="home">â† Trang chá»§</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI Há»ŒC Â· LEARN Â· PRACTICE Â· GROW</p><h1>Chá»n mÃ´n há»c</h1><p>Chá»n mÃ´n Ä‘á»ƒ khÃ¡m phÃ¡ tÃ i liá»‡u, luyá»‡n táº­p vÃ  phÃ²ng thi thá»­.</p></div><span class="pill">MÃ”N Há»ŒC THEO Cáº¤U HÃŒNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ÄANG HOáº T Äá»˜NG" : "Sáº®P RA Máº®T"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "KhÃ¡m phÃ¡ mÃ´n há»c" : "Äang phÃ¡t triá»ƒn"} <span>â†’</span></div></article>`).join("")}</div></section>`;
+    const subjects = SUBJECT_CATALOG.map(subject => ({ ...subject, active: ENABLED_SUBJECTS.includes(subject.name), items: subject.name === "IELTS" ? ["Ôn tập theo kỹ năng", "Thư viện tài liệu", "Phòng thi thử"] : ["Ôn tập lý thuyết", "Làm đề ôn tập", "Phòng thi thử (có tính giờ)"] }));
+    return `<section class="subject-picker"><div class="subject-picker-bar"><span>KHÁM PHÁ CÁC MÔN HỌC</span><button class="button secondary small" data-route="home">← Trang chủ</button></div><div class="subject-picker-intro"><div><p class="eyebrow">MAI HỌC · LEARN · PRACTICE · GROW</p><h1>Chọn môn học</h1><p>Chọn môn để khám phá tài liệu, luyện tập và phòng thi thử.</p></div><span class="pill">MÔN HỌC THEO CẤU HÌNH</span></div><div class="subject-picker-grid">${subjects.map(x => `<article class="subject-tile ${x.active ? "is-active" : "is-coming"}" ${x.active ? 'data-action="open-subject" data-name="' + x.name + '" role="button" tabindex="0"' : 'data-action="coming-subject" data-name="' + x.name + '" role="button" tabindex="0"'}><div class="subject-tile-head"><span class="subject-tile-icon">${x.icon}</span><div><h2>${escapeHTML(x.name)}</h2><span class="subject-status">${x.active ? "ĐANG HOẠT ĐỘNG" : "SẮP RA MẮT"}</span></div></div><ul>${x.items.map(item => `<li>${escapeHTML(item)}</li>`).join("")}</ul><div class="subject-tile-footer">${x.active ? "Khám phá môn học" : "Đang phát triển"} <span>→</span></div></article>`).join("")}</div></section>`;
 }
 function subjectPage() {
-    const isChemistry = state.subject === "HÃ³a há»c";
-    const isPhysics = state.subject === "Váº­t lÃ½" || state.subject === "Váº­t lÃ­";
+    const isChemistry = state.subject === "Hóa học";
+    const isPhysics = state.subject === "Vật lý" || state.subject === "Vật lí";
     const naturalScienceTools = isChemistry ? `
       <section class="section-head natural-science-heading" style="margin-top:0;">
         <div>
-          <p class="eyebrow">HÃ“A Há»ŒC</p>
-          <h2>CÃ´ng cá»¥ há»c táº­p</h2>
-          <p>Báº£ng tuáº§n hoÃ n tÆ°Æ¡ng tÃ¡c IUPAC vÃ  Trá»£ lÃ½ AI giáº£i bÃ i táº­p HÃ³a há»c tá»«ng bÆ°á»›c.</p>
+          <p class="eyebrow">HÓA HỌC</p>
+          <h2>Công cụ học tập</h2>
+          <p>Bảng tuần hoàn tương tác IUPAC và Trợ lý AI giải bài tập Hóa học từng bước.</p>
         </div>
-        <span class="pill natural-science-feature">âœ¨ CÃ”NG Cá»¤ Há»ŒC Táº¬P</span>
+        <span class="pill natural-science-feature">✨ CÔNG CỤ HỌC TẬP</span>
       </section>
       <div class="grid two natural-science-grid" style="margin-bottom:28px;">
         <article class="card clickable resource-card natural-science-card" data-route="chemistry" data-chemistry-tab="periodic-table">
-          <div class="card-icon">ðŸ“Š</div>
-          <span class="pill">TRA Cá»¨U 118 NGUYÃŠN Tá»</span>
-          <h3>Báº£ng tuáº§n hoÃ n tÆ°Æ¡ng tÃ¡c</h3>
-          <p>Bá»‘ cá»¥c chuáº©n IUPAC 18 cá»™t, lá»c phÃ¢n lá»›p s/p/d/f, cáº¥u hÃ¬nh electron, Ä‘á»™ Ã¢m Ä‘iá»‡n vÃ  á»©ng dá»¥ng thá»±c táº¿.</p>
-          <p class="natural-science-card-link">Má»Ÿ Báº£ng tuáº§n hoÃ n â†’</p>
+          <div class="card-icon">📊</div>
+          <span class="pill">TRA CỨU 118 NGUYÊN TỐ</span>
+          <h3>Bảng tuần hoàn tương tác</h3>
+          <p>Bố cục chuẩn IUPAC 18 cột, lọc phân lớp s/p/d/f, cấu hình electron, độ âm điện và ứng dụng thực tế.</p>
+          <p class="natural-science-card-link">Mở Bảng tuần hoàn →</p>
         </article>
         <article class="card clickable resource-card natural-science-card" data-route="chemistry" data-chemistry-tab="ai-solver">
-          <div class="card-icon">âš—ï¸</div>
-          <span class="pill">TRá»¢ LÃ GIáº¢I BÃ€I Táº¬P</span>
-          <h3>AI Giáº£i bÃ i táº­p HÃ³a há»c</h3>
-          <p>Nháº­p Ä‘á», táº£i áº£nh hoáº·c PDF; AI phÃ¢n tÃ­ch dá»¯ kiá»‡n, cÃ¢n báº±ng phÆ°Æ¡ng trÃ¬nh vÃ  hÆ°á»›ng dáº«n giáº£i theo tá»«ng bÆ°á»›c.</p>
-          <p class="natural-science-card-link">Báº¯t Ä‘áº§u giáº£i bÃ i â†’</p>
+          <div class="card-icon">⚗️</div>
+          <span class="pill">TRỢ LÝ GIẢI BÀI TẬP</span>
+          <h3>AI Giải bài tập Hóa học</h3>
+          <p>Nhập đề, tải ảnh hoặc PDF; AI phân tích dữ kiện, cân bằng phương trình và hướng dẫn giải theo từng bước.</p>
+          <p class="natural-science-card-link">Bắt đầu giải bài →</p>
         </article>
       </div>
       <section class="section-head">
         <div>
-          <h2>Khu vá»±c há»c táº­p &amp; Luyá»‡n thi</h2>
-          <p>Há»‡ thá»‘ng lÃ½ thuyáº¿t, luyá»‡n Ä‘á» vÃ  phÃ²ng thi mÃ´ phá»ng.</p>
+          <h2>Khu vực học tập &amp; Luyện thi</h2>
+          <p>Hệ thống lý thuyết, luyện đề và phòng thi mô phỏng.</p>
         </div>
       </section>
     ` : isPhysics ? `
       <section class="section-head natural-science-heading" style="margin-top:0;">
         <div>
-          <p class="eyebrow">Váº¬T LÃ</p>
-          <h2>CÃ´ng cá»¥ há»c táº­p</h2>
-          <p>KhÃ´ng gian tra cá»©u cÃ´ng thá»©c vÃ  phÃ²ng thÃ­ nghiá»‡m mÃ´ phá»ng Váº­t lÃ½.</p>
+          <p class="eyebrow">VẬT LÝ</p>
+          <h2>Công cụ học tập</h2>
+          <p>Không gian tra cứu công thức và phòng thí nghiệm mô phỏng Vật lý.</p>
         </div>
-        <span class="pill natural-science-feature">âœ¨ CÃ”NG Cá»¤ Há»ŒC Táº¬P</span>
+        <span class="pill natural-science-feature">✨ CÔNG CỤ HỌC TẬP</span>
       </section>
       <div class="grid two natural-science-grid" style="margin-bottom:28px;">
-        <article class="card clickable resource-card natural-science-card" data-action="coming-natural-tool" data-tool="physics-formulas" role="button" tabindex="0">
-          <div class="card-icon">âš¡</div>
-          <span class="pill">Váº¬T LÃ Â· TRA Cá»¨U</span>
-          <h3>CÃ´ng thá»©c Váº­t lÃ½</h3>
-          <p>KhÃ´ng gian tra cá»©u cÃ´ng thá»©c, Ä‘áº¡i lÆ°á»£ng, Ä‘Æ¡n vá»‹ vÃ  cÃ¡c vÃ­ dá»¥ Ã¡p dá»¥ng theo tá»«ng chá»§ Ä‘á» Váº­t lÃ½.</p>
-          <p class="natural-science-card-link">Äang phÃ¡t triá»ƒn Â· Sáº¯p ra máº¯t</p>
+        <article class="card clickable resource-card natural-science-card" data-route="physics-formulas" role="button" tabindex="0">
+          <div class="card-icon">⚡</div>
+          <span class="pill">VẬT LÝ · TRA CỨU</span>
+          <h3>Công thức Vật lý</h3>
+          <p>Không gian tra cứu công thức, đại lượng, đơn vị và các ví dụ áp dụng theo từng chủ đề Vật lý (Lớp 10, 11, 12).</p>
+          <p class="natural-science-card-link">Mở Thư viện công thức →</p>
         </article>
-        <article class="card natural-science-card is-coming" aria-disabled="true">
-          <div class="card-icon">ðŸ§ª</div>
-          <span class="pill coming-pill">COMING SOON</span>
-          <h3>MÃ´ hÃ¬nh thÃ­ nghiá»‡m Váº­t lÃ½</h3>
-          <p>PhÃ²ng thÃ­ nghiá»‡m mÃ´ phá»ng tÆ°Æ¡ng tÃ¡c sáº½ Ä‘Æ°á»£c bá»• sung trong giai Ä‘oáº¡n tiáº¿p theo.</p>
-          <p class="natural-science-card-link">Sáº¯p ra máº¯t</p>
-        </article>
+        <a href="/physics-lab/" target="_blank" rel="noopener noreferrer" class="card clickable resource-card natural-science-card" style="text-decoration:none;">
+          <div class="card-icon">🔬</div>
+          <span class="pill natural-science-feature">✨ PHÒNG THÍ NGHIỆM ẢO</span>
+          <h3>Phòng thí nghiệm Vật lí 2D</h3>
+          <p>25 mô hình thí nghiệm tương tác theo SGK Vật lí 12 (Kết nối tri thức): Nhiệt học, Khí lí tưởng, Từ trường và Hạt nhân.</p>
+          <p class="natural-science-card-link">Vào phòng thí nghiệm (Tab mới) →</p>
+        </a>
       </div>
       <section class="section-head">
         <div>
-          <h2>Khu vá»±c há»c táº­p &amp; Luyá»‡n thi</h2>
-          <p>Há»‡ thá»‘ng lÃ½ thuyáº¿t, luyá»‡n Ä‘á» vÃ  phÃ²ng thi mÃ´ phá»ng.</p>
+          <h2>Khu vực học tập &amp; Luyện thi</h2>
+          <p>Hệ thống lý thuyết, luyện đề và phòng thi mô phỏng.</p>
         </div>
       </section>
     ` : "";
 
     const pageSubtitle = isChemistry
-      ? "KhÃ¡m phÃ¡ Báº£ng tuáº§n hoÃ n tÆ°Æ¡ng tÃ¡c, Trá»£ lÃ½ AI vÃ  phÃ²ng thi mÃ´ phá»ng."
+      ? "Khám phá Bảng tuần hoàn tương tác, Trợ lý AI và phòng thi mô phỏng."
       : isPhysics
-        ? "KhÃ¡m phÃ¡ cÃ´ng cá»¥ Váº­t lÃ½, tÃ i liá»‡u lÃ½ thuyáº¿t vÃ  phÃ²ng thi mÃ´ phá»ng."
-        : "Chá»n má»™t khu vá»±c há»c táº­p Ä‘á»ƒ tiáº¿p tá»¥c.";
+        ? "Khám phá công cụ Vật lý, tài liệu lý thuyết và phòng thi mô phỏng."
+        : "Chọn một khu vực học tập để tiếp tục.";
 
-    return `${pageHeading(`MÃ´n ${state.subject}`, pageSubtitle)}
+    return `${pageHeading(`Môn ${state.subject}`, pageSubtitle)}
 ${naturalScienceTools}
 <div class="grid four">
-${[{ r: "theory", i: "â–¤", t: "Ã”n táº­p lÃ½ thuyáº¿t", d: "Äá»c tÃ i liá»‡u vÃ  há»‡ thá»‘ng kiáº¿n thá»©c theo tá»«ng lá»›p." }, { r: "practice", i: "âœŽ", t: "Äá» thi Ã´n táº­p", d: "Luyá»‡n táº­p theo bá»™ Ä‘á» vÃ  chá»§ Ä‘á»." }, { r: "exam-select", i: "â—·", t: "PhÃ²ng thi thá»­", d: "Thi mÃ´ phá»ng cÃ³ giá»›i háº¡n thá»i gian 90 phÃºt." }, { r: "tests", i: "ðŸ“", t: "BÃ i kiá»ƒm tra", d: "LÃ m bÃ i kiá»ƒm tra theo hÃ ng Ä‘á»£i (Queue), tÃ­nh giá» vÃ  lÆ°u Ä‘iá»ƒm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Má»Ÿ má»¥c â†’</p></article>`).join("")}</div><section class="section-head"><div><h2>ThÆ° viá»‡n tÃ i liá»‡u</h2><p>${docs().filter(d => d.subject === state.subject).length} tÃ i liá»‡u máº«u vÃ  tÃ i liá»‡u Ä‘Ã£ táº£i lÃªn trong phiÃªn nÃ y.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tÃ i liá»‡u</p></div><span class="arrow">â†—</span></article>`).join("")}</div>`;
+${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
 }
-function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chá»n lá»›p", "Chá»n khá»‘i lá»›p Ä‘á»ƒ xem tÃ i liá»‡u mÃ´n ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÃ”N ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tÃ i liá»‡u" : "Chá»n ná»™i dung há»c"}</p></div><span class="arrow">â†’</span></article>`).join("")}</div>`; }
+function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
 function resourceListPage(category, grade) {
     const list = by(grade, category);
     const isAssessment = category === "practice" || category === "exam";
     return `${pageHeading(`${categoryName(category)} \u2014 ${gradeLabel(grade)}`, `T\u00e0i li\u1ec7u m\u00f4n To\u00e1n ${gradeLabel(grade).toLowerCase()}.`)}<div class="stat-row"><div class="stat"><span class="muted">T\u00e0i li\u1ec7u</span><strong>${list.length}</strong></div><div class="stat"><span class="muted">M\u00f4n h\u1ecdc</span><strong>To\u00e1n</strong></div><div class="stat"><span class="muted">Kh\u1ed1i l\u1edbp</span><strong>${grade}</strong></div></div>${list.length ? `<div class="resource-list">${list.map(d => `<div class="resource-row"><div class="card-icon">${CATEGORIES[d.category]?.icon || "\u25a7"}</div><div class="resource-main"><h3>${escapeHTML(d.title)}</h3><p>${escapeHTML(d.description || "T\u00e0i li\u1ec7u m\u00f4n To\u00e1n")} \u00b7 ${d.sample ? "T\u00e0i li\u1ec7u m\u1eabu" : d.localOnly ? "L\u01b0u trong tr\u00ecnh duy\u1ec7t" : "\u0110\u00e3 t\u1ea3i l\u00ean"}</p></div><div class="resource-actions"><button class="button secondary small" data-action="read-doc" data-id="${escapeHTML(d.id)}">M\u1edf t\u00e0i li\u1ec7u</button>${isAssessment ? `<button class="button primary small" data-action="start-exam" data-id="${escapeHTML(d.id)}">${category === "practice" ? "L\u00e0m b\u00e0i c\u00f3 ch\u1ea5m \u0111i\u1ec3m" : "B\u1eaft \u0111\u1ea7u thi"}</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty-state"><h3>Ch\u01b0a c\u00f3 t\u00e0i li\u1ec7u cho m\u1ee5c n\u00e0y</h3><p>H\u00e3y upload t\u00e0i li\u1ec7u b\u1eb1ng n\u00fat \u1edf thanh tr\u00ean ho\u1eb7c ch\u1ecdn l\u1edbp kh\u00e1c.</p><button class="button primary" data-action="open-upload" data-category="${category}">Upload t\u00e0i li\u1ec7u</button></div>`}`;
 }
-function examSelectPage() { return `${pageHeading("PhÃ²ng thi thá»­", "Chá»n khá»‘i lá»›p vÃ  Ä‘á» thi. Má»—i lÆ°á»£t thi cÃ³ thá»i gian tá»‘i Ä‘a 90 phÃºt.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="exam-list" data-category="exam"><div><span class="pill">THI THá»¬ Â· 90 PHÃšT</span><div class="grade">${gradeLabel(g)}</div><p>${by(g, "exam").length} Ä‘á» thi cÃ³ sáºµn</p></div><span class="arrow">â†’</span></article>`).join("")}</div>`; }
-function examListPage(grade) { const list = by(grade, "exam"); return `${pageHeading(`Chá»n Ä‘á» thi â€” ${gradeLabel(grade)}`, "Má»—i Ä‘á» cÃ³ thá»i gian 90 phÃºt. Äá»™ khÃ³ Ä‘Æ°á»£c AI Ä‘Ã¡nh giÃ¡ khi backend Gemini Ä‘Ã£ Ä‘Æ°á»£c cáº¥u hÃ¬nh.")}${list.length ? `<div class="exam-list">${list.map((d, i) => `<article class="exam-card"><span class="pill">Äá»€ ${String(i + 1).padStart(2, "0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>â—· Thá»i gian: 90 phÃºt</span><span>âœ¦ Äá»™ khÃ³: AI Ä‘Ã¡nh giÃ¡</span><span>â–¤ ${gradeLabel(d.grade)}</span></div><button class="button secondary" data-action="evaluate" data-id="${d.id}">ÄÃ¡nh giÃ¡ Ä‘á»™ khÃ³ báº±ng AI</button><button class="button primary" data-action="start-exam" data-id="${d.id}">VÃ o phÃ²ng thi â†’</button></article>`).join("")}</div>` : `<div class="empty-state"><h3>ChÆ°a cÃ³ Ä‘á» thi cho lá»›p ${grade}</h3><p>Upload Ä‘á» thi thá»­ Ä‘á»ƒ báº¯t Ä‘áº§u.</p><button class="button primary" data-action="open-upload">Upload Ä‘á» thi</button></div>`}<p class="footer-note">Äá» thi máº«u lÃ  dá»¯ liá»‡u minh há»a; ná»™i dung vÃ  thang Ä‘iá»ƒm cáº§n Ä‘Æ°á»£c quáº£n trá»‹ viÃªn bá»• sung.</p>`; }
+function examSelectPage() { return `${pageHeading("Phòng thi thử", "Chọn khối lớp và đề thi. Mỗi lượt thi có thời gian tối đa 90 phút.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="exam-list" data-category="exam"><div><span class="pill">THI THỬ · 90 PHÚT</span><div class="grade">${gradeLabel(g)}</div><p>${by(g, "exam").length} đề thi có sẵn</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
+function examListPage(grade) { const list = by(grade, "exam"); return `${pageHeading(`Chọn đề thi — ${gradeLabel(grade)}`, "Mỗi đề có thời gian 90 phút. Độ khó được AI đánh giá khi backend Gemini đã được cấu hình.")}${list.length ? `<div class="exam-list">${list.map((d, i) => `<article class="exam-card"><span class="pill">ĐỀ ${String(i + 1).padStart(2, "0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>◷ Thời gian: 90 phút</span><span>✦ Độ khó: AI đánh giá</span><span>▤ ${gradeLabel(d.grade)}</span></div><button class="button secondary" data-action="evaluate" data-id="${d.id}">Đánh giá độ khó bằng AI</button><button class="button primary" data-action="start-exam" data-id="${d.id}">Vào phòng thi →</button></article>`).join("")}</div>` : `<div class="empty-state"><h3>Chưa có đề thi cho lớp ${grade}</h3><p>Upload đề thi thử để bắt đầu.</p><button class="button primary" data-action="open-upload">Upload đề thi</button></div>`}<p class="footer-note">Đề thi mẫu là dữ liệu minh họa; nội dung và thang điểm cần được quản trị viên bổ sung.</p>`; }
 function readerPage() {
     const d = findDoc(state.docId);
     if (!d) return subjectPage();
@@ -297,38 +306,38 @@ function readerPage() {
     } else if (fileUrl && extension === "pdf") {
         documentContent = `<div class="document-viewer pdf-reader" data-pdf-reader data-pdf-url="${escapeHTML(fileUrl)}"></div>`;
     } else if (fileUrl && extension === "txt") {
-        documentContent = `<div class="document-viewer"><iframe src="${escapeHTML(fileUrl)}" title="${escapeHTML(d.title)}" loading="eager"></iframe><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Má»Ÿ tÃ i liá»‡u trong tab má»›i</a></p></div>`;
+        documentContent = `<div class="document-viewer"><iframe src="${escapeHTML(fileUrl)}" title="${escapeHTML(d.title)}" loading="eager"></iframe><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Mở tài liệu trong tab mới</a></p></div>`;
     } else if (fileUrl && ["png", "jpg", "jpeg", "gif", "webp"].includes(extension)) {
-        documentContent = `<div class="document-viewer"><img src="${escapeHTML(fileUrl)}" alt="${escapeHTML(d.title)}"><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Má»Ÿ áº£nh trong tab má»›i</a></p></div>`;
+        documentContent = `<div class="document-viewer"><img src="${escapeHTML(fileUrl)}" alt="${escapeHTML(d.title)}"><p><a href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Mở ảnh trong tab mới</a></p></div>`;
     } else if (fileUrl) {
-        documentContent = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>TrÃ¬nh duyá»‡t chÆ°a há»— trá»£ xem trá»±c tiáº¿p Ä‘á»‹nh dáº¡ng nÃ y. Báº¡n cÃ³ thá»ƒ táº£i tá»‡p vá» Ä‘á»ƒ má»Ÿ.</p><a class="button primary" href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Táº£i tÃ i liá»‡u</a></div>`;
+        documentContent = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Trình duyệt chưa hỗ trợ xem trực tiếp định dạng này. Bạn có thể tải tệp về để mở.</p><a class="button primary" href="${escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer">Tải tài liệu</a></div>`;
     } else {
-        documentContent = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Tá»‡p chÆ°a cÃ³ Ä‘Æ°á»ng dáº«n xem. HÃ£y táº£i láº¡i danh sÃ¡ch tÃ i liá»‡u hoáº·c nhá» quáº£n trá»‹ viÃªn kiá»ƒm tra tá»‡p Ä‘Ã£ táº£i lÃªn.</p></div>`;
+        documentContent = `<div class="empty-state"><h3>${escapeHTML(d.title)}</h3><p>Tệp chưa có đường dẫn xem. Hãy tải lại danh sách tài liệu hoặc nhờ quản trị viên kiểm tra tệp đã tải lên.</p></div>`;
     }
 
     const backRoute = d.category === "exam" ? "exam-select" : d.category === "practice" ? "practice" : "theory";
-    return `${pageHeading(d.title, `${escapeHTML(d.subject)} Â· ${gradeLabel(d.grade)} Â· ${categoryName(d.category)}`)}
+    return `${pageHeading(d.title, `${escapeHTML(d.subject)} · ${gradeLabel(d.grade)} · ${categoryName(d.category)}`)}
       <div class="reader-layout" id="reader-layout" data-reader-id="${escapeHTML(d.id)}" data-reader-title="${escapeHTML(d.title)}" data-reader-subject="${escapeHTML(d.subject)}" data-reader-grade="${escapeHTML(d.grade)}">
         <section class="reader-main">
-          <div class="reading-progress"><div class="reading-progress-label"><span>Tiáº¿n trÃ¬nh Ä‘á»c</span><strong data-reading-percent>0%</strong></div><div class="reading-progress-track"><span data-reading-bar></span></div></div>
+          <div class="reading-progress"><div class="reading-progress-label"><span>Tiến trình đọc</span><strong data-reading-percent>0%</strong></div><div class="reading-progress-track"><span data-reading-bar></span></div></div>
           ${documentContent}
-          <div class="modal-actions"><button class="button secondary" data-route="${backRoute}">â† Quay láº¡i danh sÃ¡ch</button>${d.category === "exam" ? `<button class="button primary" data-action="start-exam" data-id="${escapeHTML(d.id)}">Báº¯t Ä‘áº§u thi thá»­</button>` : ""}</div>
+          <div class="modal-actions"><button class="button secondary" data-route="${backRoute}">← Quay lại danh sách</button>${d.category === "exam" ? `<button class="button primary" data-action="start-exam" data-id="${escapeHTML(d.id)}">Bắt đầu thi thử</button>` : ""}</div>
         </section>
         <aside class="reader-side">
-          <div class="reader-side-heading"><h3>TÃ i liá»‡u cÃ¹ng lá»›p</h3><span class="reader-side-count">${related.length + 1}</span></div>
+          <div class="reader-side-heading"><h3>Tài liệu cùng lớp</h3><span class="reader-side-count">${related.length + 1}</span></div>
           <div class="reader-related-list">
             <button class="reader-related-item is-current" type="button" aria-current="page" disabled>
-              <span class="reader-related-icon">${CATEGORIES[d.category]?.icon || "â–¤"}</span>
-              <span class="reader-related-copy"><strong>${escapeHTML(d.title)}</strong><small>Äang Ä‘á»c Â· ${escapeHTML(categoryName(d.category))}</small></span>
-              <span class="reader-related-current" aria-label="TÃ i liá»‡u hiá»‡n táº¡i">âœ“</span>
+              <span class="reader-related-icon">${CATEGORIES[d.category]?.icon || "▤"}</span>
+              <span class="reader-related-copy"><strong>${escapeHTML(d.title)}</strong><small>Đang đọc · ${escapeHTML(categoryName(d.category))}</small></span>
+              <span class="reader-related-current" aria-label="Tài liệu hiện tại">✓</span>
             </button>
             ${related.map(item => `<button class="reader-related-item" type="button" data-action="read-doc" data-id="${escapeHTML(item.id)}">
-              <span class="reader-related-icon">${CATEGORIES[item.category]?.icon || "â–¤"}</span>
-              <span class="reader-related-copy"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(categoryName(item.category))} Â· Lá»›p ${escapeHTML(item.grade)}</small></span>
-              <span class="reader-related-arrow" aria-hidden="true">â€º</span>
+              <span class="reader-related-icon">${CATEGORIES[item.category]?.icon || "▤"}</span>
+              <span class="reader-related-copy"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(categoryName(item.category))} · Lớp ${escapeHTML(item.grade)}</small></span>
+              <span class="reader-related-arrow" aria-hidden="true">›</span>
             </button>`).join("")}
           </div>
-          ${!related.length ? `<p class="reader-related-empty">ChÆ°a cÃ³ tÃ i liá»‡u khÃ¡c trong cÃ¹ng mÃ´n vÃ  khá»‘i lá»›p.</p>` : ""}
+          ${!related.length ? `<p class="reader-related-empty">Chưa có tài liệu khác trong cùng môn và khối lớp.</p>` : ""}
         </aside>
       </div>`;
 }
@@ -349,7 +358,7 @@ function questionsFromTestTargets(targets = []) {
                 sectionId: secId,
                 layoutSectionOrder: secOrder,
                 type,
-                text: t.questionText || `CÃ¢u ${num}`,
+                text: t.questionText || `Câu ${num}`,
                 options: type === "multiple_choice" ? ["A", "B", "C", "D"].map(id => ({ id, text: "" })) : [],
                 statements: type === "true_false" ? ["a", "b", "c", "d"].map(id => ({ id, text: "" })) : [],
                 documentOrder: idx
@@ -373,7 +382,7 @@ function questionsFor(doc) {
         return applyQuestionLayout(parsedSource, layout, { fillMissing: !isShortOrSample });
     }
     if (Array.isArray(doc?.questionIds) && doc.questionIds.length) {
-        const fromIds = doc.questionIds.map((id, index) => ({ id: String(id), number: String(id), documentOrder: index, type: "essay", text: `CÃ¢u ${id}`, options: [], statements: [] }));
+        const fromIds = doc.questionIds.map((id, index) => ({ id: String(id), number: String(id), documentOrder: index, type: "essay", text: `Câu ${id}`, options: [], statements: [] }));
         return applyQuestionLayout(fromIds, layout, { fillMissing: !isShortOrSample });
     }
     if (layout && !doc?.content) {
@@ -386,15 +395,15 @@ function questionsFor(doc) {
 }
 function assessmentLayoutFor(doc) {
     if (!doc || !["practice", "exam", "test"].includes(doc.category)) return null;
-    const normalizeKey = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/[Ä‘Ä]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
+    const normalizeKey = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g, "");
     const subjectKey = Object.keys(examLayoutConfig?.subjects || {}).find(key => normalizeKey(key) === normalizeKey(doc.subject));
     const subjectConfig = subjectKey
         ? examLayoutConfig.subjects[subjectKey]
-        : (normalizeKey(doc.subject) === "dethithptquocgia" ? examLayoutConfig?.subjects?.["ToÃ¡n"] : null);
+        : (normalizeKey(doc.subject) === "dethithptquocgia" ? examLayoutConfig?.subjects?.["Toán"] : null);
     return subjectConfig?.[doc.category] || subjectConfig?.assessment || null;
 }
 function gradingScaleFor(doc) {
-    const normalizeKey=value=>String(value||"").normalize("NFD").replace(/\p{M}/gu,"").replace(/[Ã„â€˜Ã„Â]/g,"d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g,"");
+    const normalizeKey=value=>String(value||"").normalize("NFD").replace(/\p{M}/gu,"").replace(/[Ä‘Ä]/g,"d").toLocaleLowerCase("vi").replace(/[^a-z0-9]/g,"");
     const subjectKey=Object.keys(examLayoutConfig?.subjects||{}).find(key=>normalizeKey(key)===normalizeKey(doc?.subject));
     const scale=Number(examLayoutConfig?.subjects?.[subjectKey]?.grading?.scale);
     return scale>0?scale:10;
@@ -443,7 +452,7 @@ function applyExamQuestions(documentId, questions) {
         const form = $("#answer-form");
         const summary = $("#answer-question-summary");
         if (form && !form.querySelector("[data-answer], [data-answer-choice], [data-answer-true-false]")) {
-            if (summary) summary.textContent = "KhÃ´ng trÃ­ch xuáº¥t Ä‘Æ°á»£c cÃ¢u há»i tá»« tá»‡p. PDF scan cáº§n OCR hoáº·c táº£i Ä‘Ã¡p Ã¡n cÃ³ mÃ£ cÃ¢u há»i.";
+            if (summary) summary.textContent = "Không trích xuất được câu hỏi từ tệp. PDF scan cần OCR hoặc tải đáp án có mã câu hỏi.";
             form.innerHTML = answerFields([]);
         }
         return;
@@ -494,19 +503,19 @@ function examPage() {
     const waitingForSource = (isPdf || isText || isDocx) && !questions.length;
     const summary = questions.length ? questionSummary(questions) : waitingForSource ? "\u0110ang \u0111\u1ecdc c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi t\u1eeb t\u1ec7p\u2026" : questionSummary(questions);
     const instructionText = isTest
-        ? `${gradeLabel(d.grade)} Â· MÃ´n ${escapeHTML(d.subject || "ToÃ¡n")} Â· BÃ i kiá»ƒm tra (${d.durationMinutes ? `Thá»i gian: ${d.durationMinutes} phÃºt` : "KhÃ´ng giá»›i háº¡n thá»i gian"}) Â· Tá»± Ä‘á»™ng ná»™p náº¿u thoÃ¡t toÃ n mÃ n hÃ¬nh`
-        : `${gradeLabel(d.grade)} Â· ${d.category === "exam" ? "LÃ m bÃ i trong tá»‘i Ä‘a 90 phÃºt" : "LÃ m bÃ i tá»± luyá»‡n"}`;
+        ? `${gradeLabel(d.grade)} · Môn ${escapeHTML(d.subject || "Toán")} · Bài kiểm tra (${d.durationMinutes ? `Thời gian: ${d.durationMinutes} phút` : "Không giới hạn thời gian"}) · Tự động nộp nếu thoát toàn màn hình`
+        : `${gradeLabel(d.grade)} · ${d.category === "exam" ? "Làm bài trong tối đa 90 phút" : "Làm bài tự luyện"}`;
     const initialTimerLabel = isTest
-        ? (d.durationMinutes ? `${String(d.durationMinutes).padStart(2, "0")}:00` : "â± 00:00")
+        ? (d.durationMinutes ? `${String(d.durationMinutes).padStart(2, "0")}:00` : "⏱ 00:00")
         : "90:00";
     return `${breadcrumb(isPractice ? "\u0110\u1ec1 \u00f4n t\u1eadp" : isTest ? "B\u00e0i ki\u1ec3m tra" : "Ph\u00f2ng thi th\u1eed")}<div class="exam-toolbar" data-exam-id="${escapeHTML(d.id)}" data-exam-title="${escapeHTML(d.title)}" data-exam-grade="${escapeHTML(d.grade)}"><div><strong>${escapeHTML(d.title)}</strong><div class="exam-instructions">${instructionText}</div></div><div id="timer" class="timer" ${showTimer ? "" : "hidden"}>${initialTimerLabel}</div><button class="button primary" data-action="submit-exam">N\u1ed9p b\u00e0i</button></div><div class="split-exam" id="split-exam"><section class="exam-pane paper" id="paper-pane">${paper}</section><div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" aria-label="K\u00e9o \u0111\u1ec3 thay \u0111\u1ed5i k\u00edch th\u01b0\u1edbc hai khung"></div><section class="exam-pane answers" id="answer-pane"><span class="pill">PH\u1ea6N \u0110I\u1ec0N \u0110\u00c1P \u00c1N</span><h2>B\u00e0i l\u00e0m c\u1ee7a b\u1ea1n</h2><p class="muted" id="answer-question-summary">${summary}</p><form id="answer-form">${answerFields(questions, waitingForSource, assessmentLayoutFor(d))}</form></section></div>`;
 }
 function formatGradeAnswer(value, type = "") {
-    if (value === null || value === undefined || value === "") return "Bá» trá»‘ng";
+    if (value === null || value === undefined || value === "") return "Bỏ trống";
     if (Array.isArray(value)) return value.map(item => formatGradeAnswer(item, type)).join(" / ");
     if (type === "true_false") {
         const normalized = String(value).trim().toLowerCase();
-        if (["true", "Ä‘Ãºng", "dung", "d", "t"].includes(normalized)) return "ÄÃºng";
+        if (["true", "đúng", "dung", "d", "t"].includes(normalized)) return "Đúng";
         if (["false", "sai", "s", "f"].includes(normalized)) return "Sai";
     }
     return String(value);
@@ -523,22 +532,22 @@ function formatGradeAnswerDetails(item, property) {
 }
 
 function renderGradeDetailsTable(rows) {
-    if (!rows.length) return '<p class="muted">ChÆ°a cÃ³ dá»¯ liá»‡u Ä‘á»‘i chiáº¿u Ä‘Ã¡p Ã¡n cho bÃ i lÃ m nÃ y.</p>';
+    if (!rows.length) return '<p class="muted">Chưa có dữ liệu đối chiếu đáp án cho bài làm này.</p>';
     const body = rows.map(item => {
         const studentAnswer = formatGradeAnswerDetails(item, "userAnswer");
         const correctAnswer = formatGradeAnswerDetails(item, "expectedAnswer");
         const correct = Boolean(item.correct);
         return `<tr>
-          <td><strong>CÃ¢u ${escapeHTML(item.question)}</strong></td>
+          <td><strong>Câu ${escapeHTML(item.question)}</strong></td>
           <td>${studentAnswer}</td>
           <td>${correctAnswer}</td>
-          <td><strong class="${correct ? "is-correct" : "is-wrong"}">${correct ? "ÄÃºng" : "ChÆ°a Ä‘Ãºng"}</strong></td>
+          <td><strong class="${correct ? "is-correct" : "is-wrong"}">${correct ? "Đúng" : "Chưa đúng"}</strong></td>
           <td>${escapeHTML(item.earnedPoints ?? 0)} / ${escapeHTML(item.totalPoints ?? 0)}</td>
         </tr>`;
     }).join("");
-    return `<div class="grade-details-table-wrap" role="region" aria-label="So sÃ¡nh Ä‘Ã¡p Ã¡n bÃ i lÃ m" tabindex="0">
+    return `<div class="grade-details-table-wrap" role="region" aria-label="So sánh đáp án bài làm" tabindex="0">
       <table class="grade-details-table">
-        <thead><tr><th>CÃ¢u há»i</th><th>Há»c sinh Ä‘Ã£ chá»n / tráº£ lá»i</th><th>ÄÃ¡p Ã¡n Ä‘Ãºng</th><th>Káº¿t quáº£</th><th>Äiá»ƒm</th></tr></thead>
+        <thead><tr><th>Câu hỏi</th><th>Học sinh đã chọn / trả lời</th><th>Đáp án đúng</th><th>Kết quả</th><th>Điểm</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
@@ -553,20 +562,20 @@ function resultPage() {
     const layout = assessmentLayoutFor(d);
     const answerableCount = result?.questionCount || (layout?.sections || []).reduce((total, section) => total + Number(section.count || 0) * (section.type === "true_false" ? (section.statements || ["a", "b", "c", "d"]).length : 1), 0) || Object.keys(answers).length;
     const rows = Array.isArray(result?.results) ? result.results : [];
-    const owner = saved?.userName ? `<p class="muted tiny">BÃ i lÃ m cá»§a ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` Â· ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
+    const owner = saved?.userName ? `<p class="muted tiny">Bài làm của ${escapeHTML(saved.userName)}${saved.userEmail ? ` (${escapeHTML(saved.userEmail)})` : ""}${saved.createdAt ? ` · ${escapeHTML(saved.createdAt)}` : ""}</p>` : "";
     const isPendingGrade = result?.gradingStatus === "pending_grade" || (d?.category === "test" && !result?.graded);
     const details = result?.graded
-        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% Â· ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} cÃ¢u Ä‘Ãºng Â· ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} Ä‘iá»ƒm</p><h2>Äá»‘i chiáº¿u Ä‘Ã¡p Ã¡n tá»«ng cÃ¢u</h2>${renderGradeDetailsTable(rows)}`
+        ? `<div class="result-score">${Number(result.score ?? result.earnedPoints).toFixed(2)}/${result.scale ?? result.totalPoints}</div><p class="muted">${result.percent ?? 0}% · ${result.correctCount ?? 0}/${result.questionCount ?? rows.length} câu đúng · ${result.earnedPoints ?? result.score ?? 0}/${result.totalPoints ?? result.scale ?? 0} điểm</p><h2>Đối chiếu đáp án từng câu</h2>${renderGradeDetailsTable(rows)}`
         : isPendingGrade
-          ? `<div class="result-score" style="color:var(--orange)">Äang chá» cháº¥m</div><p class="muted">${escapeHTML(result?.message || "BÃ i kiá»ƒm tra cá»§a báº¡n Ä‘Ã£ Ä‘Æ°á»£c ná»™p vÃ  Ä‘ang chá» giÃ¡o viÃªn cháº¥m Ä‘iá»ƒm.")}</p>`
-          : `<div class="result-score">â€”/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "BÃ i Ä‘Ã£ ná»™p. ChÆ°a cÃ³ Ä‘Ã¡p Ã¡n mÃ¡y Ä‘á»c Ä‘Æ°á»£c Ä‘á»ƒ cháº¥m tá»± Ä‘á»™ng.")}</p>`;
+          ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giáo viên chấm điểm.")}</p>`
+          : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
     const isTestItem = d?.category === "test" || result?.isTest;
     const actions = isTestItem
-        ? `<button class="button secondary" data-route="tests">â† Vá» danh sÃ¡ch BÃ i kiá»ƒm tra</button><button class="button primary" data-export-user-sheets="xlsx">â¬‡ Xuáº¥t Sheets káº¿t quáº£ há»c táº­p</button>`
+        ? `<button class="button secondary" data-route="tests">← Về danh sách Bài kiểm tra</button><button class="button primary" data-export-user-sheets="xlsx">⬇ Xuất Sheets kết quả học tập</button>`
         : saved
-          ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay láº¡i tiáº¿n trÃ¬nh</button>` : `<button class="button secondary" data-route="home">Vá» trang há»c táº­p</button>`)
-          : `<button class="button secondary" data-route="exam-select">Chá»n Ä‘á» khÃ¡c</button><button class="button primary" data-route="subject">Vá» mÃ´n ToÃ¡n</button>`;
-    return `${pageHeading("Káº¿t quáº£ bÃ i lÃ m", d?.title || "Äá» thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ÄANG CHá»œ CHáº¤M" : "ÄÃƒ Ná»˜P BÃ€I"}</span>${owner}${details}${result?.graded ? "" : `<h2>TÃ¬nh tráº¡ng bÃ i lÃ m</h2><p class="muted">Sá»‘ cÃ¢u Ä‘Ã£ tráº£ lá»i: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
+          ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
+          : `<button class="button secondary" data-route="exam-select">Chọn đề khác</button><button class="button primary" data-route="subject">Về môn Toán</button>`;
+    return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ĐANG CHỜ CHẤM" : "ĐÃ NỘP BÀI"}</span>${owner}${details}${result?.graded ? "" : `<h2>Tình trạng bài làm</h2><p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
 }
 
 async function openSavedExamResult(id) {
@@ -576,109 +585,109 @@ async function openSavedExamResult(id) {
             : "/api/exam-results/" + encodeURIComponent(id);
         const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "KhÃ´ng táº£i Ä‘Æ°á»£c káº¿t quáº£ bÃ i lÃ m.");
+        if (!response.ok) throw new Error(data.error || "Không tải được kết quả bài làm.");
         state.savedExamResult = data;
         go("saved-result");
     } catch (error) {
-        toast(error.message || "KhÃ´ng táº£i Ä‘Æ°á»£c káº¿t quáº£ bÃ i lÃ m.", "error");
+        toast(error.message || "Không tải được kết quả bài làm.", "error");
     }
 }
 
 function accountCenterPage() {
     if (!currentUser) {
-        return `${pageHeading("Trung tÃ¢m tÃ i khoáº£n", "Báº¡n cáº§n Ä‘Äƒng nháº­p Ä‘á»ƒ quáº£n lÃ½ tÃ i khoáº£n vÃ  xem tiáº¿n trÃ¬nh há»c táº­p.")}<div class="empty-state"><h3>ChÆ°a Ä‘Äƒng nháº­p</h3><p>HÃ£y Ä‘Äƒng nháº­p Ä‘á»ƒ xem tiáº¿n trÃ¬nh há»c táº­p thá»i gian thá»±c, Ä‘á»•i Gmail, Ä‘á»•i máº­t kháº©u hoáº·c quáº£n lÃ½ tÃ i khoáº£n.</p><button class="button primary" type="button" onclick="document.querySelector('#login-open')?.click()">ÄÄƒng nháº­p ngay</button></div>`;
+        return `${pageHeading("Trung tâm tài khoản", "Bạn cần đăng nhập để quản lý tài khoản và xem tiến trình học tập.")}<div class="empty-state"><h3>Chưa đăng nhập</h3><p>Hãy đăng nhập để xem tiến trình học tập thời gian thực, đổi Gmail, đổi mật khẩu hoặc quản lý tài khoản.</p><button class="button primary" type="button" onclick="document.querySelector('#login-open')?.click()">Đăng nhập ngay</button></div>`;
     }
     if (currentUser.role === "admin") {
         return adminPage();
     }
-    const roleName = currentUser.classCode ? `Há»c sinh trong trÆ°á»ng Â· Lá»›p ${currentUser.classCode}` : currentUser.accountType === "school" ? "Há»c sinh trong trÆ°á»ng" : "Há»c sinh ngoÃ i trÆ°á»ng";
+    const roleName = currentUser.classCode ? `Học sinh trong trường · Lớp ${currentUser.classCode}` : currentUser.accountType === "school" ? "Học sinh trong trường" : "Học sinh ngoài trường";
     return `
-      ${pageHeading("Trung tÃ¢m tÃ i khoáº£n", "Quáº£n lÃ½ thÃ´ng tin báº£o máº­t vÃ  theo dÃµi tiáº¿n trÃ¬nh há»c táº­p theo thá»i gian thá»±c.")}
+      ${pageHeading("Trung tâm tài khoản", "Quản lý thông tin bảo mật và theo dõi tiến trình học tập theo thời gian thực.")}
       <div class="admin-toolbar">
         <div>
-          <span class="pill">TÃ€I KHOáº¢N CÃ NHÃ‚N</span>
+          <span class="pill">TÀI KHOẢN CÁ NHÂN</span>
           <h2 style="margin:10px 0 2px">${escapeHTML(currentUser.name)}</h2>
-          <p class="muted" style="margin:0"><strong id="account-center-current-email">${escapeHTML(currentUser.email)}</strong> Â· <span class="role-chip">${escapeHTML(roleName)}</span></p>
+          <p class="muted" style="margin:0"><strong id="account-center-current-email">${escapeHTML(currentUser.email)}</strong> · <span class="role-chip">${escapeHTML(roleName)}</span></p>
         </div>
-        <button class="button secondary" data-route="home">â† Vá» trang há»c táº­p</button>
+        <button class="button secondary" data-route="home">← Về trang học tập</button>
       </div>
 
       <section class="account-section card">
         <div class="account-section-head">
           <div>
-            <span class="pill">REALTIME Â· Tá»I ÄA 10 Má»¤C HIá»‚N THá»Š TRÆ¯á»šC KHI CUá»˜N</span>
-            <h2>Tiáº¿n trÃ¬nh há»c táº­p</h2>
-            <p class="muted">Tá»± Ä‘á»™ng cáº­p nháº­t theo thá»i gian thá»±c khi báº¡n Ä‘á»c lÃ½ thuyáº¿t, luyá»‡n táº­p hoáº·c lÃ m Ä‘á» thi thá»­.</p>
+            <span class="pill">REALTIME · TỐI ĐA 10 MỤC HIỂN THỊ TRƯỚC KHI CUỘN</span>
+            <h2>Tiến trình học tập</h2>
+            <p class="muted">Tự động cập nhật theo thời gian thực khi bạn đọc lý thuyết, luyện tập hoặc làm đề thi thử.</p>
           </div>
           <div class="account-progress-meta">
-            <span class="online-live-indicator"><span class="online-dot"></span> Äang Ä‘á»“ng bá»™ trá»±c tiáº¿p</span>
-            <button type="button" class="button secondary small" data-export-user-sheets="xlsx">â¬‡ Xuáº¥t Sheets káº¿t quáº£ há»c táº­p (.xlsx)</button>
-            <button type="button" class="button secondary small" data-account-progress-refresh>â†» LÃ m má»›i</button>
+            <span class="online-live-indicator"><span class="online-dot"></span> Đang đồng bộ trực tiếp</span>
+            <button type="button" class="button secondary small" data-export-user-sheets="xlsx">⬇ Xuất Sheets kết quả học tập (.xlsx)</button>
+            <button type="button" class="button secondary small" data-account-progress-refresh>↻ Làm mới</button>
           </div>
         </div>
         <div class="stat-row account-progress-stats">
-          <div class="stat"><span class="muted">BÃ i / Äá» Ä‘Ã£ há»c</span><strong id="account-progress-total">0</strong></div>
-          <div class="stat"><span class="muted">ÄÃ£ hoÃ n thÃ nh</span><strong id="account-progress-completed">0</strong></div>
-          <div class="stat"><span class="muted">Tiáº¿n trÃ¬nh trung bÃ¬nh</span><strong id="account-progress-avg">0%</strong></div>
+          <div class="stat"><span class="muted">Bài / Đề đã học</span><strong id="account-progress-total">0</strong></div>
+          <div class="stat"><span class="muted">Đã hoàn thành</span><strong id="account-progress-completed">0</strong></div>
+          <div class="stat"><span class="muted">Tiến trình trung bình</span><strong id="account-progress-avg">0%</strong></div>
         </div>
         <div class="account-progress-head-row" aria-hidden="true">
-          <span>BÃ€I / Äá»€ ÄANG Há»ŒC</span>
-          <span>NGÃ€Y Báº®T Äáº¦U Há»ŒC</span>
-          <span>TIáº¾N TRÃŒNH (%)</span>
+          <span>BÀI / ĐỀ ĐANG HỌC</span>
+          <span>NGÀY BẮT ĐẦU HỌC</span>
+          <span>TIẾN TRÌNH (%)</span>
         </div>
-        <div class="account-progress-list" id="account-progress-list" role="region" aria-label="Danh sÃ¡ch tiáº¿n trÃ¬nh há»c táº­p" tabindex="0">
-          <p class="muted">Äang táº£i tiáº¿n trÃ¬nh há»c táº­pâ€¦</p>
+        <div class="account-progress-list" id="account-progress-list" role="region" aria-label="Danh sách tiến trình học tập" tabindex="0">
+          <p class="muted">Đang tải tiến trình học tập…</p>
         </div>
       </section>
 
       <section class="account-section card account-ai-history-section">
         <div class="account-section-head">
           <div>
-            <span class="pill">AI Â· Lá»ŠCH Sá»¬ CÃ NHÃ‚N</span>
-            <h2>Lá»‹ch sá»­ giáº£i bÃ i báº±ng AI</h2>
-            <p class="muted">Hiá»ƒn thá»‹ tá»‘i Ä‘a 10 má»¥c cÃ¹ng lÃºc; cuá»™n trong danh sÃ¡ch Ä‘á»ƒ xem cÃ¡c lá»i giáº£i cÅ©. Chá»n má»™t má»¥c Ä‘á»ƒ má»Ÿ láº¡i lá»i giáº£i Ä‘áº§y Ä‘á»§.</p>
+            <span class="pill">AI · LỊCH SỬ CÁ NHÂN</span>
+            <h2>Lịch sử giải bài bằng AI</h2>
+            <p class="muted">Hiển thị tối đa 10 mục cùng lúc; cuộn trong danh sách để xem các lời giải cũ. Chọn một mục để mở lại lời giải đầy đủ.</p>
           </div>
-          <button type="button" class="button secondary small" data-ai-history-refresh>â†» LÃ m má»›i lá»‹ch sá»­</button>
+          <button type="button" class="button secondary small" data-ai-history-refresh>↻ Làm mới lịch sử</button>
         </div>
-        <div class="account-ai-history-summary muted tiny" id="account-ai-history-summary">Äang táº£i lá»‹ch sá»­ giáº£i bÃ iâ€¦</div>
-        <div class="account-ai-history-list" id="account-ai-history-list" role="region" aria-label="Lá»‹ch sá»­ giáº£i bÃ i báº±ng AI, tá»‘i Ä‘a 10 má»¥c hiá»ƒn thá»‹ trÆ°á»›c khi cuá»™n" tabindex="0">
-          <p class="muted">Äang táº£i lá»‹ch sá»­ giáº£i bÃ iâ€¦</p>
+        <div class="account-ai-history-summary muted tiny" id="account-ai-history-summary">Đang tải lịch sử giải bài…</div>
+        <div class="account-ai-history-list" id="account-ai-history-list" role="region" aria-label="Lịch sử giải bài bằng AI, tối đa 10 mục hiển thị trước khi cuộn" tabindex="0">
+          <p class="muted">Đang tải lịch sử giải bài…</p>
         </div>
       </section>
 
       <div class="account-settings-grid">
         <section class="account-section card">
-          <span class="pill">Báº¢O Máº¬T GMAIL</span>
-          <h3>Email &amp; Äá»•i Ä‘á»‹a chá»‰ Email</h3>
-          <p class="muted">Email hiá»‡n táº¡i: <strong id="account-form-current-email">${escapeHTML(currentUser.email)}</strong>. Thao tÃ¡c Ä‘á»•i Email yÃªu cáº§u nháº­p mÃ£ xÃ¡c minh 6 chá»¯ sá»‘ gá»­i qua Gmail.</p>
+          <span class="pill">BẢO MẬT GMAIL</span>
+          <h3>Email &amp; Đổi địa chỉ Email</h3>
+          <p class="muted">Email hiện tại: <strong id="account-form-current-email">${escapeHTML(currentUser.email)}</strong>. Thao tác đổi Email yêu cầu nhập mã xác minh 6 chữ số gửi qua Gmail.</p>
           <form id="account-change-email-form" class="account-form">
             <label>
-              Email (Gmail) má»›i
-              <input name="newEmail" type="email" required maxlength="254" autocomplete="email" placeholder="Nháº­p Ä‘á»‹a chá»‰ Gmail má»›i (vÃ­ dá»¥: banmoi@gmail.com)">
+              Email (Gmail) mới
+              <input name="newEmail" type="email" required maxlength="254" autocomplete="email" placeholder="Nhập địa chỉ Gmail mới (ví dụ: banmoi@gmail.com)">
             </label>
             <p class="auth-error" id="account-email-error" hidden></p>
             <div class="account-form-actions">
-              <button type="submit" class="button primary">Gá»­i mÃ£ xÃ¡c minh &amp; Äá»•i Email</button>
+              <button type="submit" class="button primary">Gửi mã xác minh &amp; Đổi Email</button>
             </div>
           </form>
         </section>
 
         <section class="account-section card">
-          <span class="pill">Máº¬T KHáº¨U</span>
-          <h3>Äá»•i máº­t kháº©u tÃ i khoáº£n</h3>
-          <p class="muted">Nháº­p máº­t kháº©u má»›i (tá»‘i thiá»ƒu 8 kÃ½ tá»±). Há»‡ thá»‘ng sáº½ má»Ÿ há»™p thoáº¡i xÃ¡c nháº­n mÃ£ 6 chá»¯ sá»‘ gá»­i tá»›i Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+          <span class="pill">MẬT KHẨU</span>
+          <h3>Đổi mật khẩu tài khoản</h3>
+          <p class="muted">Nhập mật khẩu mới (tối thiểu 8 ký tự). Hệ thống sẽ mở hộp thoại xác nhận mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
           <form id="account-change-password-form" class="account-form">
             <label>
-              Máº­t kháº©u má»›i
-              <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Ãt nháº¥t 8 kÃ½ tá»±">
+              Mật khẩu mới
+              <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Ít nhất 8 ký tự">
             </label>
             <label>
-              Nháº­p láº¡i máº­t kháº©u má»›i
-              <input name="confirmPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Nháº­p láº¡i máº­t kháº©u má»›i">
+              Nhập lại mật khẩu mới
+              <input name="confirmPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
             </label>
             <p class="auth-error" id="account-password-error" hidden></p>
             <div class="account-form-actions">
-              <button type="submit" class="button primary">Gá»­i mÃ£ xÃ¡c minh &amp; Äá»•i máº­t kháº©u</button>
+              <button type="submit" class="button primary">Gửi mã xác minh &amp; Đổi mật khẩu</button>
             </div>
           </form>
         </section>
@@ -687,12 +696,12 @@ function accountCenterPage() {
       <section class="account-section card account-danger-card">
         <div class="account-danger-content">
           <div>
-            <span class="pill danger-pill">VÃ™NG NGUY HIá»‚M Â· XÃC NHáº¬N GMAIL</span>
-            <h3>XÃ³a tÃ i khoáº£n vÄ©nh viá»…n</h3>
-            <p class="muted">XÃ³a toÃ n bá»™ tÃ i khoáº£n, lá»‹ch sá»­ lÃ m bÃ i vÃ  dá»¯ liá»‡u há»c táº­p cÃ¡ nhÃ¢n. Báº¡n sáº½ cáº§n xÃ¡c nháº­n báº±ng mÃ£ 6 chá»¯ sá»‘ gá»­i tá»›i Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
+            <span class="pill danger-pill">VÙNG NGUY HIỂM · XÁC NHẬN GMAIL</span>
+            <h3>Xóa tài khoản vĩnh viễn</h3>
+            <p class="muted">Xóa toàn bộ tài khoản, lịch sử làm bài và dữ liệu học tập cá nhân. Bạn sẽ cần xác nhận bằng mã 6 chữ số gửi tới Gmail <strong>${escapeHTML(currentUser.email)}</strong>.</p>
           </div>
           <button type="button" class="button danger" id="account-delete-open" data-account-delete-open>
-            XÃ³a tÃ i khoáº£n
+            Xóa tài khoản
           </button>
         </div>
       </section>
@@ -700,7 +709,7 @@ function accountCenterPage() {
 }
 
 function formatAdminCreatedAt(value) {
-    if (value === null || value === undefined || value === "") return "â€”";
+    if (value === null || value === undefined || value === "") return "—";
 
     let date;
     if (value instanceof Date) {
@@ -719,7 +728,7 @@ function formatAdminCreatedAt(value) {
         );
     }
 
-    if (!date || !Number.isFinite(date.getTime())) return "â€”";
+    if (!date || !Number.isFinite(date.getTime())) return "—";
     return date.toLocaleString("vi-VN", {
         dateStyle: "short",
         timeStyle: "short"
@@ -731,7 +740,7 @@ function adminPage() {
   if (isTeacher) {
     return `<div id="admin-users-table" hidden></div>`;
   }
-  return `${pageHeading("Quáº£n trá»‹ MAI Há»ŒC", "Quáº£n lÃ½ tÃ i khoáº£n vÃ  phÃ¢n quyá»n há»‡ thá»‘ng.")}<div class="admin-toolbar"><div><span class="pill">QUáº¢N TRá»Š Há»† THá»NG</span><h2 style="margin:10px 0 2px">TÃ i khoáº£n ngÆ°á»i dÃ¹ng</h2><p class="muted" style="margin:0">PhÃ¢n quyá»n rÃµ rÃ ng giá»¯a Quáº£n trá»‹ MAI Há»ŒC, GiÃ¡o viÃªn (Chá»§ nhiá»‡m / Bá»™ mÃ´n) vÃ  Há»c sinh (Trong trÆ°á»ng / NgoÃ i trÆ°á»ng).</p></div><button class="button secondary" data-route="home">â† Vá» trang há»c táº­p</button></div><div class="stat-row"><div class="stat"><span class="muted">Tá»•ng tÃ i khoáº£n</span><strong id="admin-user-total">â€”</strong></div><div class="stat"><span class="muted">PhÃ¢n quyá»n</span><strong>Admin Â· GiÃ¡o viÃªn Â· Há»c sinh</strong></div></div><p id="admin-users-status" class="muted">Äang táº£i danh sÃ¡ch tÃ i khoáº£nâ€¦</p><div id="admin-users-table"></div>`;
+  return `${pageHeading("Quản trị MAI HỌC", "Quản lý tài khoản và phân quyền hệ thống.")}<div class="admin-toolbar"><div><span class="pill">QUẢN TRỊ HỆ THỐNG</span><h2 style="margin:10px 0 2px">Tài khoản người dùng</h2><p class="muted" style="margin:0">Phân quyền rõ ràng giữa Quản trị MAI HỌC, Giáo viên (Chủ nhiệm / Bộ môn) và Học sinh (Trong trường / Ngoài trường).</p></div><button class="button secondary" data-route="home">← Về trang học tập</button></div><div class="stat-row"><div class="stat"><span class="muted">Tổng tài khoản</span><strong id="admin-user-total">—</strong></div><div class="stat"><span class="muted">Phân quyền</span><strong>Admin · Giáo viên · Học sinh</strong></div></div><p id="admin-users-status" class="muted">Đang tải danh sách tài khoản…</p><div id="admin-users-table"></div>`;
 }
 async function loadAdminUsers() {
   if (state.route !== "admin") return;
@@ -743,30 +752,30 @@ async function loadAdminUsers() {
   try {
     const response = await fetch("/api/admin/users", { credentials: "same-origin", cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ táº£i danh sÃ¡ch tÃ i khoáº£n.");
+    if (!response.ok) throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
     if (state.route !== "admin") return;
 
     const total = $("#admin-user-total");
     if (total) total.textContent = String(payload.total ?? payload.users?.length ?? 0);
-    if (status) status.textContent = `Hiá»ƒn thá»‹ ${payload.users?.length || 0} tÃ i khoáº£n gáº§n nháº¥t.`;
+    if (status) status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
 
     const rows = (payload.users || []).map((u) => {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
       const isTeacher = Boolean(u.isTeacher || u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2));
       const roleLabel = isSuper
-        ? "Quáº£n trá»‹ MAI Há»ŒC"
+        ? "Quản trị MAI HỌC"
         : isTeacher
           ? (u.homeroomClass
-              ? `GiÃ¡o viÃªn chá»§ nhiá»‡m Â· Lá»›p ${u.homeroomClass}`
+              ? `Giáo viên chủ nhiệm · Lớp ${u.homeroomClass}`
               : u.teacherKind === "homeroom"
-                ? "GiÃ¡o viÃªn chá»§ nhiá»‡m"
-                : "GiÃ¡o viÃªn bá»™ mÃ´n")
+                ? "Giáo viên chủ nhiệm"
+                : "Giáo viên bộ môn")
           : (u.accountType === "school" || u.classCode)
-            ? (u.classCode ? `Há»c sinh trong trÆ°á»ng Â· Lá»›p ${u.classCode}` : "Há»c sinh trong trÆ°á»ng")
-            : "Há»c sinh ngoÃ i trÆ°á»ng";
+            ? (u.classCode ? `Học sinh trong trường · Lớp ${u.classCode}` : "Học sinh trong trường")
+            : "Học sinh ngoài trường";
       const canRequestDelete = Number(u.id) !== Number(payload.currentUserId) && !isSuper;
-      return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "XÃ³a" : "Gá»­i yÃªu cáº§u xÃ³a"}</button>` : "â€”"}</td></tr>`;
+      return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
 
     let extra = "";
@@ -775,7 +784,7 @@ async function loadAdminUsers() {
         Array.from({ length: 9 }, (_, index) => prefix + (index + 1))
       );
       const classOptions = schoolClasses.map((code) => `<option value="${code}">${code}</option>`).join("");
-      const subjectNames = ["ToÃ¡n", "Tiáº¿ng Anh", "Váº­t lÃ½", "HÃ³a há»c", "Ngá»¯ vÄƒn", "Sinh há»c", "IELTS"];
+      const subjectNames = ["Toán", "Tiếng Anh", "Vật lý", "Hóa học", "Ngữ văn", "Sinh học", "IELTS"];
       const subjectCheckboxes = subjectNames.map((subject) =>
         `<label class="teacher-check-option"><input type="checkbox" name="subjects" value="${subject}"><span>${subject}</span></label>`
       ).join("");
@@ -785,34 +794,34 @@ async function loadAdminUsers() {
 
       extra = `<section class="admin-submissions teacher-create-section" style="margin-top:20px">
         <div class="teacher-create-toggle-row">
-          <div><h2>Quáº£n lÃ½ giÃ¡o viÃªn</h2><p class="muted tiny">Táº¡o tÃ i khoáº£n má»›i hoáº·c phÃ¢n cÃ´ng giÃ¡o viÃªn hiá»‡n cÃ³.</p></div>
-          <button class="button primary" type="button" id="teacher-create-toggle" aria-expanded="false">ï¼‹ Táº¡o giÃ¡o viÃªn</button>
+          <div><h2>Quản lý giáo viên</h2><p class="muted tiny">Tạo tài khoản mới hoặc phân công giáo viên hiện có.</p></div>
+          <button class="button primary" type="button" id="teacher-create-toggle" aria-expanded="false">＋ Tạo giáo viên</button>
         </div>
         <div id="teacher-create-panel" hidden>
           <form id="create-subadmin-form" class="admin-form-grid teacher-create-form">
-            <label>Email tÃ i khoáº£n<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
-            <label>Há» vÃ  tÃªn <span class="muted tiny">(báº¯t buá»™c vá»›i email má»›i)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label>
-            <label>Máº­t kháº©u táº¡m thá»i <span class="muted tiny">(báº¯t buá»™c vá»›i email má»›i)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
-            <fieldset class="teacher-check-group"><legend>Bá»™ mÃ´n giáº£ng dáº¡y <span class="muted tiny">(chá»n nhiá»u)</span></legend><div class="teacher-check-grid">${subjectCheckboxes}</div></fieldset>
-            <label>Loáº¡i giÃ¡o viÃªn<select name="teacherKind" id="teacher-kind"><option value="subject">GiÃ¡o viÃªn bá»™ mÃ´n</option><option value="homeroom">GiÃ¡o viÃªn chá»§ nhiá»‡m</option></select></label>
-            <label id="homeroom-class-field" hidden>Lá»›p chá»§ nhiá»‡m<select name="homeroomClass"><option value="">Chá»n lá»›p chá»§ nhiá»‡m</option>${classOptions}</select></label>
-            <fieldset class="teacher-check-group" id="teaching-classes-group"><legend>CÃ¡c lá»›p Ä‘ang giáº£ng dáº¡y <span class="muted tiny">(chá»n nhiá»u)</span></legend><div class="teacher-class-grid">${classCheckboxes}</div></fieldset>
-            <button class="button primary" type="submit">Cáº¥p quyá»n / Táº¡o giÃ¡o viÃªn</button>
+            <label>Email tài khoản<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+            <label>Họ và tên <span class="muted tiny">(bắt buộc với email mới)</span><input name="name" minlength="2" maxlength="80" autocomplete="name"></label>
+            <label>Mật khẩu tạm thời <span class="muted tiny">(bắt buộc với email mới)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
+            <fieldset class="teacher-check-group"><legend>Bộ môn giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-check-grid">${subjectCheckboxes}</div></fieldset>
+            <label>Loại giáo viên<select name="teacherKind" id="teacher-kind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select></label>
+            <label id="homeroom-class-field" hidden>Lớp chủ nhiệm<select name="homeroomClass"><option value="">Chọn lớp chủ nhiệm</option>${classOptions}</select></label>
+            <fieldset class="teacher-check-group" id="teaching-classes-group"><legend>Các lớp đang giảng dạy <span class="muted tiny">(chọn nhiều)</span></legend><div class="teacher-class-grid">${classCheckboxes}</div></fieldset>
+            <button class="button primary" type="submit">Cấp quyền / Tạo giáo viên</button>
           </form>
-          <p class="muted tiny">Náº¿u email Ä‘Ã£ cÃ³ tÃ i khoáº£n, há»‡ thá»‘ng giá»¯ nguyÃªn máº­t kháº©u vÃ  lá»‹ch sá»­ há»c táº­p, Ä‘á»“ng thá»i chuyá»ƒn tÃ i khoáº£n thÃ nh giÃ¡o viÃªn cá»§a trÆ°á»ng.</p>
+          <p class="muted tiny">Nếu email đã có tài khoản, hệ thống giữ nguyên mật khẩu và lịch sử học tập, đồng thời chuyển tài khoản thành giáo viên của trường.</p>
         </div>
       </section>
-      <section class="admin-submissions" style="margin-top:20px"><h2>YÃªu cáº§u xÃ³a tÃ i khoáº£n chá» duyá»‡t</h2><div id="account-deletion-requests"><p class="muted">Äang táº£i yÃªu cáº§uâ€¦</p></div></section>`;
+      <section class="admin-submissions" style="margin-top:20px"><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"><p class="muted">Đang tải yêu cầu…</p></div></section>`;
     }
 
     if (container) {
-      container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sÃ¡ch tÃ i khoáº£n, tá»‘i Ä‘a 5 dÃ²ng hiá»ƒn thá»‹ trÆ°á»›c khi cuá»™n" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Há» vÃ  tÃªn</th><th>Email</th><th>Vai trÃ²</th><th>NgÃ y táº¡o</th><th>Thao tÃ¡c</th></tr></thead><tbody>${rows || '<tr><td colspan="6">ChÆ°a cÃ³ tÃ i khoáº£n.</td></tr>'}</tbody></table></div>${extra}`;
+      container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     }
     if (payload.isSuperAdmin) await loadAccountDeletionRequests();
   } catch (error) {
     if (state.route !== "admin") return;
     if (status) {
-      status.textContent = error.message || "Lá»—i khi táº£i dá»¯ liá»‡u.";
+      status.textContent = error.message || "Lỗi khi tải dữ liệu.";
       status.classList.add("auth-error");
     }
     if (container) container.innerHTML = "";
@@ -821,7 +830,7 @@ async function loadAdminUsers() {
 
 function render() {
     if (schoolRoutes.has(state.route) && !authResolved) {
-        view.innerHTML = '<p role="status">Äang kiá»ƒm tra tÃ i khoáº£nâ€¦</p>';
+        view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
         return;
     }
     if (schoolRoutes.has(state.route) && !canAccessSchool(currentUser)) {
@@ -849,6 +858,7 @@ function render() {
     const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
     stopStudyRoomsIfActive();
     stopChemistryIfActive();
+    stopPhysicsIfActive();
     stopUniversalAiIfActive();
     const isMainLobby = state.route === "home";
     document.body.classList.toggle("is-home-lobby", isMainLobby);
@@ -865,6 +875,7 @@ function render() {
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
     view.classList.toggle("chemistry-workspace", state.route === "chemistry");
+    view.classList.toggle("physics-workspace", state.route === "physics-formulas");
     view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
@@ -884,6 +895,14 @@ function render() {
     }
     else if (['organization','question-bank','assignments','assignment-management','school-analytics'].includes(state.route)) {
         activePortalCleanup = mountPortal(view, state.route, currentUser, go);
+    }
+    else if (state.route === "physics-formulas") {
+        view.innerHTML = "";
+        activePhysicsCleanup = mountPhysicsFormulasModule(view, {
+            initialGrade: state.physicsGrade ? parseInt(state.physicsGrade, 10) : (state.grade ? parseInt(state.grade, 10) : 10),
+            onNavigate: (r, p) => go(r, p),
+            onBack: () => go("subject", { subject: "Vật lý" })
+        });
     }
     else if (state.route === "chemistry") {
         view.innerHTML = "";
@@ -963,7 +982,7 @@ function render() {
     window.dispatchEvent(new CustomEvent("maihoc-route-changed", { detail: { route: state.route, subject: state.subject, grade: state.grade } }));
     if (state.route === "exam") {
         if (activeTestDraft) {
-            const label=document.createElement('p'); label.dataset.testSaveStatus=''; label.setAttribute('role','status'); label.textContent=activeTestDraft.disabled?'Báº£n nhÃ¡p Ä‘Æ°á»£c lÆ°u trÃªn mÃ¡y nÃ y.':'PhiÃªn lÃ m bÃ i vÃ  thá»i háº¡n Ä‘Æ°á»£c quáº£n lÃ½ táº¡i mÃ¡y chá»§.';
+            const label=document.createElement('p'); label.dataset.testSaveStatus=''; label.setAttribute('role','status'); label.textContent=activeTestDraft.disabled?'Bản nháp được lưu trên máy này.':'Phiên làm bài và thời hạn được quản lý tại máy chủ.';
             view.querySelector('.exam-toolbar')?.after(label);
         }
         wireSplitter();
@@ -985,12 +1004,12 @@ function startTimer() {
         updateTimer();
         if (state.remaining === 300 && !state.warningShown) {
             state.warningShown = true;
-            toast("Báº¡n cÃ²n 5 phÃºt! HÃ£y kiá»ƒm tra bÃ i vÃ  chuáº©n bá»‹ ná»™p.", "error");
+            toast("Bạn còn 5 phút! Hãy kiểm tra bài và chuẩn bị nộp.", "error");
         }
         if (state.remaining <= 0) {
             clearInterval(state.timer);
             state.timer = null;
-            toast("ÄÃ£ háº¿t giá». BÃ i lÃ m sáº½ Ä‘Æ°á»£c ná»™p tá»± Ä‘á»™ng.", "error");
+            toast("Đã hết giờ. Bài làm sẽ được nộp tự động.", "error");
             finishExam();
         }
     }, 1000);
@@ -1001,7 +1020,7 @@ function updateTimer() {
     if (state.timerCountUp) {
         const m = Math.floor((state.elapsedSeconds || 0) / 60);
         const s = (state.elapsedSeconds || 0) % 60;
-        el.textContent = `â± ${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        el.textContent = `⏱ ${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
         el.classList.remove("warning");
         return;
     }
@@ -1092,13 +1111,13 @@ function finishExam(options = {}) {
         body: JSON.stringify(submitBody)
     }).then(async response => {
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "KhÃ´ng thá»ƒ ná»™p bÃ i.");
+        if (!response.ok) throw new Error(result.error || "Không thể nộp bài.");
         return result;
     });
 
     const leaveFullscreen = ["exam", "test"].includes(examDoc?.category) && document.fullscreenElement
         ? document.exitFullscreen().catch((error) => {
-            console.error("KhÃ´ng thá»ƒ thoÃ¡t toÃ n mÃ n hÃ¬nh:", error);
+            console.error("Không thể thoát toàn màn hình:", error);
         })
         : Promise.resolve();
 
@@ -1115,11 +1134,11 @@ function finishExam(options = {}) {
         state.examFinished = false;
         state.submitRetryRequired = true;
         state.examStarted = true;
-        toast(`ChÆ°a ná»™p Ä‘Æ°á»£c bÃ i: ${error.message}. Báº£n nhÃ¡p váº«n Ä‘Æ°á»£c giá»¯; hÃ£y thá»­ ná»™p láº¡i.`, 'error');
+        toast(`Chưa nộp được bài: ${error.message}. Bản nháp vẫn được giữ; hãy thử nộp lại.`, 'error');
         render();
     });
 }
-// PHÃT HIá»†N Há»ŒC SINH THOÃT TOÃ€N MÃ€N HÃŒNH
+// PHÁT HIỆN HỌC SINH THOÁT TOÀN MÀN HÌNH
 // ============================================
 document.addEventListener("fullscreenchange", () => {
     if (document.fullscreenElement)
@@ -1131,13 +1150,13 @@ document.addEventListener("fullscreenchange", () => {
         state.examFinished) {
         return;
     }
-    // Äá»‘i vá»›i BÃ i kiá»ƒm tra: Tá»± Ä‘á»™ng ná»™p bÃ i ngay khi thoÃ¡t toÃ n mÃ n hÃ¬nh
+    // Đối với Bài kiểm tra: Tự động nộp bài ngay khi thoát toàn màn hình
     if (examDoc?.category === "test") {
-        toast("Báº¡n Ä‘Ã£ thoÃ¡t cháº¿ Ä‘á»™ toÃ n mÃ n hÃ¬nh â€” Há»‡ thá»‘ng tá»± Ä‘á»™ng ná»™p bÃ i kiá»ƒm tra cá»§a báº¡n.", "error");
+        toast("Bạn đã thoát chế độ toàn màn hình — Hệ thống tự động nộp bài kiểm tra của bạn.", "error");
         finishExam({ autoSubmittedFullscreen: true });
         return;
     }
-    // Äá»‘i vá»›i PhÃ²ng thi thá»­: káº¿t thÃºc lÆ°á»£t thi
+    // Đối với Phòng thi thử: kết thúc lượt thi
     state.examStarted = false;
     state.examFinished = true;
     if (state.timer) {
@@ -1145,19 +1164,19 @@ document.addEventListener("fullscreenchange", () => {
         state.timer = null;
     }
     go("home");
-    window.alert("Báº¡n Ä‘Ã£ thoÃ¡t bÃ i thi!\n\n" +
-        "LÆ°á»£t thi Ä‘Ã£ káº¿t thÃºc vÃ¬ báº¡n thoÃ¡t cháº¿ Ä‘á»™ toÃ n mÃ n hÃ¬nh.");
+    window.alert("Bạn đã thoát bài thi!\n\n" +
+        "Lượt thi đã kết thúc vì bạn thoát chế độ toàn màn hình.");
 });
 // ============================================
-// Báº®T Äáº¦U THI THá»¬ - Tá»° Äá»˜NG TOÃ€N MÃ€N HÃŒNH
+// BẮT ĐẦU THI THỬ - TỰ ĐỘNG TOÀN MÀN HÌNH
 // ============================================
 function startExam(id) {
     const d = findDoc(id);
     if (!d)
         return;
     const isTimedExam = d.category === "exam";
-    // YÃªu cáº§u toÃ n mÃ n hÃ¬nh ngay trong thao tÃ¡c nháº¥n nÃºt.
-    // TrÃ¬nh duyá»‡t yÃªu cáº§u thao tÃ¡c nÃ y pháº£i xuáº¥t phÃ¡t tá»« ngÆ°á»i dÃ¹ng.
+    // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
+    // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
     let fullscreenPromise = null;
     if (isTimedExam && !document.fullscreenElement) {
         if (document.documentElement.requestFullscreen) {
@@ -1166,11 +1185,11 @@ function startExam(id) {
                     document.documentElement.requestFullscreen();
             }
             catch (error) {
-                console.error("KhÃ´ng thá»ƒ báº­t toÃ n mÃ n hÃ¬nh:", error);
+                console.error("Không thể bật toàn màn hình:", error);
             }
         }
     }
-    // Khá»Ÿi táº¡o lÆ°á»£t thi má»›i.
+    // Khởi tạo lượt thi mới.
     if (state.timer) {
         clearInterval(state.timer);
         state.timer = null;
@@ -1184,29 +1203,29 @@ function startExam(id) {
     state.examStarted = true;
     state.examFinished = false;
     state.gradeResult = null;
-    // Chuyá»ƒn Ä‘áº¿n phÃ²ng thi.
+    // Chuyển đến phòng thi.
     go("exam");
-    // ThÃ´ng bÃ¡o náº¿u trÃ¬nh duyá»‡t tá»« chá»‘i toÃ n mÃ n hÃ¬nh.
+    // Thông báo nếu trình duyệt từ chối toàn màn hình.
     if (fullscreenPromise) {
         fullscreenPromise.catch((error) => {
-            console.error("TrÃ¬nh duyá»‡t khÃ´ng cho phÃ©p toÃ n mÃ n hÃ¬nh:", error);
-            toast("KhÃ´ng thá»ƒ báº­t toÃ n mÃ n hÃ¬nh. HÃ£y thá»­ nháº¥n VÃ o phÃ²ng thi láº¡i.", "error");
+            console.error("Trình duyệt không cho phép toàn màn hình:", error);
+            toast("Không thể bật toàn màn hình. Hãy thử nhấn Vào phòng thi lại.", "error");
         });
     }
     else if (isTimedExam && !document.fullscreenElement) {
-        toast("TrÃ¬nh duyá»‡t khÃ´ng há»— trá»£ cháº¿ Ä‘á»™ toÃ n mÃ n hÃ¬nh.", "error");
+        toast("Trình duyệt không hỗ trợ chế độ toàn màn hình.", "error");
     }
 }
 async function startTest(id) {
     if (testStarting) return;
     if (!currentUser) {
-        toast("Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ lÃ m bÃ i kiá»ƒm tra.", "error");
+        toast("Vui lòng đăng nhập để làm bài kiểm tra.", "error");
         openDialog("login-dialog");
         return;
     }
     const d = findCachedTest(id) || findDoc(id);
     if (!d) {
-        toast("KhÃ´ng tÃ¬m tháº¥y bÃ i kiá»ƒm tra.", "error");
+        toast("Không tìm thấy bài kiểm tra.", "error");
         return;
     }
     let fullscreenPromise = null;
@@ -1214,7 +1233,7 @@ async function startTest(id) {
         try {
             fullscreenPromise = document.documentElement.requestFullscreen();
         } catch (error) {
-            console.error("KhÃ´ng thá»ƒ báº­t toÃ n mÃ n hÃ¬nh:", error);
+            console.error("Không thể bật toàn màn hình:", error);
         }
     }
     testStarting = true;
@@ -1246,7 +1265,7 @@ async function startTest(id) {
     go("exam");
     if (fullscreenPromise) {
         fullscreenPromise.catch(() => {
-            toast("HÃ£y giá»¯ cháº¿ Ä‘á»™ toÃ n mÃ n hÃ¬nh trong suá»‘t quÃ¡ trÃ¬nh lÃ m bÃ i kiá»ƒm tra.", "error");
+            toast("Hãy giữ chế độ toàn màn hình trong suốt quá trình làm bài kiểm tra.", "error");
         });
     }
 }
@@ -1257,25 +1276,25 @@ async function openSavedTestSubmission(id) {
             cache: "no-store"
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "KhÃ´ng táº£i Ä‘Æ°á»£c káº¿t quáº£ bÃ i kiá»ƒm tra.");
+        if (!response.ok) throw new Error(data.error || "Không tải được kết quả bài kiểm tra.");
         state.savedExamResult = data;
         go("saved-result");
     } catch (error) {
-        toast(error.message || "KhÃ´ng táº£i Ä‘Æ°á»£c káº¿t quáº£ bÃ i kiá»ƒm tra.", "error");
+        toast(error.message || "Không tải được kết quả bài kiểm tra.", "error");
     }
 }
 async function doEvaluate(id) { const d = findDoc(id); if (!d)
-    return; $("#difficulty-result").innerHTML = '<span class="spinner"></span> Äang phÃ¢n tÃ­châ€¦'; openDialog("difficulty-dialog"); try {
+    return; $("#difficulty-result").innerHTML = '<span class="spinner"></span> Đang phân tích…'; openDialog("difficulty-dialog"); try {
     const result = await evaluateDifficulty(d.content || d.description, d.title);
-    $("#difficulty-result").textContent = result.analysis || result.text || "AI chÆ°a tráº£ vá» káº¿t quáº£.";
+    $("#difficulty-result").textContent = result.analysis || result.text || "AI chưa trả về kết quả.";
 }
 catch (e) {
-    $("#difficulty-result").textContent = `ChÆ°a thá»ƒ Ä‘Ã¡nh giÃ¡ báº±ng Gemini.\n\n${e.message}\n\nBáº¡n váº«n cÃ³ thá»ƒ lÃ m Ä‘á». HÃ£y cáº¥u hÃ¬nh GEMINI_API_KEY á»Ÿ backend Ä‘á»ƒ báº­t tÃ­nh nÄƒng nÃ y.`;
+    $("#difficulty-result").textContent = `Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;
 } }
 function subjectClick(subject) {
     const config = getSubjectConfig(subject);
     if (!config || !config.enabled) {
-        toast(`${subject}: mÃ´n há»c chÆ°a Ä‘Æ°á»£c kÃ­ch hoáº¡t.`);
+        toast(`${subject}: môn học chưa được kích hoạt.`);
         $("#subject-menu").classList.remove("open");
         return;
     }
@@ -1286,18 +1305,18 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gá»­i yÃªu cáº§u xÃ³a tÃ i khoáº£n nÃ y? Náº¿u báº¡n lÃ  GiÃ¡o viÃªn, tÃ i khoáº£n chá»‰ bá»‹ xÃ³a sau khi Admin cao nháº¥t cháº¥p thuáº­n.")) return;
+        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giáo viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
                 credentials: "same-origin",
             });
             const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ xÃ³a ngÆ°á»i dÃ¹ng.");
-            toast(payload.deleted ? "ÄÃ£ xÃ³a tÃ i khoáº£n." : "ÄÃ£ gá»­i yÃªu cáº§u. TÃ i khoáº£n chÆ°a bá»‹ xÃ³a.", "success");
+            if (!response.ok) throw new Error(payload.error || "Không thể xóa người dùng.");
+            toast(payload.deleted ? "Đã xóa tài khoản." : "Đã gửi yêu cầu. Tài khoản chưa bị xóa.", "success");
             await loadAdminUsers();
         } catch (error) {
-            toast(error.message || "KhÃ´ng thá»ƒ xÃ³a tÃ i khoáº£n.", "error");
+            toast(error.message || "Không thể xóa tài khoản.", "error");
         }
         return;
     }
@@ -1314,7 +1333,7 @@ document.addEventListener("click", async (e) => {
         }
         if (r === "chemistry" && chemTab) {
             $("#subject-menu")?.classList.remove("open");
-            go("chemistry", { chemistryTab: chemTab, subject: "HÃ³a há»c" });
+            go("chemistry", { chemistryTab: chemTab, subject: "Hóa học" });
             return;
         }
         $("#subject-menu")?.classList.remove("open");
@@ -1328,7 +1347,7 @@ document.addEventListener("click", async (e) => {
             if (currentUser?.role === "admin")
                 go("admin");
             else
-                toast("Báº¡n cáº§n Ä‘Äƒng nháº­p báº±ng tÃ i khoáº£n Admin.", "error");
+                toast("Bạn cần đăng nhập bằng tài khoản Admin.", "error");
             return;
         }
         if (a === "browse-subjects") {
@@ -1337,17 +1356,21 @@ document.addEventListener("click", async (e) => {
             return;
         }
         if (a === "open-math" || a === "open-subject") {
-            subjectClick(action.dataset.name || "ToÃ¡n");
+            subjectClick(action.dataset.name || "Toán");
             return;
         }
         if (a === "coming-subject") {
-            toast(`${action.dataset.name}: mÃ´n há»c sáº½ sá»›m Ä‘Æ°á»£c kÃ­ch hoáº¡t. Coming soon!`);
+            toast(`${action.dataset.name}: môn học sẽ sớm được kích hoạt. Coming soon!`);
             return;
         }
         if (a === "coming-natural-tool") {
+            if (action.dataset.tool === "physics-formulas") {
+                go("physics-formulas", { subject: "Vật lý" });
+                return;
+            }
             toast(action.dataset.tool === "physics-formulas"
-                ? "CÃ´ng thá»©c Váº­t lÃ½ Ä‘ang Ä‘Æ°á»£c phÃ¡t triá»ƒn vÃ  sáº½ sá»›m ra máº¯t."
-                : "CÃ´ng cá»¥ nÃ y Ä‘ang Ä‘Æ°á»£c phÃ¡t triá»ƒn.");
+                ? "Công thức Vật lý đang được phát triển và sẽ sớm ra mắt."
+                : "Công cụ này đang được phát triển.");
             return;
         }
         if (a === "choose-grade") {
@@ -1377,22 +1400,22 @@ document.addEventListener("click", async (e) => {
         }
         if (a === "read-doc") {
             const id = action.dataset.id;
-            // Má»Ÿ trang Ä‘á»c ngay láº­p tá»©c; khÃ´ng Ä‘á»ƒ API Ä‘á»“ng bá»™ lÃ m nÃºt bá»‹ treo.
+            // Mở trang đọc ngay lập tức; không để API đồng bộ làm nút bị treo.
             const documentToOpen = findDoc(id);
             if (!documentToOpen) {
-                toast("KhÃ´ng tÃ¬m tháº¥y tÃ i liá»‡u trong danh sÃ¡ch hiá»‡n táº¡i. HÃ£y táº£i láº¡i trang vÃ  thá»­ láº¡i.", "error");
+                toast("Không tìm thấy tài liệu trong danh sách hiện tại. Hãy tải lại trang và thử lại.", "error");
                 return;
             }
             go("reader", { docId: documentToOpen.id });
-            // Äá»“ng bá»™ ngáº§m sau khi Ä‘iá»u hÆ°á»›ng. Náº¿u cÃ³ dá»¯ liá»‡u má»›i, cáº­p nháº­t
-            // trang Ä‘á»c khi ngÆ°á»i dÃ¹ng váº«n Ä‘ang á»Ÿ Ä‘Ãºng tÃ i liá»‡u Ä‘Ã³.
+            // Đồng bộ ngầm sau khi điều hướng. Nếu có dữ liệu mới, cập nhật
+            // trang đọc khi người dùng vẫn đang ở đúng tài liệu đó.
             refreshDocuments()
                 .then(() => {
                     if (state.route === "reader" && String(state.docId) === String(id)) {
                         render();
                     }
                 })
-                .catch(error => console.error("KhÃ´ng thá»ƒ Ä‘á»“ng bá»™ tÃ i liá»‡u:", error));
+                .catch(error => console.error("Không thể đồng bộ tài liệu:", error));
             return;
         }
         if (a === "start-exam") {
@@ -1424,12 +1447,6 @@ document.addEventListener("click", async (e) => {
     }
 });
 $("#brand-home").addEventListener("click", () => go("home"));
- document.getElementById("education-home")?.addEventListener("click", () => {
-    if (!matchMedia('(max-width:700px)').matches) return;
-    window.dispatchEvent(new Event("maihoc-close-chat"));
-    window.dispatchEvent(new Event("maihoc-close-online-drawer"));
-    go("home");
-});
 $("#menu-toggle").addEventListener("click", () => $("#subject-menu").classList.toggle("open"));
 document.addEventListener("click", e => { if (!e.target.closest("#subject-menu") && !e.target.closest("#menu-toggle") && !e.target.closest('[data-action="browse-subjects"]'))
     $("#subject-menu").classList.remove("open"); });
@@ -1444,7 +1461,7 @@ function updateFileDropZone(input) {
     const zone = input.closest("[data-file-drop-zone]");
     const name = zone?.querySelector("[data-file-name]");
     const file = input.files?.[0];
-    if (name) name.textContent = file?.name || "ChÆ°a chá»n tá»‡p";
+    if (name) name.textContent = file?.name || "Chưa chọn tệp";
     zone?.classList.toggle("has-file", Boolean(file));
 }
 document.querySelectorAll("[data-file-drop-zone]").forEach(zone => {
@@ -1475,11 +1492,11 @@ document.querySelectorAll("[data-file-drop-zone]").forEach(zone => {
     });
 });
 /* ============================================
-   CHá»NG SPAM CLICK KHI UPLOAD TÃ€I LIá»†U
+   CHỐNG SPAM CLICK KHI UPLOAD TÀI LIỆU
    ============================================ */
-// KhÃ³a upload trong khi request Ä‘ang xá»­ lÃ½.
+// Khóa upload trong khi request đang xử lý.
 let uploadInProgress = false;
-// LÆ°u cÃ¡c tá»‡p Ä‘Ã£ upload thÃ nh cÃ´ng trong phiÃªn trang hiá»‡n táº¡i.
+// Lưu các tệp đã upload thành công trong phiên trang hiện tại.
 const uploadedFileKeys = new Set();
 $("#upload-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1487,33 +1504,33 @@ $("#upload-form").addEventListener("submit", async (e) => {
     const submitButton = form.querySelector('button[type="submit"]');
     const fileInput = form.querySelector('input[type="file"]');
     const file = fileInput?.files?.[0];
-    // Kiá»ƒm tra tá»‡p Ä‘Ã£ Ä‘Æ°á»£c chá»n.
+    // Kiểm tra tệp đã được chọn.
     if (!file) {
-        toast("Vui lÃ²ng chá»n tÃ i liá»‡u trÆ°á»›c khi táº£i lÃªn.", "error");
+        toast("Vui lòng chọn tài liệu trước khi tải lên.", "error");
         return;
     }
-    // Nháº­n diá»‡n tá»‡p dá»±a trÃªn tÃªn, kÃ­ch thÆ°á»›c vÃ  thá»i Ä‘iá»ƒm chá»‰nh sá»­a.
+    // Nhận diện tệp dựa trên tên, kích thước và thời điểm chỉnh sửa.
     const fileKey = JSON.stringify({
         name: file.name,
         size: file.size,
         lastModified: file.lastModified
     });
-    // Náº¿u Ä‘ang upload, khÃ´ng gá»­i thÃªm request.
+    // Nếu đang upload, không gửi thêm request.
     if (uploadInProgress) {
-        toast("TÃ i liá»‡u Ä‘ang Ä‘Æ°á»£c táº£i lÃªn. Vui lÃ²ng chá».", "error");
+        toast("Tài liệu đang được tải lên. Vui lòng chờ.", "error");
         return;
     }
-    // Náº¿u tá»‡p Ä‘Ã£ upload thÃ nh cÃ´ng, khÃ´ng upload láº¡i.
+    // Nếu tệp đã upload thành công, không upload lại.
     if (uploadedFileKeys.has(fileKey)) {
-        toast("TÃ i liá»‡u nÃ y Ä‘Ã£ Ä‘Æ°á»£c táº£i lÃªn rá»“i.", "error");
+        toast("Tài liệu này đã được tải lên rồi.", "error");
         return;
     }
-    // KhÃ³a ngay trÆ°á»›c khi gá»i API.
+    // Khóa ngay trước khi gọi API.
     uploadInProgress = true;
     const originalText = submitButton?.textContent;
     if (submitButton) {
         submitButton.disabled = true;
-        submitButton.textContent = "Äang táº£i lÃªn...";
+        submitButton.textContent = "Đang tải lên...";
     }
     try {
         const fd = new FormData(form);
@@ -1521,7 +1538,7 @@ $("#upload-form").addEventListener("submit", async (e) => {
         const schoolStudentUpload = currentUser?.role !== "admin" && currentUser?.accountType === "school";
         const schoolClassSelect = form.elements.classCode;
         if (schoolStudentUpload && !String(schoolClassSelect?.value || "").trim()) {
-            throw new Error("Há»c sinh cá»§a trÆ°á»ng cáº§n nháº­p rÃµ lá»›p trÆ°á»›c khi gá»­i tÃ i liá»‡u.");
+            throw new Error("Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu.");
         }
         if (form.elements.category?.value === "test") {
             let response;
@@ -1542,7 +1559,7 @@ $("#upload-form").addEventListener("submit", async (e) => {
                 });
             }
             const testRes = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(testRes.error || `KhÃ´ng thá»ƒ táº¡o bÃ i kiá»ƒm tra (HTTP ${response.status}).`);
+            if (!response.ok) throw new Error(testRes.error || `Không thể tạo bài kiểm tra (HTTP ${response.status}).`);
             uploadedFileKeys.add(fileKey);
             closeDialog("upload-dialog");
             form.reset();
@@ -1550,12 +1567,12 @@ $("#upload-form").addEventListener("submit", async (e) => {
             syncUploadDialogCategoryFields();
             await refreshTestsQueue();
             if (testRes.solutionJob) window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job", { detail: testRes.solutionJob }));
-            toast(testRes.message || "ÄÃ£ táº¡o bÃ i kiá»ƒm tra.", "success");
+            toast(testRes.message || "Đã tạo bài kiểm tra.", "success");
             render();
             return;
         }
         const result = await uploadDocument(fd);
-        // Chá»‰ Ä‘Ã¡nh dáº¥u Ä‘Ã£ upload khi server xá»­ lÃ½ thÃ nh cÃ´ng.
+        // Chỉ đánh dấu đã upload khi server xử lý thành công.
         uploadedFileKeys.add(fileKey);
         closeDialog("upload-dialog");
         form.reset();
@@ -1563,23 +1580,23 @@ $("#upload-form").addEventListener("submit", async (e) => {
         syncUploadDialogCategoryFields();
         if(result.solutionJob)window.dispatchEvent(new CustomEvent("maihoc-exam-solution-job",{detail:result.solutionJob}));
         toast(result.localOnly
-            ? "ÄÃ£ thÃªm tÃ i liá»‡u vÃ o phiÃªn trÃ¬nh duyá»‡t hiá»‡n táº¡i."
+            ? "Đã thêm tài liệu vào phiên trình duyệt hiện tại."
             : result.message
                 ? result.message
             : result.solutionJob
                 ? (result.solutionJob.mode === "manual" || result.solutionJob.preferredMode === "manual"
-                    ? "Äá» Ä‘Ã£ táº£i lÃªn. HÃ£y nháº­p vÃ  xÃ¡c nháº­n bá»™ Ä‘Ã¡p Ã¡n chuáº©n."
-                    : "Äá» Ä‘Ã£ táº£i lÃªn. Gemini Ä‘ang giáº£i; cá»­a sá»• tiáº¿n trÃ¬nh Ä‘Ã£ má»Ÿ.")
+                    ? "Đề đã tải lên. Hãy nhập và xác nhận bộ đáp án chuẩn."
+                    : "Đề đã tải lên. Gemini đang giải; cửa sổ tiến trình đã mở.")
             : result.status === "pending"
-                ? "ÄÃ£ gá»­i tÃ i liá»‡u. Admin sáº½ duyá»‡t vÃ  báº¡n sáº½ nháº­n thÃ´ng bÃ¡o."
-                : "TÃ i liá»‡u Ä‘Ã£ Ä‘Æ°á»£c táº£i lÃªn mÃ¡y chá»§.", "success");
+                ? "Đã gửi tài liệu. Admin sẽ duyệt và bạn sẽ nhận thông báo."
+                : "Tài liệu đã được tải lên máy chủ.", "success");
         render();
     }
     catch (err) {
-        toast(err.message || "KhÃ´ng thá»ƒ táº£i tÃ i liá»‡u lÃªn.", "error");
+        toast(err.message || "Không thể tải tài liệu lên.", "error");
     }
     finally {
-        // Má»Ÿ khÃ³a sau khi request káº¿t thÃºc.
+        // Mở khóa sau khi request kết thúc.
         uploadInProgress = false;
         if (submitButton) {
             submitButton.disabled = false;
@@ -1599,7 +1616,7 @@ function notifyExamAnswerProgress() {
     const total = (layout?.sections || []).reduce((sum, s) => sum + Number(s.count || 0) * (s.type === "true_false" ? (s.statements || ["a","b","c","d"]).length : 1), 0) || Math.max(1, activeExamQuestions.length || 10);
     const answered = Object.values(state.answers).filter(v => String(v ?? "").trim() !== "").length;
     const percent = Math.min(99, Math.max(1, Math.round((answered / Math.max(1, total)) * 100)));
-    window.dispatchEvent(new CustomEvent("maihoc-exam-progress", { detail: { id: d.id, title: d.title, subject: d.subject || "ToÃ¡n", grade: d.grade || "10", category: d.category || "exam", percent, answers: state.answers } }));
+    window.dispatchEvent(new CustomEvent("maihoc-exam-progress", { detail: { id: d.id, title: d.title, subject: d.subject || "Toán", grade: d.grade || "10", category: d.category || "exam", percent, answers: state.answers } }));
 }
 document.addEventListener("input", e => { if (e.target.matches("[data-answer]")) {
     state.answers[e.target.dataset.answer] = e.target.value;
@@ -1642,8 +1659,8 @@ window.addEventListener("beforeunload", e => { if (state.route === "exam" && sta
     e.returnValue = "";
 } });
 // ============================================
-// ÄIá»€U HÆ¯á»šNG NÃšT BACK Cá»¦A TRÃŒNH DUYá»†T
-// Ãp dá»¥ng cho toÃ n bá»™ website MAI Há»ŒC
+// ĐIỀU HƯỚNG NÚT BACK CỦA TRÌNH DUYỆT
+// Áp dụng cho toàn bộ website MAI HỌC
 // ============================================
 // -------------------- ACCOUNT UI + API --------------------
 function ensureTestsNavButton() {
@@ -1656,9 +1673,9 @@ function ensureTestsNavButton() {
         testsBtn.className = "icon-button";
         testsBtn.id = "tests-open";
         testsBtn.dataset.route = "tests";
-        testsBtn.title = "Danh sÃ¡ch BÃ i kiá»ƒm tra";
-        testsBtn.setAttribute("aria-label", "BÃ i kiá»ƒm tra");
-        testsBtn.innerHTML = `ðŸ“ <span class="button-label">BÃ i kiá»ƒm tra</span>`;
+        testsBtn.title = "Danh sách Bài kiểm tra";
+        testsBtn.setAttribute("aria-label", "Bài kiểm tra");
+        testsBtn.innerHTML = `📝 <span class="button-label">Bài kiểm tra</span>`;
         const accountBtn = $("#account-center-open");
         if (accountBtn && accountBtn.parentElement === userActions) {
             userActions.insertBefore(testsBtn, accountBtn);
@@ -1695,7 +1712,7 @@ function applyAuthUI() {
     const adminButton = $("#admin-open");
     if (adminButton) {
         adminButton.hidden = !signedIn || !(isSuperAdmin || isTeacherAccount);
-        adminButton.textContent = isTeacherAccount ? "Trung tÃ¢m giÃ¡o viÃªn" : "Quáº£n trá»‹";
+        adminButton.textContent = isTeacherAccount ? "Trung tâm giáo viên" : "Quản trị";
     }
     if ($("#school-classes-open")) {
         const canOpenSchoolClasses = isSuperAdmin || isTeacherAccount || (isStudentAccount && (currentUser?.accountType === "school" || Boolean(currentUser?.classCode)));
@@ -1716,17 +1733,17 @@ function applyAuthUI() {
     const greetingRole = !currentUser
         ? ""
         : isSuperAdmin
-            ? " Â· Quáº£n trá»‹ MAI Há»ŒC"
+            ? " · Quản trị MAI HỌC"
             : isTeacherAccount
                 ? (currentUser.homeroomClass
-                    ? ` Â· GiÃ¡o viÃªn chá»§ nhiá»‡m (${currentUser.homeroomClass})`
-                    : " Â· GiÃ¡o viÃªn bá»™ mÃ´n")
+                    ? ` · Giáo viên chủ nhiệm (${currentUser.homeroomClass})`
+                    : " · Giáo viên bộ môn")
                 : currentUser.classCode
-                    ? ` Â· Há»c sinh (${currentUser.classCode})`
+                    ? ` · Học sinh (${currentUser.classCode})`
                     : currentUser.accountType === "school"
-                        ? " Â· Há»c sinh trong trÆ°á»ng"
-                        : " Â· Há»c sinh";
-    $("#user-greeting").textContent = currentUser ? `Xin chÃ o, ${currentUser.name}${greetingRole}` : "";
+                        ? " · Học sinh trong trường"
+                        : " · Học sinh";
+    $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${greetingRole}` : "";
 }
 async function refreshAuthUI() {
     try {
@@ -1749,7 +1766,7 @@ async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
     if (!response.ok)
-        throw new Error(payload.error || "MÃ¡y chá»§ khÃ´ng thá»ƒ xá»­ lÃ½ yÃªu cáº§u.");
+        throw new Error(payload.error || "Máy chủ không thể xử lý yêu cầu.");
     return payload;
 }
 $("#login-open").addEventListener("click", () => { $("#login-error").hidden = true; openDialog("login-dialog"); });
@@ -1772,7 +1789,7 @@ $("#login-form").addEventListener("submit", async (event) => {
         window.dispatchEvent(new Event("maihoc-auth-changed"));
         closeDialog("login-dialog");
         form.reset();
-        toast("ÄÄƒng nháº­p thÃ nh cÃ´ng.", "success");
+        toast("Đăng nhập thành công.", "success");
         go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
     }
     catch (err) {
@@ -1792,7 +1809,7 @@ $("#register-form").addEventListener("submit", async (event) => {
     error.hidden = true;
     const values = Object.fromEntries(new FormData(form).entries());
     if (values.password !== values.confirmPassword) {
-        error.textContent = "Máº­t kháº©u nháº­p láº¡i chÆ°a khá»›p.";
+        error.textContent = "Mật khẩu nhập lại chưa khớp.";
         error.hidden = false;
         return;
     }
@@ -1806,7 +1823,7 @@ $("#register-form").addEventListener("submit", async (event) => {
         window.dispatchEvent(new Event("maihoc-auth-changed"));
         closeDialog("register-dialog");
         form.reset();
-        toast("Táº¡o tÃ i khoáº£n thÃ nh cÃ´ng.", "success");
+        toast("Tạo tài khoản thành công.", "success");
         go(currentUser.isTeacher ? "assignment-management" : "home");
     }
     catch (err) {
@@ -1823,20 +1840,20 @@ $("#logout-button").addEventListener("click", async () => {
         const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
         if (!response.ok) {
             const result = await response.json().catch(() => ({}));
-            throw new Error(result.error || "KhÃ´ng thá»ƒ Ä‘Äƒng xuáº¥t.");
+            throw new Error(result.error || "Không thể đăng xuất.");
         }
         currentUser = null;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
         if (state.route === "admin" || state.route === "study-rooms" || state.route === "account-center" || state.route === "tests")
             go("home");
-        toast("Báº¡n Ä‘Ã£ Ä‘Äƒng xuáº¥t.", "success");
+        toast("Bạn đã đăng xuất.", "success");
     }
     catch (error) {
-        toast(error.message || "KhÃ´ng thá»ƒ Ä‘Äƒng xuáº¥t.", "error");
+        toast(error.message || "Không thể đăng xuất.", "error");
     }
 });
-// Khá»Ÿi táº¡o giao diá»‡n nhÆ° bÃ¬nh thÆ°á»ng.
+// Khởi tạo giao diện như bình thường.
 initTheme();
 render();
 initRemoteData();
@@ -1852,11 +1869,11 @@ async function loadAccountDeletionRequests(){
   try{
     const response=await fetch("/api/admin/account-deletion-requests",{credentials:"same-origin"});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"KhÃ´ng táº£i Ä‘Æ°á»£c yÃªu cáº§u xÃ³a.");
+    if(!response.ok)throw new Error(data.error||"Không tải được yêu cầu xóa.");
     const requests=data.requests||[];
     const pending=requests.filter(r=>r.status==="pending");
-    if(!pending.length){box.innerHTML='<p class="muted">KhÃ´ng cÃ³ yÃªu cáº§u chá» duyá»‡t.</p>';return;}
-    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>TÃ i khoáº£n cáº§n xÃ³a</th><th>Vai trÃ²</th><th>NgÆ°á»i yÃªu cáº§u</th><th>Thá»i gian</th><th>Quyáº¿t Ä‘á»‹nh</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"GiÃ¡o viÃªn":"Há»c sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"â€”")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Cháº¥p thuáº­n xÃ³a</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Tá»« chá»‘i</button></td></tr>').join("")+'</tbody></table></div>';
+    if(!pending.length){box.innerHTML='<p class="muted">Không có yêu cầu chờ duyệt.</p>';return;}
+    box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giáo viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
 document.addEventListener("click", e => {
@@ -1867,7 +1884,7 @@ document.addEventListener("click", e => {
   const expanded = toggle.getAttribute("aria-expanded") === "true";
   panel.hidden = expanded;
   toggle.setAttribute("aria-expanded", String(!expanded));
-  toggle.textContent = expanded ? "ï¼‹ Táº¡o giÃ¡o viÃªn" : "âˆ’ ÄÃ³ng biá»ƒu máº«u";
+  toggle.textContent = expanded ? "＋ Tạo giáo viên" : "− Đóng biểu mẫu";
 });
 document.addEventListener("change", e => {
   if (e.target.id !== "teacher-kind") return;
@@ -1890,7 +1907,7 @@ document.addEventListener("submit",async e=>{
     body.teachingClasses=[...form.querySelectorAll('input[name="teachingClasses"]:checked')].map(input=>input.value);
     const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"KhÃ´ng táº¡o/cáº¥p quyá»n Ä‘Æ°á»£c GiÃ¡o viÃªn.");
+    if(!response.ok)throw new Error(data.error||"Không tạo/cấp quyền được Giáo viên.");
     form.reset();
     const homeroomField = document.getElementById("homeroom-class-field");
     const homeroomSelect = homeroomField?.querySelector("select");
@@ -1898,24 +1915,24 @@ document.addEventListener("submit",async e=>{
     if (homeroomField) homeroomField.hidden = true;
     if (homeroomSelect) homeroomSelect.required = false;
     if (teachingClassesGroup) teachingClassesGroup.hidden = false;
-    toast(data.message || (data.action==="promoted"?"ÄÃ£ cáº­p nháº­t phÃ¢n cÃ´ng GiÃ¡o viÃªn.":"ÄÃ£ táº¡o tÃ i khoáº£n GiÃ¡o viÃªn má»›i."),"success");
+    toast(data.message || (data.action==="promoted"?"Đã cập nhật phân công Giáo viên.":"Đã tạo tài khoản Giáo viên mới."),"success");
     await loadAdminUsers();
-  }catch(error){toast(error.message||"KhÃ´ng táº¡o Ä‘Æ°á»£c GiÃ¡o viÃªn.","error");}
+  }catch(error){toast(error.message||"Không tạo được Giáo viên.","error");}
   finally{button.disabled=false;}
 });
 document.addEventListener("click",async e=>{
   const review=e.target.closest("[data-review-deletion]");
   if(!review)return;
   const decision=review.dataset.decision;
-  if(decision==="approve"&&!confirm("Cháº¥p thuáº­n sáº½ xÃ³a vÄ©nh viá»…n tÃ i khoáº£n. Báº¡n cÃ³ cháº¯c cháº¯n?"))return;
+  if(decision==="approve"&&!confirm("Chấp thuận sẽ xóa vĩnh viễn tài khoản. Bạn có chắc chắn?"))return;
   review.disabled=true;
   try{
     const response=await fetch("/api/admin/account-deletion-requests/"+encodeURIComponent(review.dataset.reviewDeletion)+"/review",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision})});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"KhÃ´ng xá»­ lÃ½ Ä‘Æ°á»£c yÃªu cáº§u.");
-    toast(decision==="approve"?"ÄÃ£ cháº¥p thuáº­n vÃ  xÃ³a tÃ i khoáº£n.":"ÄÃ£ tá»« chá»‘i yÃªu cáº§u; tÃ i khoáº£n Ä‘Æ°á»£c giá»¯ nguyÃªn.","success");
+    if(!response.ok)throw new Error(data.error||"Không xử lý được yêu cầu.");
+    toast(decision==="approve"?"Đã chấp thuận và xóa tài khoản.":"Đã từ chối yêu cầu; tài khoản được giữ nguyên.","success");
     await loadAccountDeletionRequests();await loadAdminUsers();
-  }catch(error){toast(error.message||"KhÃ´ng xá»­ lÃ½ Ä‘Æ°á»£c yÃªu cáº§u.","error");review.disabled=false;}
+  }catch(error){toast(error.message||"Không xử lý được yêu cầu.","error");review.disabled=false;}
 });
 window.addEventListener("maihoc-user-updated", event => {
   currentUser = event.detail?.user || null;
@@ -1971,20 +1988,6 @@ window.addEventListener("maihoc-admin-panel-mounted", () => {
 });
 
 document.getElementById('education-menu')?.addEventListener('click', () => { const opened=document.getElementById('education-sidebar').classList.toggle('is-open'); document.getElementById('education-menu').setAttribute('aria-expanded',String(opened)); });
-document.addEventListener('click', event => {
-    const sidebar = document.getElementById('education-sidebar');
-    const menuButton = document.getElementById('education-menu');
-    if (
-        matchMedia('(max-width:700px)').matches &&
-        sidebar?.classList.contains('is-open') &&
-        !sidebar.contains(event.target) &&
-        !menuButton?.contains(event.target)
-    ) {
-        sidebar.classList.remove('is-open');
-        menuButton?.setAttribute('aria-expanded', 'false');
-        syncEducationSidebar();
-    }
-});
 document.addEventListener('keydown', event=>{if(event.key==='Escape'){document.getElementById('education-sidebar')?.classList.remove('is-open');document.getElementById('education-menu')?.setAttribute('aria-expanded','false');}});
 document.addEventListener('click',event=>{if(event.target.closest('[data-portal-login]'))openDialog('login-dialog');const test=event.target.closest('[data-portal-test]');if(test)startTest(test.dataset.portalTest);});
 

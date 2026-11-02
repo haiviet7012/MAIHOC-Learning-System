@@ -1742,6 +1742,20 @@ button,input,select,textarea {font-family:inherit;}
   }
 }
 
+/* Login uses a single form column without the decorative auth poster. */
+#login-dialog {
+  width: min(480px, 94vw);
+  min-height: 0;
+  padding: 38px;
+  background: #fff;
+}
+#login-dialog::before { content: none; }
+#login-dialog > form { width: 100%; }
+#login-dialog .modal-heading { padding-right: 48px; }
+@media (max-width: 700px) {
+  #login-dialog { padding: 28px 24px; }
+}
+
 /* Square frames across the application, including dynamically mounted tools. */
 *, *::before, *::after { border-radius:0 !important; }
 .learning-progress-scroll { max-height: 660px; overflow-y: auto; scrollbar-gutter: stable; }

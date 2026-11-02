@@ -161,7 +161,7 @@ universalAiRouter.post("/solve", rateLimit, (req, res, next) => {
     return res.json({ ok: true, solution, historyId, historySaved });
   } catch (error) {
     const status = error.status || (error.code === "MISSING_API_KEY" ? 503 : 502);
-    return res.status(status).json({ error: error.message || "Không thể giải bài lúc này." });
+    return res.status(status).json({ error: error.message || "Không thể giải bài lúc này.", ...(error.safeAiError ? { code: error.code } : {}) });
   } finally {
     await Promise.all(tempUploads.map(key => deleteFromR2(key).catch(error => {
       console.warn("[R2] Could not delete temporary AI upload:", error.message);

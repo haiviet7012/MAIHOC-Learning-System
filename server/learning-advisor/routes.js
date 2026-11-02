@@ -1,3 +1,4 @@
+import { geminiConfigured } from '../ai-provider.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
 import {
@@ -98,10 +99,7 @@ export function installLearningAdvisor(
         data,
         messages,
         roadmaps: await plans(thread),
-        aiConfigured: Boolean(
-          (process.env.LEARNING_ADVISOR_API_KEY || process.env.GEMINI_API_KEY) &&
-          (process.env.LEARNING_ADVISOR_MODEL || process.env.GEMINI_MODEL),
-        ),
+        aiConfigured: geminiConfigured('advisor'),
       });
     }),
   );

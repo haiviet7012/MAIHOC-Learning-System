@@ -1,5 +1,5 @@
+import { geminiConfig, geminiClient, canTryAnotherModel, providerError } from '../ai-provider.js';
 import { geminiModels, tutorInstruction } from '../ai-models.js';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const AUTO_SUBJECT = "Tự nhận diện";
@@ -56,13 +56,7 @@ async function extractPdfText(file) {
 }
 
 export async function solveUniversalProblem({ prompt, subject, mode, image, file }) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    const error = new Error("Chưa cấu hình GEMINI_API_KEY trong file server/.env.");
-    error.code = "MISSING_API_KEY";
-    error.status = 503;
-    throw error;
-  }
+  const { apiKey } = geminiConfig();
 
   let problemText = prompt || "";
   if (file) {
@@ -93,7 +87,7 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
     problemText || "(Đề bài được cung cấp trong tệp/ảnh đính kèm.)"
   ].filter(Boolean).join("\n\n");
 
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const genAI = geminiClient(apiKey);
   const models = geminiModels();
   let lastError;
   for (const modelName of models) {
@@ -128,9 +122,9 @@ export async function solveUniversalProblem({ prompt, subject, mode, image, file
         source: file ? "pdf" : image ? "image" : "text"
       };
     } catch (error) {
-      lastError = error;
-      if (/quota|429|resource_exhausted/i.test(error.message || "")) break;
-      console.warn(`[Universal AI Solver] ${modelName} failed:`, error.message || error);
+      lastError = providerError(error);
+      if (!canTryAnotherModel(lastError)) break;
+      console.warn(`[Universal AI Solver] ${modelName} failed:`, lastError.code);
     }
   }
   if (/quota|429|resource_exhausted/i.test(lastError?.message || "")) {

@@ -29,9 +29,14 @@ export function mountTimetablePreview(container, user) {
   if (!user) { target.innerHTML = login; return () => controller.abort(); }
   api('/api/learning/timetable', { signal: controller.signal }).then(({ timetable }) => {
     if (controller.signal.aborted) return;
-    target.innerHTML = timetable
+    const hasSchedule = [timetable?.cells, timetable?.legacyCells].some(cells =>
+      Object.values(cells || {}).some(subject => typeof subject === 'string' && subject.trim())
+    );
+    target.innerHTML = hasSchedule
       ? `${grid(timetable.cells)}${legacySchedule(timetable.legacyCells)}<div class="timetable-actions"><button class="button secondary" data-route="timetable">Sửa thời khóa biểu hiện tại</button><button class="button secondary" data-route="timetable" data-new-timetable>Tạo thời khóa biểu mới</button></div>`
-      : '<div class="portal-empty"><p>Sắp xếp nhịp học của riêng bạn trong tuần.</p><button class="button primary" data-route="timetable">Thiết lập thời khóa biểu của bạn</button></div>';
+      : '<div class="portal-empty"><p>Bạn chưa có thời khóa biểu. Sắp xếp nhịp học của riêng bạn trong tuần.</p><button class="button primary" data-route="timetable">Thêm thời khóa biểu mới</button></div>';
+    // Cuộn lên đầu trang sau khi thời khóa biểu render xong
+    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
   }).catch(error => { if (!controller.signal.aborted) target.innerHTML = `<p role="alert">${e(error.message)}</p><button class="button secondary" data-route="timetable">Thử lại</button>`; });
   return () => controller.abort();
 }

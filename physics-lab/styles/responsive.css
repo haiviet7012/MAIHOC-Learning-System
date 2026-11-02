@@ -1,0 +1,62 @@
+/**
+ * physics-lab/styles/responsive.css
+ * Tương thích hiển thị đa thiết bị: Desktop, Laptop, iPad/Tablet và Mobile
+ */
+
+@media (max-width: 1100px) {
+  .lab-grid-stage {
+    grid-template-columns: 1fr 320px;
+  }
+  .lab-sidebar {
+    width: 280px;
+  }
+}
+
+@media (max-width: 860px) {
+  .lab-workspace {
+    flex-direction: column;
+    overflow-y: auto;
+    height: auto;
+  }
+
+  body {
+    overflow-y: auto;
+    height: auto;
+  }
+
+  .lab-sidebar {
+    width: 100%;
+    height: 220px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .lab-grid-stage {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .simulation-box {
+    height: 380px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-dock {
+    height: auto;
+    border-left: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .lab-header {
+    padding: 0 12px;
+  }
+  .lab-title-box p {
+    display: none;
+  }
+  .header-actions .btn-sm span {
+    display: none;
+  }
+}
+

@@ -1,5 +1,6 @@
+import { geminiClient } from '../ai-provider.js';
 import { geminiModels } from '../ai-models.js';
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { SchemaType } from "@google/generative-ai";
 import { extractDocxText } from "./engine.js";
 
 const solutionSchema = {
@@ -85,6 +86,7 @@ async function extractPdfContent(buffer,{includeImages=true}={}) {
 }
 
 function isTransientGeminiError(error) {
+  if (error?.safeAiError) return error.retryable === true;
   const details = `${error?.status || error?.statusCode || ""} ${error?.code || ""} ${error?.message || ""}`.toLowerCase();
   return /500|502|503|504|overload|high demand|temporarily unavailable|service unavailable|deadline exceeded/.test(details);
 }
@@ -243,7 +245,7 @@ export async function solveExamDocument({
 
   if(selectedProvider==="gemini"){
     contentParts.push({ text: prompt });
-    const client = new GoogleGenerativeAI(apiKey);
+    const client = geminiClient(apiKey);
     const tryModels = geminiModels(modelName);
 
     let lastErr = null;
@@ -267,7 +269,7 @@ export async function solveExamDocument({
           lastErr = err;
           candidateError = err;
           const message = String(err?.message || "").toLowerCase();
-          if (message.includes("404") || message.includes("not found") || message.includes("is not supported")) {
+          if (err?.code === "AI_MODEL_UNAVAILABLE" || message.includes("404") || message.includes("not found") || message.includes("is not supported")) {
             break;
           }
           if (isTransientGeminiError(err)) {
@@ -290,7 +292,7 @@ export async function solveExamDocument({
       }
       if (candidateError) {
         const message = String(candidateError?.message || "").toLowerCase();
-        if (message.includes("404") || message.includes("not found") || message.includes("is not supported")) {
+        if (candidateError?.code === "AI_MODEL_UNAVAILABLE" || message.includes("404") || message.includes("not found") || message.includes("is not supported")) {
           continue;
         }
         throw candidateError;

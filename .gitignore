@@ -4,8 +4,10 @@ uploads/*
 !uploads/.gitkeep
 
 # Local account database and sessions
-data/
+/data/
 server/data/
+!js/physics/data/
+!dist/js/physics/data/
 *.sqlite
 *.sqlite3
 *.db

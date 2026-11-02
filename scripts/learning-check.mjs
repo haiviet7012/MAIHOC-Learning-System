@@ -32,11 +32,21 @@ try {
   await page.locator('#login-form [name=email]').fill('student@maihoc.test');
   await page.locator('#login-form [name=password]').fill(password);
   await page.locator('#login-form button[type=submit]').click();
-  await page.getByRole('button', { name: 'Thiết lập thời khóa biểu của bạn', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Thêm thời khóa biểu mới', exact: true }).waitFor();
+  assert.equal(await page.locator('[data-personal-timetable] table').count(), 0);
   assert.equal((await (await context.request.get(origin + '/api/platform/context')).json()).enabled, false);
-  await page.getByRole('button', { name: 'Thiết lập thời khóa biểu của bạn', exact: true }).click();
+  await page.getByRole('button', { name: 'Thêm thời khóa biểu mới', exact: true }).click();
   await page.locator('[data-place="0-0"]').waitFor();
   assert.equal(await page.locator('[data-place]').count(), 63);
+  // A persisted empty record should use the same empty state as no record.
+  await page.locator('[data-save-timetable]').click();
+  await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
+  await page.getByRole('button', { name: 'Quay lại tổng quan', exact: true }).click();
+  await page.getByRole('button', { name: 'Thêm thời khóa biểu mới', exact: true }).waitFor();
+  assert.equal(await page.locator('[data-personal-timetable] table').count(), 0);
+  assert.equal(await page.locator('[data-personal-timetable] button').count(), 1);
+  await page.getByRole('button', { name: 'Thêm thời khóa biểu mới', exact: true }).click();
+  await page.locator('[data-place="0-0"]').waitFor();
   await page.locator('[data-subject-choice="Toán"]').dragTo(page.locator('[data-place="0-0"]'));
   await page.locator('[data-place="0-0"]').filter({ hasText: 'Toán' }).waitFor();
   await page.locator('[data-subject-choice="Toán"]').dragTo(page.locator('[data-place="8-6"]'));

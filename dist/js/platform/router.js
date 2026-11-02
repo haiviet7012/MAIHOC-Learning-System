@@ -15,6 +15,7 @@ const paths = {
   tests: "/school/tests",
   "ai-solver": "/learning/tutor",
   "study-rooms": "/learning/study-rooms",
+  "physics-formulas": "/learning/physics-formulas",
   "account-center": "/account",
   admin: "/school/admin",
 };

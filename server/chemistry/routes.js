@@ -58,7 +58,8 @@ chemistryRouter.post("/solve", chemistryRateLimit, async (req, res) => {
   } catch (error) {
     const status = error.status || (error.code === "MISSING_API_KEY" ? 503 : 500);
     return res.status(status).json({
-      error: error.message || "Không thể tạo lời giải Hóa học lúc này."
+      error: error.message || "Không thể tạo lời giải Hóa học lúc này.",
+      ...(error.safeAiError ? { code: error.code } : {})
     });
   }
 });
