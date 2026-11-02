@@ -102,3 +102,5 @@
   margin:8px auto 0; border:1px solid var(--border); background:var(--surface);
 }
 .universal-ai-image-preview[hidden] { display:none; }
+
+:root.dark .universal-ai-page .button.secondary { color:#183c80; font-weight:700; }

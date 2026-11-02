@@ -1483,6 +1483,13 @@ document.addEventListener("click",async e=>{
   if(startExam&&activeUser){const card=startExam.closest(".exam-card, .resource-row, .reader-main");saveProgress({itemType:"exam",itemId:startExam.dataset.id,itemTitle:card?.querySelector("h3, h1")?.textContent||startExam.dataset.id,subject:"Toán",grade:"10",status:"in_progress",progressPercent:1,lastPosition:"1"});}
 });
 
+const notificationsDialog = document.getElementById("notifications-dialog");
+notificationsDialog?.addEventListener("click", event => {
+  if (event.target === notificationsDialog && notificationsDialog.open) {
+    notificationsDialog.close();
+  }
+});
+
 document.addEventListener("DOMContentLoaded",loadUser);
 fetch("/api/documents").then(r=>r.ok?r.json():[]).then(list=>{if(!Array.isArray(list))return;const key="maihoc-uploaded-docs";const existing=JSON.parse(localStorage.getItem(key)||"[]");const known=new Set(existing.map(d=>d.id));for(const d of list){if(!known.has(d.id))existing.push({...d,sample:false,description:d.originalName||"Tài liệu đã được Admin duyệt"});}localStorage.setItem(key,JSON.stringify(existing));}).catch(()=>{});
 
@@ -1585,7 +1592,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 // The online list is a dismissible panel, independent of the current route.
-function setOnlineDrawer(open) {
+function setOnlineDrawer(open, restoreFocus = true) {
   const panel = document.getElementById('online-dashboard');
   const toggle = document.getElementById('online-drawer-toggle');
   if (!panel || !toggle) return;
@@ -1593,12 +1600,28 @@ function setOnlineDrawer(open) {
   toggle.setAttribute('aria-expanded', String(open));
   toggle.classList.toggle('active', open);
   if (open) { panel.focus(); throttledRefreshOnlineDashboard(); }
-  else toggle.focus();
+  else if (restoreFocus) toggle.focus();
 }
+window.addEventListener('maihoc-close-online-drawer', () => {
+  if (!document.getElementById('online-dashboard')?.hidden) setOnlineDrawer(false);
+});
 document.addEventListener('click', event => {
   if (event.target.closest('#online-drawer-toggle')) {
     setOnlineDrawer(document.getElementById('online-dashboard')?.hidden);
   } else if (event.target.closest('#online-drawer-close')) setOnlineDrawer(false);
+});
+document.addEventListener('click', event => {
+  const panel = document.getElementById('online-dashboard');
+  const toggle = document.getElementById('online-drawer-toggle');
+  const launcher = document.getElementById('online-dashboard-launcher');
+  if (
+    panel && !panel.hidden &&
+    !panel.contains(event.target) &&
+    !toggle?.contains(event.target) &&
+    !launcher?.contains(event.target)
+  ) {
+    setOnlineDrawer(false, false);
+  }
 });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !document.getElementById('online-dashboard')?.hidden) setOnlineDrawer(false);
