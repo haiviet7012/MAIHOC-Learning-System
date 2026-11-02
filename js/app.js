@@ -777,7 +777,7 @@ async function loadAdminUsers() {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
       const isTeacher = Boolean(u.isTeacher || u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2));
-      const roleLabel = u.isManager ? "Quản lý" : isSuper
+      const roleLabel = u.isManager ? "Admin quản lý" : isSuper
         ? "Quản trị MAI HỌC"
         : isTeacher
           ? (u.homeroomClass
@@ -794,7 +794,7 @@ async function loadAdminUsers() {
 
     let extra = "";
     if (payload.isSuperAdmin) {
-      extra = `<section class="portal-panel"><h2>Thêm người quản lý</h2><p>Nhập Gmail để cấp quyền. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm người quản lý</button></form></section><section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
+      extra = `<section class="portal-panel"><h2>Thêm admin</h2><p>Chỉ Admin được cấp quyền bằng Gmail. Admin được thêm có quyền quản lý, nhưng không thể xóa tài khoản người khác, giám sát phòng học hoặc thêm admin. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm admin</button></form></section><section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
     }
 
     if (container) {
@@ -1721,7 +1721,7 @@ function applyAuthUI() {
     $("#user-greeting").hidden = !signedIn;
     const greetingRole = !currentUser
         ? ""
-        : currentUser.isManager ? ' · Quản lý'
+        : currentUser.isManager ? ' · Admin quản lý'
         : isSuperAdmin
             ? " · Quản trị MAI HỌC"
             : isTeacherAccount
@@ -1868,26 +1868,6 @@ async function loadAccountDeletionRequests(){
     box.innerHTML='<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Tài khoản cần xóa</th><th>Vai trò</th><th>Người yêu cầu</th><th>Thời gian</th><th>Quyết định</th></tr></thead><tbody>'+pending.map(r=>'<tr><td><strong>'+escapeHTML(r.targetName)+'</strong><br><span class="muted tiny">'+escapeHTML(r.targetEmail)+'</span></td><td>'+ (r.targetRole==="admin"?"Giáo viên":"Học sinh")+'</td><td>'+escapeHTML(r.requestedByName)+'</td><td>'+escapeHTML(r.requestedAt||"—")+'</td><td><button class="button primary small" data-review-deletion="'+r.id+'" data-decision="approve">Chấp thuận xóa</button> <button class="button secondary small" data-review-deletion="'+r.id+'" data-decision="reject">Từ chối</button></td></tr>').join("")+'</tbody></table></div>';
   }catch(error){box.innerHTML='<p class="auth-error">'+escapeHTML(error.message)+'</p>';}
 }
-document.addEventListener("click", e => {
-  const toggle = e.target.closest("#teacher-create-toggle");
-  if (!toggle) return;
-  const panel = document.getElementById("teacher-create-panel");
-  if (!panel) return;
-  const expanded = toggle.getAttribute("aria-expanded") === "true";
-  panel.hidden = expanded;
-  toggle.setAttribute("aria-expanded", String(!expanded));
-  toggle.textContent = expanded ? "＋ Tạo giáo viên" : "− Đóng biểu mẫu";
-});
-document.addEventListener("change", e => {
-  if (e.target.id !== "teacher-kind") return;
-  const field = document.getElementById("homeroom-class-field");
-  const select = field?.querySelector("select");
-  const isHomeroom = e.target.value === "homeroom";
-  if (field) field.hidden = !isHomeroom;
-  const teachingClassesGroup = document.getElementById("teaching-classes-group");
-  if (select) select.required = isHomeroom;
-  if (teachingClassesGroup) teachingClassesGroup.hidden = isHomeroom;
-});
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="create-subadmin-form")return;
   e.preventDefault();
@@ -1895,19 +1875,11 @@ document.addEventListener("submit",async e=>{
   try{
     const formData=new FormData(form);
     const body=Object.fromEntries(formData.entries());
-    body.subjects=[...form.querySelectorAll('input[name="subjects"]:checked')].map(input=>input.value);
-    body.teachingClasses=[...form.querySelectorAll('input[name="teachingClasses"]:checked')].map(input=>input.value);
     const response=await fetch("/api/admin/admins",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"Không cấp được quyền quản lý.");
     form.reset();
-    const homeroomField = document.getElementById("homeroom-class-field");
-    const homeroomSelect = homeroomField?.querySelector("select");
-    const teachingClassesGroup = document.getElementById("teaching-classes-group");
-    if (homeroomField) homeroomField.hidden = true;
-    if (homeroomSelect) homeroomSelect.required = false;
-    if (teachingClassesGroup) teachingClassesGroup.hidden = false;
-    toast(data.message || (data.action==="promoted"?"Đã cập nhật phân công Giáo viên.":"Đã cấp quyền quản lý."),"success");
+    toast(data.message || "Đã thêm admin quản lý.","success");
     await loadAdminUsers();
   }catch(error){toast(error.message||"Không cấp được quyền quản lý.","error");}
   finally{button.disabled=false;}
