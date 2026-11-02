@@ -1,3 +1,4 @@
+import { deliverGmail } from './gmail-mail.js';
 import nodemailer from 'nodemailer';
 
 export function mailConfig(env = process.env) {
@@ -9,13 +10,18 @@ export function mailConfig(env = process.env) {
   const provider = String(env.MAIL_PROVIDER || (env.RESEND_API_KEY ? 'resend' : 'smtp')).trim().toLowerCase();
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const from = String(env.MAIL_FROM || env.RESEND_FROM || env.SMTP_FROM || user).trim();
-  const configured = provider === 'resend' ? Boolean(apiKey && from) : provider === 'smtp' && Boolean(host && user && pass && from && Number.isInteger(port) && port > 0 && port <= 65535 && !/your-gmail-address|your-16-character-app-password|example\.com/i.test(user + ' ' + pass));
-  return { provider, host, port, user, pass, from, apiKey, configured };
+  const gmailUser=String(env.GMAIL_API_USER||'').trim();
+  const gmailClientId=String(env.GMAIL_CLIENT_ID||'').trim();
+  const gmailClientSecret=String(env.GMAIL_CLIENT_SECRET||'').trim();
+  const gmailRefreshToken=String(env.GMAIL_REFRESH_TOKEN||'').trim();
+  const configured = provider === 'gmail' ? Boolean(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gmailUser) && gmailClientId && gmailClientSecret && gmailRefreshToken) : provider === 'resend' ? Boolean(apiKey && from) : provider === 'smtp' && Boolean(host && user && pass && from && Number.isInteger(port) && port > 0 && port <= 65535 && !/your-gmail-address|your-16-character-app-password|example\.com/i.test(user + ' ' + pass));
+  return { provider, host, port, user, pass, from, apiKey, configured, gmailUser, gmailClientId, gmailClientSecret, gmailRefreshToken };
 }
 
 export async function deliverMail(message, { env = process.env, fetchImpl = globalThis.fetch, createTransport = nodemailer.createTransport } = {}) {
   const config = mailConfig(env);
   if (!config.configured) throw Object.assign(new Error('Dịch vụ gửi email chưa được cấu hình. Vui lòng liên hệ quản trị viên.'), { code: 'MAIL_NOT_CONFIGURED' });
+  if (config.provider === 'gmail') return deliverGmail(message, config, fetchImpl);
   const to = Array.isArray(message.to) ? message.to : [message.to];
   if (config.provider === 'resend') {
     const response = await fetchImpl('https://api.resend.com/emails', {
