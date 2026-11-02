@@ -16,6 +16,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install server dependencies for module tests
+        run: npm ci --prefix server --ignore-scripts
       - name: Check server modules
         run: |
           node --check server/server.js
