@@ -27,7 +27,7 @@ test('teacher signup and recovery email success/failure preserve roles, OTP priv
     const signupCode = sent.at(-1).text.match(/\b\d{6}\b/)[0];
     const verification = await post('/api/auth/teacher/verify-code',{challengeId,code:signupCode});
     const {token} = await verification.json();
-    const register = await post('/api/auth/teacher/register', { challengeId,token,name:'Giáo viên mới',password:'teacher-fixture-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1'] });
+    const register = await post('/api/auth/teacher/register', { email:'new-teacher@school.edu.vn',name:'Giáo viên mới',password:'teacher-fixture-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1'] });
     assert.equal(register.status, 201); const teacher = (await register.json()).user;
     assert.equal(teacher.isTeacher,true);assert.equal(teacher.isSuperAdmin,false);
     const cookie = register.headers.get('set-cookie').split(';')[0];

@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 import { deliverMail } from './mail-delivery.js';
-import { registerUser, createSession, isSuperAdminUser } from './auth.js';
+import { registerUser, createSession, isSuperAdminUser, isEducationEmail } from './auth.js';
 import { validateTeacherProfile, saveTeacherAssignments } from './school-system.js';
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
-export const isEducationEmail = email => /^[^\s@]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+edu\.vn$/i.test(String(email || ''));
+export { isEducationEmail } from './auth.js';
 export async function ensureAccountUpgrade(db) {
   await db.transaction(async () => {
     await db.query("SELECT pg_advisory_xact_lock(hashtext('maihoc-account-upgrade-v1'))");
@@ -40,7 +40,7 @@ export function installAccountUpgrade(app, { db, requireAuth, requireSameOrigin,
     })();
     if(!reserved)return res.status(429).json({error:'Vui lòng chờ trước khi gửi mã mới (60 giây mỗi email, tối đa 5 yêu cầu trong 15 phút).'});
     try{await send({to:email,subject:'MAIHOC — Xác minh email giáo viên',text:`Mã xác minh: ${code}. Hiệu lực 10 phút. Không chia sẻ mã này.`});}
-    catch{await db.prepare('UPDATE teacher_signup_challenges SET consumed=true WHERE id=?').run(id);return res.status(503).json({error:'Chưa gửi được email xác minh. Hãy kiểm tra cấu hình mail và thử lại.'});}
+    catch(error){console.warn('Teacher verification email failed',{category:/^[A-Z0-9_]{1,50}$/.test(String(error.code||''))?error.code:'MAIL_DELIVERY_FAILED'});await db.prepare('UPDATE teacher_signup_challenges SET consumed=true WHERE id=?').run(id);return res.status(503).json({error:'Chưa gửi được email xác minh. Hãy kiểm tra cấu hình mail và thử lại.'});}
     res.json({challengeId:id,message:'Mã xác minh đã được gửi về email.'});
   }));
   app.post('/api/auth/teacher/verify-code', requireSameOrigin, wrap(async(req,res)=>{
@@ -58,12 +58,11 @@ export function installAccountUpgrade(app, { db, requireAuth, requireSameOrigin,
   }));
   app.post('/api/auth/teacher/register', requireSameOrigin, wrap(async(req,res)=>{
     const user=await db.transaction(async()=>{
-      const challenge=await db.prepare('SELECT * FROM teacher_signup_challenges WHERE id=? FOR UPDATE').get(String(req.body.challengeId||''));
-      if(!challenge||challenge.consumed||challenge.expires_at<Date.now()||!challenge.verified_hash||challenge.verified_hash!==digest(String(req.body.token||'')))throw Error('Vui lòng xác minh email giáo viên trước.');
+      const email=String(req.body.email||'').trim().toLowerCase();
+      if(!isEducationEmail(email))throw Error('Giáo viên cần email của trường có đuôi .edu.vn.');
       const profile=await validateTeacherProfile(db,req.body);
-      const user=await registerUser({...req.body,email:challenge.email,accountType:'teacher'},{verifiedTeacher:true});
+      const user=await registerUser({...req.body,email,accountType:'teacher'},{teacherProfileValidated:true});
       await saveTeacherAssignments(db,user.id,profile);
-      await db.prepare('UPDATE teacher_signup_challenges SET consumed=true WHERE id=?').run(challenge.id);
       return user;
     })();
     await createSession(user.id,res);res.status(201).json({user});
