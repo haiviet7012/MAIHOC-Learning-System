@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import node
 import { testDatabase } from '../platform/test-db.js';import { setTestPool } from '../postgres.js';
 import { isEducationEmail, ensureAccountUpgrade } from '../account-upgrade.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
-test('account upgrade: preserves old users, student gate, edu teacher without OTP and manager restrictions',async()=>{
+test('account upgrade: preserves old users, student gate, edu teacher with mailbox link proof and manager restrictions',async()=>{
   delete process.env.DATABASE_URL;delete process.env.MAIHOC_TEST_DATABASE_URL;
   process.env.MAIHOC_SKIP_AUTO_LISTEN='1';process.env.NODE_ENV='test';process.env.MAIHOC_PLATFORM_ENABLED='0';
   for(const key of ['R2_ACCOUNT_ID','R2_BUCKET_NAME','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'])process.env[key]='test';
@@ -27,12 +27,28 @@ test('account upgrade: preserves old users, student gate, edu teacher without OT
     assert.equal(isEducationEmail('x@school.edu.vn.evil.com'),false);assert.equal(isEducationEmail('x@gmail.com'),false);
     const profile={email:'teacher@school.edu.vn',name:'Teacher',password:'teacher-password',teacherKind:'subject',subjects:['Toán'],teachingClasses:['10A1']};
     for(const email of ['x@gmail.com','x@school.edu.vn.evil.com','x@edu.vn'])assert.equal((await post('/api/auth/teacher/register',{...profile,email})).status,400);
-    assert.equal((await post('/api/auth/teacher/register',{...profile,email:'invalid-profile@school.edu.vn',subjects:[]})).status,400);
-    assert.equal((await fixture.db.query("SELECT id FROM users WHERE email='invalid-profile@school.edu.vn'")).rows.length,0);
+    assert.equal((await post('/api/auth/teacher/register',profile)).status,400,'Suffix alone never grants a teacher account');
+    process.env.APP_PUBLIC_URL=origin;
+    const challengeResponse=await post('/api/auth/teacher/request-link',{email:profile.email});assert.equal(challengeResponse.status,200);
+    const challengeBody=await challengeResponse.json();const {challengeId}=challengeBody,linkToken=sent.at(-1).text.match(/teacher-email-confirm=[^:]+:([a-f0-9]{64})/)[1];
+    assert.ok(!JSON.stringify(challengeBody).includes(linkToken));
+    const verification=await post('/api/auth/teacher/verify-link',{challengeId,linkToken});assert.equal(verification.status,200);
+    const {token}=await verification.json();Object.assign(profile,{challengeId,token});
+    assert.equal((await post('/api/auth/teacher/register',{...profile,email:'other@school.edu.vn'})).status,400,'Proof is bound to the verified mailbox');
+    assert.equal((await post('/api/auth/teacher/register',{...profile,token:'forged'})).status,400);
+    assert.equal((await post('/api/auth/teacher/register',{...profile,subjects:[]})).status,400);
+    assert.equal((await fixture.db.query("SELECT id FROM users WHERE email='teacher@school.edu.vn'")).rows.length,0);
+    await fixture.db.query('UPDATE teacher_signup_challenges SET expires_at=$1 WHERE id=$2',[Date.now()-1,challengeId]);
+    assert.equal((await post('/api/auth/teacher/verify-link',{challengeId,linkToken})).status,400);
+    assert.equal((await post('/api/auth/teacher/register',profile)).status,400);
+    await fixture.db.query('UPDATE teacher_signup_challenges SET expires_at=$1 WHERE id=$2',[Date.now()+600000,challengeId]);
     failMail=true;const beforeSignup=sent.length;
-    const teacher=await post('/api/auth/teacher/register',profile);assert.equal(teacher.status,201,await teacher.clone().text());const teacherUser=(await teacher.json()).user;assert.equal(teacherUser.email,'teacher@school.edu.vn');assert.equal(teacherUser.isTeacher,true);
+    const registrations=await Promise.all([post('/api/auth/teacher/register',profile),post('/api/auth/teacher/register',profile)]);
+    assert.deepEqual(registrations.map(r=>r.status).sort(),[201,400],'Concurrent registration consumes proof only once');
+    const teacher=registrations.find(r=>r.status===201);const teacherUser=(await teacher.json()).user;assert.equal(teacherUser.email,'teacher@school.edu.vn');assert.equal(teacherUser.isTeacher,true);
     assert.equal(sent.length,beforeSignup,'Teacher signup never sends mail');failMail=false;
     assert.equal((await post('/api/auth/teacher/register',profile)).status,400);
+    assert.equal((await post('/api/auth/teacher/verify-link',{challengeId,linkToken})).status,400,'Consumed link cannot be reused');
     assert.equal((await fixture.db.query('SELECT * FROM school_teacher_assignments WHERE teacher_id=$1',[teacherUser.id])).rows.length,1);
     await fixture.db.query("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=$1",[studentUser.id]);
     const manager=(await (await get('/api/auth/me',cookie)).json()).user;assert.equal(manager.isManager,true);
@@ -60,8 +76,9 @@ test('account upgrade: preserves old users, student gate, edu teacher without OT
     for(let i=0;i<5;i++)assert.equal((await post('/api/auth/teacher/verify-code',{challengeId:lockedBody.challengeId,code:'000000'})).status,400);
     assert.equal((await post('/api/auth/teacher/verify-code',{challengeId:lockedBody.challengeId,code:lockedCode})).status,400);
     failMail=true;
-    assert.equal((await post('/api/auth/teacher/request-code',{email:'failed@school.edu.vn'})).status,503);
+    assert.equal((await post('/api/auth/teacher/request-link',{email:'failed@school.edu.vn'})).status,503);
     assert.equal((await fixture.db.query("SELECT id FROM users WHERE email='failed@school.edu.vn'")).rows.length,0);
+    assert.equal((await fixture.db.query("SELECT consumed FROM teacher_signup_challenges WHERE email='failed@school.edu.vn'")).rows[0].consumed,true);
 
 
     assert.equal((await fixture.db.query('SELECT password_hash FROM users WHERE id=50')).rows[0].password_hash,'unchanged');

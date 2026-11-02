@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { writeFile, readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 await mkdir('test-results',{recursive:true});
-const password=randomUUID(), origin='http://127.0.0.1:4186';
-const preview=spawn(process.execPath,['scripts/dev-preview.mjs'],{env:{...process.env,PREVIEW_PORT:'4186',MAIHOC_PREVIEW_PASSWORD:password,MAIL_PROVIDER:'smtp',SMTP_HOST:'',SMTP_USER:'',SMTP_PASS:'',GMAIL_USER:'',GMAIL_APP_PASSWORD:'',GMAIL_PASS:'',EMAIL_USER:'',EMAIL_PASS:'',APP_PUBLIC_URL:origin},stdio:['ignore','pipe','pipe']});
+const key=randomUUID(), password=randomUUID(), origin='http://127.0.0.1:4186';
+const provider=new URL('../test-results/account-mail-provider.mjs',import.meta.url);
+const mailbox=new URL(`../test-results/account-mail-${key}.json`,import.meta.url);
+await writeFile(provider,`import {createRequire} from 'node:module';import fs from 'node:fs';const require=createRequire(new URL('../server/server.js',import.meta.url));const mail=require('nodemailer');mail.createTransport=()=>({sendMail:async message=>{fs.writeFileSync(${JSON.stringify(mailbox.pathname)},JSON.stringify(message));return{accepted:message.to,rejected:[]}},close(){}});`);
+const preview=spawn(process.execPath,['--import',provider.pathname,'scripts/dev-preview.mjs'],{env:{...process.env,PREVIEW_PORT:'4186',MAIHOC_PREVIEW_PASSWORD:password,SMTP_USER:'test@gmail.com',SMTP_PASS:'fixture',MAIL_PROVIDER:'smtp',APP_PUBLIC_URL:origin},stdio:['ignore','pipe','pipe']});
 let browser;
 try{
  await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(Error('timeout')),60000);preview.stdout.on('data',b=>{out+=b;if(out.includes('isolated preview ready')){clearTimeout(t);resolve()}});preview.stderr.on('data',b=>process.stderr.write(b));preview.on('exit',c=>reject(Error('preview exit '+c)));});
@@ -13,13 +16,21 @@ try{
  await page.goto(origin+'/learning');await page.locator('[data-space=school]').click();await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).waitFor();assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
  await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
  await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
- await page.locator('#register-form [name=email]').fill('verified@school.edu.vn');
- await page.locator('[data-registration-details]').waitFor({state:'visible'});
- assert.equal(await page.locator('[data-teacher-send], [data-teacher-code], [data-teacher-verify]').count(),0);
  await page.locator('#register-form [name=email]').fill('verified@school.edu.vn.evil.com');
- assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
+ assert.equal(await page.locator('[data-teacher-send-link]').isDisabled(),true);
  await page.locator('#register-form [name=email]').fill('verified@school.edu.vn');
+ assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
+ assert.equal(await page.locator('[data-teacher-code]').count(),0);
+ const emailSent=page.waitForResponse(r=>r.url().endsWith('/teacher/request-link')&&r.status()===200);
+ await page.locator('[data-teacher-send-link]').click();await emailSent;
+ const message=JSON.parse(await readFile(mailbox,'utf8')),link=message.text.match(/http[^\s]+/)[0];
+ await page.goto(link,{waitUntil:'networkidle'});
+ assert.equal(await page.locator('[data-registration-details]').isVisible(),false,'Opening link alone does not activate signup');
+ assert.equal(await page.evaluate(()=>location.hash),'','Secret fragment removed from URL');
+ await page.locator('[data-teacher-confirm-link]').click();
  await page.locator('[data-registration-details]').waitFor({state:'visible'});
+ assert.equal(await page.locator('#register-form [name=email]').isEditable(),false);
+ await page.screenshot({path:'test-results/teacher-email-confirmed.png',fullPage:true});
  await page.locator('#register-form [name=name]').fill('Giáo viên xác minh');await page.locator('#register-form [name=password]').fill(password);await page.locator('#register-form [name=confirmPassword]').fill(password);
  await page.locator('#register-form [name=subjects][value="Toán"]').check();await page.locator('#register-form [name=teachingClasses][value="10A1"]').check();
  await page.locator('#register-form button[type=submit]').click();await page.waitForURL(origin+'/school/classes');await page.getByRole('heading',{name:'Lớp của bạn',exact:true}).waitFor();
@@ -29,5 +40,5 @@ try{
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
  await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
  await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
- assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email opens full teacher profile without OTP, registration, teacher account centre, mobile and School-only advisor. Mail unconfigured; signup succeeds without email delivery.');
+ assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email confirmed by link before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked; unverified mailbox cannot register.');
 }finally{await browser?.close();preview.kill('SIGTERM');}
