@@ -121,7 +121,14 @@ try {
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
   await page.locator('.learning-progress-list progress').first().waitFor();
-  const tracks = await page.locator('.learning-progress-list progress').evaluateAll(nodes => nodes.map(n => ({ x: n.getBoundingClientRect().x, width: n.getBoundingClientRect().width })));
+  // Auth/data refreshes can replace the list between locator calls. Capture a
+  // complete three-item render atomically rather than measuring a transient gap.
+  const tracksHandle = await page.waitForFunction(() => {
+    const nodes = [...document.querySelectorAll('.learning-progress-list progress')];
+    return nodes.length === 3 ? nodes.map(n => ({ x: n.getBoundingClientRect().x, width: n.getBoundingClientRect().width })) : false;
+  });
+  const tracks = await tracksHandle.jsonValue();
+  await tracksHandle.dispose();
   assert.equal(tracks.length, 3);
   assert.ok(tracks.every(t => Math.abs(t.width - tracks[0].width) < 1 && Math.abs(t.x - tracks[0].x) < 1), '0%, 40% and 100% tracks align at both ends');
   assert.ok(await page.locator('.learning-progress-scroll').evaluate(n => {
