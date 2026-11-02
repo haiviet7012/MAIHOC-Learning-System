@@ -26,11 +26,26 @@ try {
   };
   await page.goto(origin+'/learning'); await login(page,'teacher@maihoc.test');
   await page.locator('#education-user').filter({hasText:'Thầy Hải Việt'}).waitFor();
+  // Hold startup data until the teacher has filled the form. Releasing it
+  // reproduces the late refresh that used to discard the announcement draft.
+  let releaseStartup;
+  const startupGate = new Promise(resolve => { releaseStartup = resolve; });
+  await page.route('**/configs/exam-layouts.json', async route => { await startupGate; await route.continue(); });
   await page.goto(origin+'/school/classes');
   await page.locator('#school-announcement-form').waitFor();
   await page.locator('#school-announcement-form [name=target]').selectOption('grade:12');
   await page.locator('#school-announcement-form [name=title]').fill('Lịch ôn tập khối 12');
   await page.locator('#school-announcement-form [name=message]').fill('Mang tài liệu đến lớp. Nội dung <b>vẫn là văn bản</b>.');
+  const startupLoaded = Promise.all([
+    page.waitForResponse(r => r.url() === origin+'/api/documents'),
+    page.waitForResponse(r => r.url() === origin+'/api/tests'),
+  ]);
+  releaseStartup();
+  await startupLoaded;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.locator('#school-announcement-form [name=title]').inputValue(), 'Lịch ôn tập khối 12', 'Late startup data must preserve the draft');
+  assert.equal(await page.locator('#school-announcement-form [name=target]').inputValue(), 'grade:12');
+  assert.equal(await page.locator('#school-announcement-form').evaluate(form => form.checkValidity()), true);
   const response = page.waitForResponse(r=>r.url()===origin+'/api/school/announcements'&&r.request().method()==='POST');
   await page.locator('#school-announcement-form button[type=submit]').click();
   const created = await response; assert.equal(created.status(),201); const notice = await created.json(); assert.equal(notice.recipients,1);

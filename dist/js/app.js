@@ -80,6 +80,11 @@ let activeExamQuestions = [];
 let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
+function canRefreshBackgroundView() {
+    // Mounted portal views fetch their own content, including drawers outside
+    // #view; recreating them would close dialogs and discard their draft state.
+    return !view.querySelector('form') && (!activePortalCleanup || state.route === 'home');
+}
 async function initRemoteData() {
     try {
         const subjectResponse = await fetch("/configs/subjects.json", { cache: "no-store" });
@@ -97,7 +102,9 @@ async function initRemoteData() {
         console.warn("Could not load assessment layout config:", error.message);
     }
     await Promise.all([refreshDocuments().catch(() => {}), refreshTestsQueue().catch(() => {})]);
-    render();
+    // Mounted forms own their data loading. A late catalogue refresh must not
+    // replace their DOM and discard edits (or interrupt a form submission).
+    if (canRefreshBackgroundView()) render();
     resumePendingTest();
 }
 // Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
@@ -1743,7 +1750,7 @@ async function refreshAuthUI() {
     window.maihocCurrentUser = currentUser;
     await refreshTestsQueue();
     resumePendingTest();
-    if (schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) render();
+    if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
 }
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1966,7 +1973,7 @@ window.addEventListener("maihoc-tests-rerender", () => {
 });
 window.addEventListener("maihoc-auth-changed", async () => {
     await refreshTestsQueue();
-    if (schoolRoutes.has(state.route) || state.route === "home") render();
+    if ((schoolRoutes.has(state.route) || state.route === "home") && canRefreshBackgroundView()) render();
 });
 window.addEventListener("maihoc-admin-panel-mounted", () => {
     loadAdminTestsAndPendingGrading();
