@@ -99,6 +99,15 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
     assert.equal((await switchButton.textContent()).trim(),label,`Correct opposite workspace action at ${width}px`);
     assert.equal(await switchButton.evaluate(button=>button.parentElement.lastElementChild===button),true,'Workspace action is the final menu item');
     assert.ok((await switchButton.boundingBox()).width>0,'Workspace action is visible when menu is open');
+    const switchBox = await switchButton.boundingBox();
+    const switchStyle = await switchButton.evaluate(button => {
+      const style = getComputedStyle(button);
+      return { height: style.height, minHeight: style.minHeight, lineHeight: style.lineHeight,
+        display: style.display, alignItems: style.alignItems, justifyContent: style.justifyContent };
+    });
+    assert.equal(switchBox.height,42,'Workspace action keeps a fixed 42px height');
+    assert.deepEqual(switchStyle,{height:'42px',minHeight:'42px',lineHeight:'20px',display:'flex',alignItems:'center',justifyContent:'center'},
+      'Workspace switch labels use stable geometry');
     await page.locator('#menu-toggle').click();
    }
    assert.equal(context.pages().length,1,`Workspace switching uses one page at ${width}px`);

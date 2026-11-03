@@ -1225,3 +1225,26 @@ body[data-school-ui] .school-standard-offer-foot .button {
     padding: 24px 12px;
   }
 }
+
+/* Keep the workspace menu action geometrically identical in School. */
+body[data-school-ui] .subject-menu .workspace-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 12px;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transform: none !important;
+}
+
+body[data-school-ui] .advisor-pull-star {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+}
