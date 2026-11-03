@@ -835,8 +835,10 @@ function render() {
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
-    const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const schoolAssessment = (['exam','result'].includes(state.route) && findDoc(state.examDocId)?.category === 'test') || (state.route === 'saved-result' && state.savedExamResult?.category === 'test');
+    const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts || schoolAssessment ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
+    document.body.toggleAttribute('data-school-ui', sidebarSpace === 'school');
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
     document.querySelectorAll('[data-space]').forEach(button => { button.hidden = false; const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
     document.getElementById('education-sidebar')?.classList.remove('is-open');
@@ -862,7 +864,7 @@ function render() {
     view.classList.toggle("exam-workspace", state.route === "exam");
     view.classList.toggle("chemistry-workspace", state.route === "chemistry");
     view.classList.toggle("physics-workspace", state.route === "physics-formulas");
-    view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
+    view.classList.toggle("universal-ai-workspace", ["ai-solver", "school-tutor"].includes(state.route));
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
@@ -903,9 +905,9 @@ function render() {
             onNavigate: (r, p) => go(r, p)
         });
     }
-    else if (state.route === "ai-solver") {
+    else if (["ai-solver", "school-tutor"].includes(state.route)) {
         view.innerHTML = "";
-        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(r, p) });
+        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
     }
     else if (state.route === "subject")
         view.innerHTML = subjectPage();

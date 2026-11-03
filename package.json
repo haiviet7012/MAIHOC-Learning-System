@@ -26,7 +26,8 @@
     "ai:check": "node server/check-ai.js",
     "school:worker": "node server/school-upgrade/worker.js",
     "test:school-upgrade": "node --test server/school-upgrade/*.test.js",
-    "test:school-upgrade:browser": "node scripts/school-upgrade-check.mjs"
+    "test:school-upgrade:browser": "node scripts/school-upgrade-check.mjs",
+    "test:school-theme": "node scripts/school-theme-check.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
