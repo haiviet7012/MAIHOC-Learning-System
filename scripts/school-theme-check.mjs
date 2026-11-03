@@ -199,23 +199,25 @@ try {
     // Verify the logo and workspace switch occupy identical coordinates in both workspaces.
     await page.goto(origin + "/school");
     await page.locator(".school-overview-hero").waitFor();
+    await page.locator("#menu-toggle").click();
     const schoolHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {
         const element = document.querySelector(selector);
         const box = element.getBoundingClientRect();
         return { x: box.x, y: box.y, width: box.width, height: box.height };
       };
-      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+      return { logo: rect(".education-logo"), switch: rect("#workspace-switch") };
     });
     await page.goto(origin + "/learning");
     await page.locator("[data-personal-timetable]").waitFor();
+    await page.locator("#menu-toggle").click();
     const learningHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {
         const element = document.querySelector(selector);
         const box = element.getBoundingClientRect();
         return { x: box.x, y: box.y, width: box.width, height: box.height };
       };
-      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+      return { logo: rect(".education-logo"), switch: rect("#workspace-switch") };
     });
     for (const anchorName of ["logo", "switch"]) {
       for (const dimension of ["x", "y", "width", "height"]) {

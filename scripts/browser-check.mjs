@@ -35,36 +35,18 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
   route.abort(),
 );
 const origin = "http://127.0.0.1:4173";
-async function findWorkspaceTab(space) {
-  const name = space === 'school' ? 'maihoc-school' : 'maihoc-learning';
-  for (const candidate of context.pages()) {
-    if (candidate === page || candidate.isClosed()) continue;
-    try {
-      if (await candidate.evaluate(() => window.name) === name) return candidate;
-    } catch {
-      // Ignore pages outside this same-origin workspace context.
-    }
-  }
-  return null;
-}
 async function clickSidebar(route) {
   const space = ['assignments','assignment-management','school-analytics','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
-  const switchButton = page.locator(`.education-switch [data-space="${space}"]`);
-  if (await switchButton.getAttribute('aria-pressed') !== 'true') {
-    const existingTab = await findWorkspaceTab(space);
-    if (existingTab) {
-      // Clicking the switch focuses/reuses the tab; it must not reset its route.
-      await switchButton.click();
-      page = existingTab;
-    } else {
-      // First visit to a workspace creates its named tab from the user gesture.
-      const [openedTab] = await Promise.all([
-        context.waitForEvent('page'),
-        switchButton.click(),
-      ]);
-      page = openedTab;
-      await page.waitForLoadState('domcontentloaded');
-    }
+  const activeSpace = await page.locator('body').evaluate(body => body.hasAttribute('data-school-ui') ? 'school' : 'learning');
+  if (activeSpace !== space) {
+    const pageCount = context.pages().length;
+    await page.locator('#menu-toggle').click();
+    const switchButton = page.locator('#workspace-switch');
+    await switchButton.waitFor();
+    assert.equal((await switchButton.textContent()).trim(), space === 'school' ? 'School' : 'Learning');
+    await switchButton.click();
+    await page.waitForFunction(target => document.body.hasAttribute('data-school-ui') === (target === 'school'), space);
+    assert.equal(context.pages().length, pageCount, 'Workspace switching must stay in the current tab');
   }
   await page.locator(`[data-sidebar-space="${space}"]`).first().waitFor({ state: 'visible' });
   assert.equal(await page.locator(`[data-sidebar-space="${space}"]`).first().isVisible(), true);

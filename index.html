@@ -39,7 +39,6 @@
   <a class="skip-link" href="#view">Đến nội dung chính</a>
   <aside class="education-sidebar" id="education-sidebar" aria-label="Điều hướng MAIHOC">
     <button class="education-logo" data-route="home"><img src="/images/mai-hoc-favicon.png" alt=""><span><strong>MAIHOC</strong><small>HỌC TẬP VÀ KẾT NỐI</small></span></button>
-    <div class="education-switch" aria-label="Không gian"><button data-route="home" data-space="learning" title="Quay lại Learning trong tab riêng" class="active">Learning</button><button data-route="organization" data-space="school" title="Mở School trong tab riêng">School</button></div>
     <p class="education-nav-label" data-sidebar-space="learning">KHÔNG GIAN HỌC TẬP</p>
     <nav aria-label="Học tập" data-sidebar-space="learning">
       <button data-route="home"><img src="/design/dashboard.svg" alt="">Tổng quan</button>
@@ -131,9 +130,8 @@
         <button data-subject="Sinh học" class="subject-link">Sinh học</button>
         <button data-subject="Đề thi THPT quốc gia" class="subject-link">Đề thi THPT quốc gia</button>
 
-        <button data-route="study-rooms" class="subject-link study-room-nav-link">Phòng tự học</button>
-        <button data-route="ai-solver" class="subject-link ai-solver-nav-link">✨ AI giải bài tập</button>
         <button data-route="account-center" class="subject-link">Tài khoản</button>
+        <button type="button" id="workspace-switch" class="subject-link workspace-switch" data-route="school-plans" data-workspace-target="school" aria-label="Chuyển sang School" title="Chuyển sang School">School</button>
       </nav>
     </header>
 

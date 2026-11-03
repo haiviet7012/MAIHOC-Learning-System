@@ -128,7 +128,10 @@ try {
     "No mobile horizontal overflow",
   );
   await page.setViewportSize({ width: 1440, height: 1050 });
-  await page.locator(".education-switch [data-space=school]").click();
+  await page.locator("#menu-toggle").click();
+  assert.equal((await page.locator("#workspace-switch").textContent()).trim(), "School");
+  await page.locator("#workspace-switch").click();
+  await page.waitForURL(origin + "/school");
   await page
     .locator('.education-sidebar nav [data-route="school-analytics"]')
     .click();
