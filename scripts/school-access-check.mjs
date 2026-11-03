@@ -29,7 +29,7 @@ try {
   const schoolButton = page.locator('[data-space="school"]');
   async function learningOnly(path) {
     await page.goto(origin + path);
-    await page.getByRole('heading', { name: 'Tài khoản dành riêng cho trường học' }).waitFor();
+    await page.getByRole('heading', { name: 'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.' }).waitFor();
     assert.equal(await schoolButton.isVisible(), true);
     assert.equal(await page.getByText('Đang cập nhật giá', { exact: true }).count(), 2);
     assert.equal(await page.locator('[data-personal-timetable]').count(), 0);
