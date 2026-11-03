@@ -35,6 +35,7 @@ jobs:
         env:
           MAIHOC_TEST_DATABASE_URL: postgresql://postgres:maihoc_test@localhost:5432/maihoc_test
       - run: npm run build && npm run check:dist
+      - run: node --check physics-lab/physics-lab.js && node --check dist/physics-lab/physics-lab.js
       - run: npx playwright install --with-deps chromium
       - run: npm run test:school-theme
       - run: npm run test:school-upgrade:browser

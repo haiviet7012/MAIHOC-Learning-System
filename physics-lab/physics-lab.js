@@ -299,8 +299,6 @@ btnTheme.addEventListener("click", () => {
   localStorage.setItem(LAB_CONFIG.themeStorageKey, isDark ? "dark" : "light");
   showToast(isDark ? "Chế độ tối" : "Chế độ sáng");
   simulationManager._onEngineRender();
-<<<<<<< HEAD
-=======
 });
 
 // Sync theme changes across the host page and its same-origin School iframe.
@@ -310,7 +308,6 @@ window.addEventListener('storage', event => {
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.classList.toggle('light', !dark);
   simulationManager._onEngineRender();
->>>>>>> 2eda32a0f21c22367a560c96c2c52821cabeece2
 });
 
 // 13. Toàn màn hình

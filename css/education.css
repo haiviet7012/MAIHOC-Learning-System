@@ -1977,13 +1977,6 @@ html { scrollbar-gutter: stable; }
   transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }
 
-.advisor-pull-star {
-  display: block;
-  font-size: 20px;
-  line-height: 1;
-  color: #fff;
-  text-shadow: 0 1px 5px #173b7b66;
-}
 .advisor-pull-arrow {
   width: 9px;
   height: 13px;
