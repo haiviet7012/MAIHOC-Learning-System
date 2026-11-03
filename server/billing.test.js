@@ -52,7 +52,8 @@ test("Billing creates student and school orders, activates one Standard subscrip
     assert.equal(canAccessSchool(oldPremiumPlan), true);
     assert.equal(publicUser({ id: oldPremiumId, role: "user", school_plan: "standard", school_expires_at: new Date(Date.now() - 1000) }).schoolPlan, "none");
     const studentId = await insertUser("Student One", "billing-student-one@test.local");
-    const schoolBuyerId = await insertUser("School Buyer", "billing-school-buyer@test.local", "teacher", "school");
+    const schoolBuyerId = await insertUser("School Buyer", "billing-school-buyer@test.local", "admin", "school");
+    await fixture.db.query("UPDATE users SET admin_level=1 WHERE id=$1", [schoolBuyerId]);
     const studentTwoId = await insertUser("Student Two", "billing-student-two@test.local", "user", "school");
     const studentThreeId = await insertUser("Student Three", "billing-student-three@test.local", "user", "school");
     const school = (await fixture.db.query(
@@ -68,7 +69,7 @@ test("Billing creates student and school orders, activates one Standard subscrip
     app.use((req, _res, next) => {
       const id = Number(req.get("x-test-user"));
       if (id === studentId) req.user = { id, role: "user", schoolPlan: "none" };
-      if (id === schoolBuyerId) req.user = { id, role: "teacher", isTeacher: true, schoolPlan: "none" };
+      if (id === schoolBuyerId) req.user = { id, role: "admin", adminLevel: 1, isTeacher: true, schoolPlan: "none" };
       next();
     });
     const requireAuth = (req, res, next) => req.user ? next() : res.sendStatus(401);
