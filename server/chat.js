@@ -5,15 +5,12 @@ import { db, publicUser } from "./auth.js";
 
 let chatIO;
 export async function purgeExpiredChatMessages(database = db) {
-  // created_at is stored as UTC text for legacy SQLite compatibility.
-  // Parse it explicitly before comparing so PostgreSQL never relies on the
-  // session timezone and SQLite-origin timestamp strings remain valid.
+  // All conversations share one rolling 24-hour retention window. created_at
+  // is stored as UTC text; cast explicitly to timestamptz for consistent cutoff.
   return database.query(
     `DELETE FROM chat_messages
-     WHERE COALESCE(
-       NULLIF(created_at, '')::timestamptz,
-       TIMESTAMPTZ 'epoch'
-     ) <= NOW() - INTERVAL '24 hours'`
+     WHERE COALESCE(NULLIF(created_at, '')::timestamptz, TIMESTAMPTZ 'epoch')
+       <= NOW() - INTERVAL '24 hours'`
   );
 }
 export function notifyDeletedChatUser(userId) {
@@ -98,13 +95,7 @@ export async function initChatDatabase() {
     `)
     .run();
 
-  // The shared learning room is a rolling 24-hour chat. Purge old rows on
-  // startup as well as before each new global message is stored.
-  await db.prepare(`
-    DELETE FROM chat_messages
-    WHERE conversation_id = 'global'
-      AND created_at <= datetime('now', '-24 hours')
-  `).run();
+
 }
 
 // ----------------------------------------------------
@@ -360,13 +351,7 @@ export function setupChat(server, app) {
         let convInfo = null;
 
         const sendTx = db.transaction(async () => {
-          if (conversationId === "global") {
-            await db.prepare(`
-              DELETE FROM chat_messages
-              WHERE conversation_id = 'global'
-                AND created_at <= datetime('now', '-24 hours')
-            `).run();
-          }
+          await purgeExpiredChatMessages();
 
           const insertStmt = db.prepare(`
             INSERT INTO chat_messages (conversation_id, sender_id, content, created_at)

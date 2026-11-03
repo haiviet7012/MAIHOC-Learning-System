@@ -1,3 +1,4 @@
+import { canAccessSchool } from './platform/school-access.js';
 // ====================================================
 // MAI HỌC Real-time Chat Frontend Module
 // Features: Global Room + 1-1 Direct Messages
@@ -351,13 +352,7 @@
     }
   });
 
-  function schoolChatAvailable() {
-    if (!document.body.hasAttribute('data-school-ui') || !currentUser) return false;
-    const isStaff = currentUser.role === 'teacher' ||
-      (currentUser.role === 'admin' && Number(currentUser.adminLevel ?? currentUser.admin_level ?? 0) >= 1);
-    const plan = currentUser.schoolPlan ?? currentUser.school_plan;
-    return isStaff || ['legacy', 'standard', 'premium'].includes(plan);
-  }
+  function schoolChatAvailable() { return document.body.hasAttribute('data-school-ui') && canAccessSchool(currentUser); }
   function syncChatSpace() {
     if (!dom.tabDirect) return;
     dom.tabDirect.hidden = false;

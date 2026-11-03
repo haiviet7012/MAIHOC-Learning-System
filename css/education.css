@@ -1958,3 +1958,34 @@ html { scrollbar-gutter: stable; }
     width: 100%;
   }
 }
+
+
+/* Prevent the Learning and School captions from drifting during transitions. */
+.education-switch {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.education-switch > button,
+.education-switch > a,
+.education-switch > [role="button"] {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 50%;
+  height: 36px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transform: none !important;
+}
