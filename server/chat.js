@@ -83,6 +83,14 @@ export async function initChatDatabase() {
       VALUES ('global', 'global', 'Phòng học tập chung', datetime('now'), datetime('now'))
     `)
     .run();
+
+  // The shared learning room is a rolling 24-hour chat. Purge old rows on
+  // startup as well as before each new global message is stored.
+  await db.prepare(`
+    DELETE FROM chat_messages
+    WHERE conversation_id = 'global'
+      AND created_at <= datetime('now', '-24 hours')
+  `).run();
 }
 
 // ----------------------------------------------------
@@ -328,6 +336,14 @@ export function setupChat(server, app) {
         let convInfo = null;
 
         const sendTx = db.transaction(async () => {
+          if (conversationId === "global") {
+            await db.prepare(`
+              DELETE FROM chat_messages
+              WHERE conversation_id = 'global'
+                AND created_at <= datetime('now', '-24 hours')
+            `).run();
+          }
+
           const insertStmt = db.prepare(`
             INSERT INTO chat_messages (conversation_id, sender_id, content, created_at)
             VALUES (?, ?, ?, datetime('now'))
@@ -486,17 +502,19 @@ export function setupChat(server, app) {
               FROM chat_messages m
               JOIN users u ON u.id = m.sender_id
               WHERE m.conversation_id = ?
+                AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
               ORDER BY m.id DESC LIMIT 1
             `)
-            .get(conv.id);
+            .get(conv.id, conv.id);
 
           const unreadRow = await db
             .prepare(`
               SELECT COUNT(id) AS unread
               FROM chat_messages
               WHERE conversation_id = ? AND id > ? AND sender_id != ?
+                AND (? != 'global' OR created_at > datetime('now', '-24 hours'))
             `)
-            .get(conv.id, conv.last_read_message_id || 0, currentUserId);
+            .get(conv.id, conv.last_read_message_id || 0, currentUserId, conv.id);
 
           let partner = null;
           if (conv.type === "direct") {
@@ -632,9 +650,10 @@ export function setupChat(server, app) {
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ? AND m.id < ?
+              AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
             ORDER BY m.id DESC LIMIT ?
           `)
-          .all(convId, beforeId, limit);
+          .all(convId, beforeId, convId, limit);
       } else {
         messages = await db
           .prepare(`
@@ -642,9 +661,10 @@ export function setupChat(server, app) {
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ?
+              AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
             ORDER BY m.id DESC LIMIT ?
           `)
-          .all(convId, limit);
+          .all(convId, convId, limit);
       }
 
       messages.reverse();
