@@ -627,7 +627,7 @@ function accountCenterPage() {
         <button class="button secondary" data-route="home">← Về trang học tập</button>
       </div>
 
-      <section class="account-section card"><h2>Quyền truy cập</h2><p>Learning: đầy đủ</p><p>School: ${escapeHTML(currentUser.isTeacher ? 'Dành cho giáo viên — miễn phí' : ({none:'Chưa có gói',legacy:'Quyền School được giữ từ tài khoản hiện có',standard:'School Standard',premium:'School Premium'}[currentUser.schoolPlan] || 'Chưa có gói'))}</p><button class="button secondary" data-route="school-plans">Xem các gói School</button></section>
+      <section class="account-section card"><h2>Quyền truy cập</h2><p>Learning: đầy đủ</p><p>School: ${escapeHTML(currentUser.isTeacher ? 'Dành cho giáo viên — miễn phí' : ({none:'Chưa có gói',legacy:'Quyền School được giữ từ tài khoản hiện có',standard:'School Standard',premium:'School Standard'}[currentUser.schoolPlan] || 'Chưa có gói'))}</p><button class="button secondary" data-route="school-plans">Xem các gói School</button></section>
       <section class="account-section card">
         <div class="account-section-head">
           <div>

@@ -196,8 +196,35 @@ try {
       );
       await page.locator("#theme-toggle").click();
     }
+    // Verify the logo and workspace switch occupy identical coordinates in both workspaces.
+    await page.goto(origin + "/school");
+    await page.locator(".school-overview-hero").waitFor();
+    const schoolHeaderGeometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const element = document.querySelector(selector);
+        const box = element.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+    });
     await page.goto(origin + "/learning");
     await page.locator("[data-personal-timetable]").waitFor();
+    const learningHeaderGeometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const element = document.querySelector(selector);
+        const box = element.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+    });
+    for (const anchorName of ["logo", "switch"]) {
+      for (const dimension of ["x", "y", "width", "height"]) {
+        assert.ok(
+          Math.abs(schoolHeaderGeometry[anchorName][dimension] - learningHeaderGeometry[anchorName][dimension]) < 0.5,
+          `${device}: ${anchorName} ${dimension} differs between Learning and School: ${JSON.stringify({ school: schoolHeaderGeometry[anchorName], learning: learningHeaderGeometry[anchorName] })}`,
+        );
+      }
+    }
     assert.equal(
       await page.locator("body").getAttribute("data-school-ui"),
       null,

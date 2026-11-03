@@ -11,7 +11,7 @@ export async function upgradeAccess(db, user, schoolId, roles = []) {
       schoolId,
     ])
   ).rows[0];
-  // Pilot enrollment is explicit: no change to existing legacy/standard/premium privileges.
+  // Pilot enrollment is explicit and does not change existing entitlements. The old premium value remains accepted only for backward compatibility.
   if (
     !access?.enabled ||
     (access.expires_at && new Date(access.expires_at) <= new Date())
