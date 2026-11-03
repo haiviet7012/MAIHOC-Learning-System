@@ -141,6 +141,13 @@ test("Billing creates student and school orders, activates one Standard subscrip
     assert.ok(new Date(renewedState.school_expires_at).getTime() >= firstExpiry + 29 * 86400000,
       "a successful renewal appends its duration after the current expiry");
 
+    const unauthorizedSchoolOrder = await post("/api/billing/orders", {
+      buyerType: "school",
+      schoolId: Number(school.id) + 9999,
+      studentIds: [studentTwoId, studentThreeId],
+    }, schoolBuyerId);
+    assert.equal(unauthorizedSchoolOrder.status, 403, "a school buyer cannot create an order for another school");
+
     const schoolOrderResponse = await post("/api/billing/orders", {
       buyerType: "school",
       schoolId: Number(school.id),

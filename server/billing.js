@@ -6,7 +6,12 @@ import { isSuperAdminUser } from "./auth.js";
 const DAY_MS = 86400000;
 const enabled = (env = process.env) => ["1", "true", "yes"].includes(String(env.SEPAY_ENABLED || "").trim().toLowerCase());
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
-const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(error => {
+  if (res.headersSent) return next(error);
+  const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 500;
+  if (status >= 500) console.error("[Billing]", error?.message || "Unexpected request failure.");
+  return res.status(status).json({ error: status >= 500 ? "Không thể xử lý yêu cầu Billing." : error.message });
+});
 const positiveInt = value => {
   const n = Number(value);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
