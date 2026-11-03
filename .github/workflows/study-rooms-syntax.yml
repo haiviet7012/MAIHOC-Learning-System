@@ -49,3 +49,7 @@ jobs:
           node --input-type=module --check < js/tests/index.js
           node --input-type=module --check < dist/js/tests/index.js
           node --input-type=module --check < study-rooms/client.js
+      - name: Check SePay webhook proxy
+        run: |
+          node --check workers/sepay-webhook-proxy/worker.js
+          npm run test:sepay-proxy
