@@ -447,7 +447,7 @@ export const magnetismSimulations = {
       ctx.fillStyle = "#ffffff";
       ctx.fillText("N", magX + L / 4 - 6, magY + 5);
 
-      ctx.strokeStyle = "#1e293b";
+      ctx.strokeStyle = renderer.borderColor;
       ctx.lineWidth = 2;
       ctx.strokeRect(magX - L / 2, magY - magH / 2, L, magH);
 
@@ -855,7 +855,7 @@ export const magnetismSimulations = {
       ctx.fillStyle = "#ef4444";
       ctx.fill();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 12px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`DÒNG ĐIỆN THẲNG I = ${I}A`, cx, cy + 145);
@@ -994,7 +994,7 @@ export const magnetismSimulations = {
         renderer.drawArrow(cx - solW / 2 + 20, y, cx + solW / 2 - 20, y, "#0284c7", 2, 8);
       }
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`TỪ TRƯỜNG ĐỀU TRONG ỐNG DÂY: B = ${B_mT.toFixed(2)} mT`, cx, cy + 85);
@@ -1751,7 +1751,7 @@ export const magnetismSimulations = {
         ctx.strokeRect(cx + 95, y, 10, 10);
       }
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 12px Montserrat";
       ctx.fillText(`U₁ = ${u1}V (N₁ = ${n1})`, cx - 110, cy + 90);
       ctx.fillText(`U₂ = ${u2.toFixed(1)}V (N₂ = ${n2})`, cx + 20, cy + 90);

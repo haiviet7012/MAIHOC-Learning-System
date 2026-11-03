@@ -317,7 +317,7 @@ export const idealGasSimulations = {
       renderer.drawDialMeter(cx - 120, cy - 60, 30, p, 50, 400, "p =", " kPa");
       renderer.drawDialMeter(cx + 120, cy - 60, 30, T, 200, 600, "T =", " K");
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`(p · V) / T = ${((p * 1000 * V * 1e-3) / T).toFixed(3)} J/K`, cx, cy + 110);
@@ -407,7 +407,7 @@ export const idealGasSimulations = {
       });
       ctx.restore();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`T = ${T} K  ⟶  v_rms = ${Math.round(v_rms)} m/s`, cx, cy + 125);
@@ -495,7 +495,7 @@ export const idealGasSimulations = {
       });
       ctx.restore();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 12px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`TỔNG SỐ LẦN VA CHẠM THÀNH BÌNH: ${this.collisionCount}`, cx, cy + 105);
