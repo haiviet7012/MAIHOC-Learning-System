@@ -854,9 +854,7 @@ function render() {
     const workspaceSwitch = document.getElementById('workspace-switch');
     if (workspaceSwitch) {
         const targetSpace = sidebarSpace === 'school' ? 'learning' : 'school';
-        const targetRoute = targetSpace === 'school'
-            ? (canAccessSchool(currentUser) ? 'organization' : 'school-plans')
-            : 'home';
+        const targetRoute = targetSpace === 'school' ? 'organization' : 'home';
         const targetLabel = targetSpace === 'school' ? 'School' : 'Learning';
         workspaceSwitch.dataset.workspaceTarget = targetSpace;
         workspaceSwitch.dataset.route = targetRoute;
@@ -1835,6 +1833,7 @@ async function syncAuthFromSharedCookie() {
                     ? (currentUser && canAccessSchool(currentUser) ? "organization" : "school-plans")
                     : "home";
                 history.replaceState(saveRouteHistory(), "", routeUrl(state));
+                await refreshTestsQueue();
                 view.hidden = false;
                 render();
                 window.dispatchEvent(new Event("maihoc-auth-changed"));
