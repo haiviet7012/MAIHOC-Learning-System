@@ -83,7 +83,7 @@ export const nuclearSimulations = {
 
       ctx.restore();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`HẠT NHÂN: Số khối A = ${z + n} (${z} Proton, ${n} Neutron)`, cx, cy + 95);
@@ -151,7 +151,7 @@ export const nuclearSimulations = {
       ctx.arc(cx + 70, cy - 25, 22, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`ĐỘ HỤT KHỐI: Δm = ${res.deltaM_u.toFixed(4)} u`, cx, cy + 95);
@@ -227,7 +227,7 @@ export const nuclearSimulations = {
         ctx.fill();
         ctx.fillText("Mảnh Y", cx + 60, cy + 38);
 
-        ctx.fillStyle = "#1e293b";
+        ctx.fillStyle = renderer.textColor;
         ctx.font = "bold 13px Montserrat";
         ctx.fillText("PHẢN ỨNG PHÂN HẠCH TỎA NĂNG LƯỢNG ~200 MeV / 1 PHÂN HẠCH", cx, cy + 105);
       } else {
@@ -264,7 +264,7 @@ export const nuclearSimulations = {
         ctx.fill();
         ctx.fillText("n", cx + 110, cy + 33);
 
-        ctx.fillStyle = "#1e293b";
+        ctx.fillStyle = renderer.textColor;
         ctx.font = "bold 13px Montserrat";
         ctx.fillText("PHẢN ỨNG NHIỆT HẠCH TỎA NĂNG LƯỢNG 17.6 MeV", cx, cy + 105);
       }
@@ -318,11 +318,11 @@ export const nuclearSimulations = {
       if (shield > 0) {
         ctx.fillStyle = shield === 1 ? "#fef08a" : shield === 2 ? "#cbd5e1" : "#475569";
         ctx.fillRect(cx - 20, cy - 70, 16, 140);
-        ctx.strokeStyle = "#1e293b";
+        ctx.strokeStyle = renderer.borderColor;
         ctx.lineWidth = 2;
         ctx.strokeRect(cx - 20, cy - 70, 16, 140);
 
-        ctx.fillStyle = "#1e293b";
+        ctx.fillStyle = renderer.textColor;
         ctx.font = "bold 11px Montserrat";
         ctx.fillText(shield === 1 ? "TẤM GIẤY" : shield === 2 ? "LÁ NHÔM" : "TẤM CHÌ", cx - 35, cy - 80);
       }
@@ -423,7 +423,7 @@ export const nuclearSimulations = {
       const startX = cx - (gridSize * 15) / 2;
       const startY = cy - (gridSize * 15) / 2 - 10;
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`MA TRẬN HẠT NHÂN PHÓNG XẠ (${this.nuclei.length} HẠT)`, cx, startY - 14);

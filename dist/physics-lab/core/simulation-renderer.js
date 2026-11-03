@@ -12,6 +12,19 @@ export class SimulationRenderer {
     this.height = 0;
   }
 
+  get isDark() {
+    if (typeof document === "undefined") return false;
+    return document.documentElement.classList.contains("dark");
+  }
+
+  get textColor() {
+    return this.isDark ? "#ffffff" : "#0f172a";
+  }
+
+  get borderColor() {
+    return this.isDark ? "#cbd5e1" : "#1e293b";
+  }
+
   resize() {
     const parent = this.canvas.parentElement;
     if (!parent) return;
