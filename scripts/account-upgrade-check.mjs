@@ -12,8 +12,26 @@ const preview=spawn(process.execPath,['--import',provider.pathname,'scripts/dev-
 let browser;
 try{
  await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(Error('timeout')),60000);preview.stdout.on('data',b=>{out+=b;if(out.includes('isolated preview ready')){clearTimeout(t);resolve()}});preview.stderr.on('data',b=>process.stderr.write(b));preview.on('exit',c=>reject(Error('preview exit '+c)));});
- browser=await chromium.launch({headless:true,args:['--no-sandbox']});const context=await browser.newContext({viewport:{width:1440,height:1050}}),page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/,r=>r.abort());
- await page.goto(origin+'/learning');await page.locator('[data-space=school]').click();await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).waitFor();assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
+ browser=await chromium.launch({headless:true,args:['--no-sandbox']});const context=await browser.newContext({viewport:{width:1440,height:1050}}),learningPage=await context.newPage();let page=learningPage;const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/,r=>r.abort());
+ await page.goto(origin+'/learning');
+ assert.equal(new URL(learningPage.url()).pathname,'/learning');
+ const [schoolPage]=await Promise.all([
+  context.waitForEvent('page'),
+  learningPage.locator('[data-space=school]').click(),
+ ]);
+ await schoolPage.waitForLoadState('domcontentloaded');
+ page=schoolPage;
+ await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).waitFor();
+ await learningPage.waitForFunction(()=>window.name==='maihoc-learning');
+ await page.waitForFunction(()=>window.name==='maihoc-school');
+ const learningUrlBeforeReturn=learningPage.url();
+ const schoolUrlBeforeReturn=page.url();
+ await page.locator('[data-space=learning]').click();
+ assert.equal(learningPage.url(),learningUrlBeforeReturn,'Returning to Learning must retain its current URL');
+ assert.equal(page.url(),schoolUrlBeforeReturn,'Returning to Learning must not navigate the School tab');
+ assert.equal(context.pages().length,2,'Switching back must reuse the existing Learning tab');
+ assert.equal(await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).isVisible(),true);
+ assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
  await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
  await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
  await page.locator('#register-form [name=email]').fill('verified@school.edu.vn.evil.com');
@@ -42,3 +60,49 @@ try{
  await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
  assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email confirmed by link before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked; unverified mailbox cannot register.');
 }finally{await browser?.close();preview.kill('SIGTERM');}
+
+
+// Workspace tab behavior: preserve named targets, popup-blocked behavior and
+// same-origin/cross-origin safety without resetting existing routes.
+import { registerSpaceTab, openSpaceTab } from '../js/platform/space-tabs.js';
+const calls = [];
+const makeHost = (target = {}) => ({
+  name: '',
+  location: { origin: 'https://maihoc.test' },
+  open: (...args) => { calls.push(args); return target; },
+});
+const existing = {
+  location: {
+    href: 'https://maihoc.test/school/classes/10A1',
+    replace() { throw new Error('existing workspace must not navigate'); },
+  },
+  focus() { this.focused = true; },
+};
+const host = makeHost(existing);
+assert.equal(registerSpaceTab('school', host), true);
+assert.equal(host.name, 'maihoc-school');
+assert.equal(openSpaceTab('learning', host), true);
+assert.deepEqual(calls.at(-1), ['','maihoc-learning']);
+assert.equal(existing.location.href, 'https://maihoc.test/school/classes/10A1',
+  'existing target URL is preserved');
+assert.equal(existing.focused, true);
+
+const blank = {
+  location: { href: 'about:blank', replace(url) { this.replacedWith = url; } },
+  focus() { this.focused = true; },
+};
+assert.equal(openSpaceTab('school', makeHost(blank)), true);
+assert.deepEqual(blank.location.replacedWith, '/school',
+  'new named target is sent to the School entry route');
+
+assert.equal(openSpaceTab('unknown', host), false);
+assert.equal(registerSpaceTab('unknown', host), false);
+assert.equal(openSpaceTab('school', makeHost(null)), false, 'blocked popup is reported');
+
+const crossOriginTarget = {
+  get location() { throw new Error('cross-origin access'); },
+  focus() { this.focused = true; },
+};
+assert.equal(openSpaceTab('school', makeHost(crossOriginTarget)), true,
+  'an isolated existing target is reused without a location write');
+assert.equal(crossOriginTarget.focused, true);

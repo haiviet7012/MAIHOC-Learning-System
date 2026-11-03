@@ -1,3 +1,4 @@
+import { registerSpaceTab, openSpaceTab } from './platform/space-tabs.js';
 import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js';
 import { schoolPlansMarkup, wireAccountUpgrade } from './account-upgrade.js';
 import { mountSchoolAnnouncements } from './school-announcements.js';
@@ -838,6 +839,7 @@ function render() {
     const schoolAssessment = (['exam','result'].includes(state.route) && findDoc(state.examDocId)?.category === 'test') || (state.route === 'saved-result' && state.savedExamResult?.category === 'test');
     const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts || schoolAssessment ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
+    registerSpaceTab(sidebarSpace);
     document.body.toggleAttribute('data-school-ui', sidebarSpace === 'school');
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
     document.querySelectorAll('[data-space]').forEach(button => { button.hidden = false; const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
@@ -1317,6 +1319,14 @@ document.addEventListener("click", async (e) => {
     const routeBtn = e.target.closest("[data-route]");
     if (routeBtn) {
         e.preventDefault();
+        // The workspace switch is intentionally handled before normal routing:
+        // each workspace keeps its own tab, URL and in-memory page state.
+        const targetSpace = routeBtn.dataset.space;
+        const currentSpace = document.body.hasAttribute('data-school-ui') ? 'school' : 'learning';
+        if (targetSpace && targetSpace !== currentSpace) {
+            if (!openSpaceTab(targetSpace)) toast('Trình duyệt đã chặn tab mới. Hãy cho phép cửa sổ bật lên cho MAIHOC.');
+            return;
+        }
         const r = routeBtn.dataset.route;
         const chemTab = routeBtn.dataset.chemistryTab;
         if (r === "ai-solver") {
