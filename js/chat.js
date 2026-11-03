@@ -16,6 +16,12 @@
 
   // DOM Elements cache
   let dom = {};
+  setInterval(() => {
+    document.querySelectorAll('.chat-message-group[data-expires-at]').forEach(node => {
+      if (Number(node.dataset.expiresAt) <= Date.now()) node.remove();
+    });
+    if (currentUser && isWindowOpen) loadConversations();
+  }, 30000);
 
   // Safe element creator helper
   function el(tag, className = "", text = "") {
@@ -345,7 +351,21 @@
     }
   });
 
+  function schoolChatAvailable() {
+    if (!document.body.hasAttribute('data-school-ui') || !currentUser) return false;
+    const isStaff = currentUser.role === 'teacher' ||
+      (currentUser.role === 'admin' && Number(currentUser.adminLevel ?? currentUser.admin_level ?? 0) >= 1);
+    const plan = currentUser.schoolPlan ?? currentUser.school_plan;
+    return isStaff || ['legacy', 'standard', 'premium'].includes(plan);
+  }
+  function syncChatSpace() {
+    if (!dom.tabDirect) return;
+    dom.tabDirect.hidden = false;
+    if (!schoolChatAvailable()) switchTab('global');
+  }
+  window.addEventListener('maihoc-route-changed', syncChatSpace);
   function switchTab(tab) {
+    if (tab === 'direct' && !schoolChatAvailable()) { window.location.assign('/school/plans'); return; }
     activeTab = tab;
     dom.tabGlobal.classList.toggle("active", tab === "global");
     dom.tabDirect.classList.toggle("active", tab === "direct");
@@ -414,10 +434,13 @@
   // Messages Rendering
   // ----------------------------------------------------
   function renderMessageItem(msg, container) {
+    const created = Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(msg.createdAt) ? msg.createdAt : msg.createdAt.replace(' ', 'T') + 'Z');
+    if (created <= Date.now() - 86400000) return;
     const isMine = currentUser && Number(msg.senderId) === Number(currentUser.id);
 
     const group = el("div", `chat-message-group ${isMine ? "mine" : "other"}`);
     group.dataset.messageId = msg.id;
+    group.dataset.expiresAt = created + 86400000;
 
     if (!isMine) {
       const senderEl = el("div", "chat-message-sender", msg.senderName || "Học sinh");
@@ -889,11 +912,13 @@
   document.addEventListener("DOMContentLoaded", () => {
     buildWidget();
     checkAuthAndInit();
+    syncChatSpace();
   });
 
   // Re-check auth whenever user logs in or out in MAI HỌC
   window.addEventListener("maihoc-auth-changed", () => {
     checkAuthAndInit();
+    syncChatSpace();
   });
 })();
 

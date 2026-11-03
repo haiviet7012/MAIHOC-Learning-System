@@ -1,3 +1,4 @@
+import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js';
 import { schoolPlansMarkup, wireAccountUpgrade } from './account-upgrade.js';
 import { mountSchoolAnnouncements } from './school-announcements.js';
 import { canAccessSchool, schoolRoutes } from './platform/school-access.js';
@@ -38,6 +39,17 @@ const state = { route: standaloneStudentProgress ? "student-progress" : "home", 
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
 let authResolved = false;
+const AUTH_SYNC_STORAGE_KEY = "maihoc:auth-session-change";
+let authSyncChannel = null;
+let authSyncRequest = null;
+let lastAuthFocusSync = 0;
+try {
+    if (typeof BroadcastChannel !== "undefined") {
+        authSyncChannel = new BroadcastChannel("maihoc-auth-session");
+    }
+} catch {
+    authSyncChannel = null;
+}
 let activeActivityCleanup = null;
 let activePortalCleanup = null;
 let activeTestDraft = null;
@@ -170,6 +182,22 @@ function go(route, params = {}) {
     }
     if (route === "exam" || route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
 }
+
+function goWorkspaceWithTransition(route, params = {}) {
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    go(route, params);
+    if (reducedMotion || typeof view.animate !== "function") return;
+
+    view.classList.remove("workspace-transition-enter");
+    void view.offsetWidth;
+    view.classList.add("workspace-transition-enter");
+}
+
+view.addEventListener("animationend", event => {
+    if (event.target === view && event.animationName === "maihoc-workspace-enter") {
+        view.classList.remove("workspace-transition-enter");
+    }
+});
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
 history.replaceState(saveRouteHistory(), "", window.location.href);
 // Khôi phục trang khi nhấn Back hoặc Forward.
@@ -625,7 +653,7 @@ function accountCenterPage() {
         <button class="button secondary" data-route="home">← Về trang học tập</button>
       </div>
 
-      <section class="account-section card"><h2>Quyền truy cập</h2><p>Learning: đầy đủ</p><p>School: ${escapeHTML(currentUser.isTeacher ? 'Dành cho giáo viên — miễn phí' : ({none:'Chưa có gói',legacy:'Quyền School được giữ từ tài khoản hiện có',standard:'School Standard',premium:'School Premium'}[currentUser.schoolPlan] || 'Chưa có gói'))}</p><button class="button secondary" data-route="school-plans">Xem các gói School</button></section>
+      <section class="account-section card"><h2>Quyền truy cập</h2><p>Learning: đầy đủ</p><p>School: ${escapeHTML(currentUser.isTeacher ? 'Dành cho giáo viên — miễn phí' : ({none:'Chưa có gói',legacy:'Quyền School được giữ từ tài khoản hiện có',standard:'School Standard',premium:'School Standard'}[currentUser.schoolPlan] || 'Chưa có gói'))}</p><button class="button secondary" data-route="school-plans">Xem các gói School</button></section>
       <section class="account-section card">
         <div class="account-section-head">
           <div>
@@ -823,7 +851,11 @@ function render() {
         return;
     }
     const schoolIelts = state.subject === 'IELTS' && ['subject','theory','practice','exam-select','exam','reader','grade-picker','theory-list','practice-list','exam-list'].includes(state.route);
-    if ((schoolRoutes.has(state.route) || schoolIelts) && !canAccessSchool(currentUser)) state.route = 'school-plans';
+    if ((schoolRoutes.has(state.route) || schoolIelts) && !canAccessSchool(currentUser)) {
+        const needsUpgradeRedirect = state.route !== 'school-plans';
+        state.route = 'school-plans';
+        if (needsUpgradeRedirect) history.replaceState(saveRouteHistory(), "", routeUrl(state));
+    }
     disposeTeachingAdvisor?.(); disposeTeachingAdvisor = null;
 
     if (state.route === "account-center" && Number(currentUser?.adminLevel) >= 2) {
@@ -834,10 +866,24 @@ function render() {
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
-    const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
+    const schoolAssessment = (['exam','result'].includes(state.route) && findDoc(state.examDocId)?.category === 'test') || (state.route === 'saved-result' && state.savedExamResult?.category === 'test');
+    const sidebarSpace = schoolRoutes.has(state.route) || schoolIelts || schoolAssessment ? 'school' : state.route === 'account-center' ? (sessionStorage.getItem('maihoc-sidebar-space') || 'learning') : 'learning';
     sessionStorage.setItem('maihoc-sidebar-space', sidebarSpace);
+    document.body.toggleAttribute('data-school-ui', sidebarSpace === 'school');
     document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== sidebarSpace; });
-    document.querySelectorAll('[data-space]').forEach(button => { button.hidden = false; const active = button.dataset.space === sidebarSpace; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+    const workspaceSwitch = document.getElementById('workspace-switch');
+    if (workspaceSwitch) {
+        const targetSpace = sidebarSpace === 'school' ? 'learning' : 'school';
+        const targetRoute = targetSpace === 'school'
+            ? (authResolved && !canAccessSchool(currentUser) ? 'school-plans' : 'organization')
+            : 'home';
+        const targetLabel = targetSpace === 'school' ? 'School' : 'Learning';
+        workspaceSwitch.dataset.workspaceTarget = targetSpace;
+        workspaceSwitch.dataset.route = targetRoute;
+        workspaceSwitch.textContent = targetLabel;
+        workspaceSwitch.setAttribute('aria-label', `Chuyển sang ${targetLabel}`);
+        workspaceSwitch.title = `Chuyển sang ${targetLabel}`;
+    }
     document.getElementById('education-sidebar')?.classList.remove('is-open');
     document.getElementById('education-menu')?.setAttribute('aria-expanded','false');
     const title=document.querySelector('.education-top-title'); if(title)title.textContent=sidebarSpace === 'school' ? 'MAIHOC School' : 'MAIHOC Learning';
@@ -861,7 +907,7 @@ function render() {
     view.classList.toggle("exam-workspace", state.route === "exam");
     view.classList.toggle("chemistry-workspace", state.route === "chemistry");
     view.classList.toggle("physics-workspace", state.route === "physics-formulas");
-    view.classList.toggle("universal-ai-workspace", state.route === "ai-solver");
+    view.classList.toggle("universal-ai-workspace", ["ai-solver", "school-tutor"].includes(state.route));
     const examCategory = findDoc(state.examDocId)?.category;
     const fullscreenExam = state.route === "exam" && ["exam", "test"].includes(examCategory);
     view.classList.toggle("exam-fullscreen", fullscreenExam);
@@ -869,6 +915,7 @@ function render() {
     document.body.classList.toggle("practice-open", state.route === "exam" && !fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === 'school-plans') view.innerHTML = schoolPlansMarkup();
+    else if (upgradeRoutes.has(state.route)) activePortalCleanup = mountSchoolUpgrade(view, state.route, currentUser, go);
     else if (state.route === 'school-advisor') activePortalCleanup = mountLearningAdvisor(view, { teaching: Boolean(currentUser?.isTeacher), inline: true });
     else if (state.route === 'school-ielts') { state.subject='IELTS'; view.innerHTML=subjectPage(); }
     else if (state.route === "home") {
@@ -901,9 +948,9 @@ function render() {
             onNavigate: (r, p) => go(r, p)
         });
     }
-    else if (state.route === "ai-solver") {
+    else if (["ai-solver", "school-tutor"].includes(state.route)) {
         view.innerHTML = "";
-        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(r, p) });
+        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
     }
     else if (state.route === "subject")
         view.innerHTML = subjectPage();
@@ -1315,6 +1362,11 @@ document.addEventListener("click", async (e) => {
         e.preventDefault();
         const r = routeBtn.dataset.route;
         const chemTab = routeBtn.dataset.chemistryTab;
+        if (routeBtn.id === "workspace-switch") {
+            $("#subject-menu")?.classList.remove("open");
+            goWorkspaceWithTransition(r, { newTimetable: routeBtn.hasAttribute("data-new-timetable") });
+            return;
+        }
         if (r === "ai-solver") {
             $("#subject-menu")?.classList.remove("open");
             go("ai-solver");
@@ -1735,23 +1787,115 @@ function applyAuthUI() {
                         : " · Học sinh";
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${greetingRole}` : "";
 }
-async function refreshAuthUI() {
+async function refreshAuthUI({ preserveOnError = false, deferRender = false } = {}) {
+    let loaded = false;
     try {
         const response = await fetch("/api/auth/me", { credentials: "same-origin" });
-        const data = await response.json().catch(() => ({}));
-        currentUser = response.ok ? data.user || null : null;
-    }
-    catch {
+        if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            currentUser = data.user || null;
+            loaded = true;
+        }
+    } catch {}
+    if (!loaded) {
+        if (preserveOnError) return currentUser;
         currentUser = null;
     }
     authResolved = true;
     applyAuthUI();
     const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     window.maihocCurrentUser = currentUser;
-    await refreshTestsQueue();
-    resumePendingTest();
-    if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
+    if (!deferRender) {
+        await refreshTestsQueue();
+        resumePendingTest();
+        if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
+    }
+    return currentUser;
 }
+
+function authIdentity(user) {
+    if (!user) return "anonymous";
+    return [
+        user.id,
+        user.role,
+        user.adminLevel ?? user.admin_level ?? 0,
+        user.schoolPlan ?? user.school_plan ?? "none",
+        user.accountType ?? user.account_type ?? "external"
+    ].join(":");
+}
+
+function announceAuthSessionChange() {
+    const message = { type: "session-changed", at: Date.now() };
+    if (authSyncChannel) {
+        try { authSyncChannel.postMessage(message); } catch {}
+        return;
+    }
+    try { localStorage.setItem(AUTH_SYNC_STORAGE_KEY, JSON.stringify(message)); } catch {}
+}
+
+async function syncAuthFromSharedCookie() {
+    if (authSyncRequest) return authSyncRequest;
+    authSyncRequest = (async () => {
+        const previousIdentity = authIdentity(currentUser);
+        const wasSchoolWorkspace =
+            document.body.hasAttribute("data-school-ui") ||
+            schoolRoutes.has(state.route) ||
+            state.route === "school-plans";
+
+        // Hide the old account's page while the shared cookie is being checked.
+        view.hidden = true;
+        try {
+            await refreshAuthUI({ preserveOnError: true, deferRender: true });
+            if (authIdentity(currentUser) !== previousIdentity) {
+                stopTimerIfLeaving("home");
+                activeTestDraft = null;
+                state.answers = {};
+                state.gradeResult = null;
+                state.savedExamResult = null;
+                state.examStarted = false;
+                state.pendingTestId = null;
+                state.assignmentId = null;
+                state.targetSchoolId = null;
+                state.route = wasSchoolWorkspace
+                    ? (currentUser && canAccessSchool(currentUser) ? "organization" : "school-plans")
+                    : "home";
+                history.replaceState(saveRouteHistory(), "", routeUrl(state));
+                await refreshTestsQueue();
+                view.hidden = false;
+                render();
+                window.dispatchEvent(new Event("maihoc-auth-changed"));
+            } else {
+                view.hidden = false;
+            }
+        } catch (error) {
+            view.hidden = false;
+            throw error;
+        }
+    })().finally(() => {
+        authSyncRequest = null;
+    });
+    return authSyncRequest;
+}
+
+if (authSyncChannel) {
+    authSyncChannel.addEventListener("message", event => {
+        if (event.data?.type === "session-changed") void syncAuthFromSharedCookie();
+    });
+} else {
+    window.addEventListener("storage", event => {
+        if (event.key === AUTH_SYNC_STORAGE_KEY) void syncAuthFromSharedCookie();
+    });
+}
+window.addEventListener("focus", () => {
+    if (document.visibilityState === "hidden" || Date.now() - lastAuthFocusSync < 800) return;
+    lastAuthFocusSync = Date.now();
+    void syncAuthFromSharedCookie();
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || Date.now() - lastAuthFocusSync < 800) return;
+    lastAuthFocusSync = Date.now();
+    void syncAuthFromSharedCookie();
+});
 async function postJson(url, body) {
     const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
@@ -1765,6 +1909,7 @@ $("#switch-to-register").addEventListener("click", () => { closeDialog("login-di
 $("#switch-to-login").addEventListener("click", () => { closeDialog("register-dialog"); openDialog("login-dialog"); });
 $("#login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const loginWorkspace = document.body.hasAttribute("data-school-ui") ? "school" : "learning";
     const emailDestination = (state.route === 'school-announcements' || (state.route === 'tests' && state.pendingTestId) || (state.route === 'assignments' && state.assignmentId))
         ? { route: state.route, announcementId: state.announcementId, pendingTestId: state.pendingTestId, assignmentId: state.assignmentId, targetSchoolId: state.targetSchoolId } : null;
     const form = event.currentTarget;
@@ -1779,10 +1924,12 @@ $("#login-form").addEventListener("submit", async (event) => {
         currentUser = result.user;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
+        announceAuthSessionChange();
         closeDialog("login-dialog");
         form.reset();
         toast("Đăng nhập thành công.", "success");
         if (emailDestination && canAccessSchool(currentUser)) go(emailDestination.route, emailDestination);
+        else if (loginWorkspace === "school") go(canAccessSchool(currentUser) ? "organization" : "school-plans");
         else go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
     }
     catch (err) {
@@ -1814,6 +1961,7 @@ $("#register-form").addEventListener("submit", async (event) => {
         currentUser = result.user;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
+        announceAuthSessionChange();
         closeDialog("register-dialog");
         form.reset();
         toast("Tạo tài khoản thành công.", "success");
@@ -1838,6 +1986,7 @@ $("#logout-button").addEventListener("click", async () => {
         currentUser = null;
         applyAuthUI();
         window.dispatchEvent(new Event("maihoc-auth-changed"));
+        announceAuthSessionChange();
         go("home");
         toast("Bạn đã đăng xuất.", "success");
     }

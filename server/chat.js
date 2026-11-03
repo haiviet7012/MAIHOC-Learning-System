@@ -1,8 +1,21 @@
+import { canAccessSchool } from '../js/platform/school-access.js';
 import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
 import { db, publicUser } from "./auth.js";
 
 let chatIO;
+export async function purgeExpiredChatMessages(database = db) {
+  // created_at is stored as UTC text for legacy SQLite compatibility.
+  // Parse it explicitly before comparing so PostgreSQL never relies on the
+  // session timezone and SQLite-origin timestamp strings remain valid.
+  return database.query(
+    `DELETE FROM chat_messages
+     WHERE COALESCE(
+       NULLIF(created_at, '')::timestamptz,
+       TIMESTAMPTZ 'epoch'
+     ) <= NOW() - INTERVAL '24 hours'`
+  );
+}
 export function notifyDeletedChatUser(userId) {
   chatIO?.emit("chat:account-deleted", { userId: Number(userId) });
   chatIO?.in(`user_${userId}`).disconnectSockets(true);
@@ -64,6 +77,8 @@ export async function initChatDatabase() {
     CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
   `);
 
+  await purgeExpiredChatMessages();
+
   // Remove direct threads whose other account was already deleted.
   await db.query(`DELETE FROM chat_conversations c WHERE c.type='direct' AND
     (SELECT count(*) FROM chat_participants p JOIN users u ON u.id=p.user_id WHERE p.conversation_id=c.id)<2`);
@@ -82,6 +97,14 @@ export async function initChatDatabase() {
       VALUES ('global', 'global', 'Phòng học tập chung', datetime('now'), datetime('now'))
     `)
     .run();
+
+  // The shared learning room is a rolling 24-hour chat. Purge old rows on
+  // startup as well as before each new global message is stored.
+  await db.prepare(`
+    DELETE FROM chat_messages
+    WHERE conversation_id = 'global'
+      AND created_at <= datetime('now', '-24 hours')
+  `).run();
 }
 
 // ----------------------------------------------------
@@ -103,6 +126,9 @@ export function getDirectConversationId(userId1, userId2) {
  * Ensures a direct conversation between userA and userB exists in DB.
  */
 export async function getOrCreateDirectConversation(userAId, userBId) {
+  const sender = await db.prepare('SELECT * FROM users WHERE id=?').get(userAId);
+  const recipient = await db.prepare('SELECT * FROM users WHERE id=?').get(userBId);
+  if (!canAccessSchool(sender) || !canAccessSchool(recipient)) throw new Error('Chat riêng chỉ dành cho tài khoản School.');
   if (Number(userAId) === Number(userBId)) {
     throw new Error("Không thể nhắn tin riêng với chính mình.");
   }
@@ -149,6 +175,8 @@ export async function isParticipant(conversationId, userId) {
       .run(userId);
     return true;
   }
+  const user = await db.prepare('SELECT * FROM users WHERE id=?').get(userId);
+  if (!canAccessSchool(user)) return false;
   const row = await db
     .prepare(`
       SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?
@@ -169,6 +197,16 @@ export function setupChat(server, app) {
     },
     pingTimeout: 30000,
     pingInterval: 25000
+  });
+
+  const retentionTimer = setInterval(() => {
+    purgeExpiredChatMessages().catch(error => console.error('Chat retention cleanup failed:', error.message));
+  }, 60000);
+  retentionTimer.unref();
+  server.once('close', () => clearInterval(retentionTimer));
+  app.use('/api/chat', async (_req, res, next) => {
+    try { await purgeExpiredChatMessages(); next(); }
+    catch { res.status(503).json({ error: 'Không thể tải lịch sử chat lúc này.' }); }
   });
 
   // Track online users: userId (number) => Set of socketId (string)
@@ -322,6 +360,14 @@ export function setupChat(server, app) {
         let convInfo = null;
 
         const sendTx = db.transaction(async () => {
+          if (conversationId === "global") {
+            await db.prepare(`
+              DELETE FROM chat_messages
+              WHERE conversation_id = 'global'
+                AND created_at <= datetime('now', '-24 hours')
+            `).run();
+          }
+
           const insertStmt = db.prepare(`
             INSERT INTO chat_messages (conversation_id, sender_id, content, created_at)
             VALUES (?, ?, ?, datetime('now'))
@@ -480,17 +526,19 @@ export function setupChat(server, app) {
               FROM chat_messages m
               JOIN users u ON u.id = m.sender_id
               WHERE m.conversation_id = ?
+                AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
               ORDER BY m.id DESC LIMIT 1
             `)
-            .get(conv.id);
+            .get(conv.id, conv.id);
 
           const unreadRow = await db
             .prepare(`
               SELECT COUNT(id) AS unread
               FROM chat_messages
               WHERE conversation_id = ? AND id > ? AND sender_id != ?
+                AND (? != 'global' OR created_at > datetime('now', '-24 hours'))
             `)
-            .get(conv.id, conv.last_read_message_id || 0, currentUserId);
+            .get(conv.id, conv.last_read_message_id || 0, currentUserId, conv.id);
 
           let partner = null;
           if (conv.type === "direct") {
@@ -532,7 +580,7 @@ export function setupChat(server, app) {
         })
       );
 
-      res.json({ conversations: conversations.filter(c => c.type !== "direct" || c.partner) });
+      res.json({ conversations: conversations.filter(c => c.type !== "direct" || (canAccessSchool(req.user) && c.partner)) });
     } catch (err) {
       console.error("GET /api/chat/conversations error:", err);
       res.status(500).json({ error: "Không thể lấy danh sách cuộc trò chuyện." });
@@ -541,6 +589,7 @@ export function setupChat(server, app) {
 
   // 2. Search users for direct chat
   app.get("/api/chat/users", async (req, res) => {
+    if (!canAccessSchool(req.user)) return res.status(req.user ? 403 : 401).json({error:'Chat riêng chỉ dành cho School.'});
     if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
     const currentUserId = req.user.id;
     const query = String(req.query.q || req.query.search || "").trim();
@@ -568,7 +617,9 @@ export function setupChat(server, app) {
           .all(currentUserId);
       }
 
-      const results = users.map((u) => ({
+      const eligible = [];
+      for (const u of users) if (canAccessSchool(await db.prepare('SELECT * FROM users WHERE id=?').get(u.id))) eligible.push(u);
+      const results = eligible.map((u) => ({
         id: Number(u.id),
         name: u.name,
         isOnline: isUserOnline(u.id)
@@ -623,9 +674,10 @@ export function setupChat(server, app) {
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ? AND m.id < ?
+              AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
             ORDER BY m.id DESC LIMIT ?
           `)
-          .all(convId, beforeId, limit);
+          .all(convId, beforeId, convId, limit);
       } else {
         messages = await db
           .prepare(`
@@ -633,9 +685,10 @@ export function setupChat(server, app) {
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ?
+              AND (? != 'global' OR m.created_at > datetime('now', '-24 hours'))
             ORDER BY m.id DESC LIMIT ?
           `)
-          .all(convId, limit);
+          .all(convId, convId, limit);
       }
 
       messages.reverse();

@@ -1,3 +1,5 @@
+import { schoolOverviewMarkup } from './school-overview.js';
+import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
 import { api } from "./api.js";
@@ -80,6 +82,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   }
   const controller = new AbortController();
   let disposeAdvisor = () => {};
+  let disposeEvidence = () => {};
   let context;
   let schoolId = String(target.targetSchoolId || "");
   let activeAttempt = null;
@@ -110,6 +113,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     rows.length ? rows.map(markup).join("") : empty(text);
   async function render() {
     disposeAdvisor();
+    disposeEvidence();
     if (!user) {
       container.innerHTML =
         header(
@@ -172,7 +176,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     }
     if (route === "organization") {
       const data = await request(schoolUrl("/overview"));
-      content.innerHTML = `<div class="portal-stats"><article class="portal-stat yellow"><span>Lớp học</span><strong>${data.classes.length}</strong></article><article class="portal-stat lavender"><span>Năm học</span><strong>${data.years.length}</strong></article><article class="portal-stat blue"><span>Thành viên</span><strong>${data.memberCount == null ? "—" : data.memberCount}</strong></article></div><div class="portal-form-grid"><section class="portal-panel"><h2>Lớp và năm học</h2>${list(data.classes, (c) => `<div class="portal-record"><div><strong>${e(c.name)}</strong><p>${e(c.year_code)} · Khối ${e(c.grade_level)}</p></div><small>${e(c.class_code)}</small></div>`)}</section>${school.role === "school_admin" || user.isSuperAdmin ? form("class", "Thêm lớp học", select("academicYearId", "Năm học", data.years) + input("classCode", "Mã lớp") + input("name", "Tên lớp") + input("gradeLevel", "Khối lớp", "number")) : ""}</div>${school.role === "school_admin" || user.isSuperAdmin ? `<div class="portal-form-grid">${form("year", "Thêm năm học", input("code", "Năm học") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("term", "Thêm học kỳ", select("academicYearId", "Năm học", data.years) + input("name", "Tên học kỳ") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("course", "Môn học trong học kỳ", select("classId", "Lớp", data.classes) + select("termId", "Học kỳ", data.terms) + input("subject", "Môn học"))}${form("member", "Thêm thành viên đã có tài khoản", input("email", "Email", "email") + `<label>Vai trò<select name="role"><option value="student">Học sinh</option><option value="teacher">Giáo viên</option><option value="school_admin">Quản trị trường</option></select></label>`)}${form("enrollment", "Xếp hoặc chuyển lớp", input("email", "Email học sinh", "email") + select("classId", "Lớp", data.classes) + input("reason", "Lý do"))}${form("teacher", "Phân công giáo viên", input("email", "Email giáo viên", "email") + select("classId", "Lớp", data.classes) + input("subject", "Môn học") + `<label>Phân công<select name="kind"><option value="subject">Bộ môn</option><option value="homeroom">Chủ nhiệm</option></select></label>`)}</div>${form("import", "Nhập danh sách học sinh", select("classId", "Lớp", data.classes) + '<label>Danh sách email đã có tài khoản<textarea name="emails" required placeholder="Mỗi dòng một email, tối đa 200 dòng"></textarea></label><p class="muted">Hệ thống kiểm tra toàn bộ danh sách trước khi ghi dữ liệu.</p>', "Kiểm tra và nhập")}` : ""}`;
+      content.innerHTML = schoolOverviewMarkup(user, school, data, staff) + `<div class="portal-form-grid"><section class="portal-panel"><h2>Lớp và năm học</h2>${list(data.classes, (c) => `<div class="portal-record"><div><strong>${e(c.name)}</strong><p>${e(c.year_code)} · Khối ${e(c.grade_level)}</p></div><small>${e(c.class_code)}</small></div>`)}</section>${school.role === "school_admin" || user.isSuperAdmin ? form("class", "Thêm lớp học", select("academicYearId", "Năm học", data.years) + input("classCode", "Mã lớp") + input("name", "Tên lớp") + input("gradeLevel", "Khối lớp", "number")) : ""}</div>${school.role === "school_admin" || user.isSuperAdmin ? `<div class="portal-form-grid">${form("year", "Thêm năm học", input("code", "Năm học") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("term", "Thêm học kỳ", select("academicYearId", "Năm học", data.years) + input("name", "Tên học kỳ") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("course", "Môn học trong học kỳ", select("classId", "Lớp", data.classes) + select("termId", "Học kỳ", data.terms) + input("subject", "Môn học"))}${form("member", "Thêm thành viên đã có tài khoản", input("email", "Email", "email") + `<label>Vai trò<select name="role"><option value="student">Học sinh</option><option value="teacher">Giáo viên</option><option value="school_admin">Quản trị trường</option></select></label>`)}${form("enrollment", "Xếp hoặc chuyển lớp", input("email", "Email học sinh", "email") + select("classId", "Lớp", data.classes) + input("reason", "Lý do"))}${form("teacher", "Phân công giáo viên", input("email", "Email giáo viên", "email") + select("classId", "Lớp", data.classes) + input("subject", "Môn học") + `<label>Phân công<select name="kind"><option value="subject">Bộ môn</option><option value="homeroom">Chủ nhiệm</option></select></label>`)}</div>${form("import", "Nhập danh sách học sinh", select("classId", "Lớp", data.classes) + '<label>Danh sách email đã có tài khoản<textarea name="emails" required placeholder="Mỗi dòng một email, tối đa 200 dòng"></textarea></label><p class="muted">Hệ thống kiểm tra toàn bộ danh sách trước khi ghi dữ liệu.</p>', "Kiểm tra và nhập")}` : ""}`;
     } else if (route === "question-bank") {
       const [data, taxonomy] = await Promise.all([
         request(schoolUrl("/questions")),
@@ -214,6 +218,9 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     } else {
       const data = await request(schoolUrl("/analytics"));
       content.innerHTML = `<section class="portal-panel"><h2>${staff ? "Kết quả trong phạm vi phụ trách" : "Nhìn lại hành trình học tập"}</h2><p class="muted">Tỷ lệ đúng được tính từ các câu đã chấm. Đây là tín hiệu luyện tập, chưa phải kết luận năng lực.</p>${list(data.topics, (t) => `<article class="portal-record"><div><strong>${e(t.name)}</strong><p>${t.observations} câu đã chấm · ${t.correct} câu đúng</p><p>${Number(t.observations) < 5 ? "Chưa đủ dữ liệu để nhận định." : Number(t.correct) / Number(t.observations) < 0.7 ? "Nên ôn lại chuyên đề và luyện thêm." : "Tiếp tục ôn tập để củng cố kiến thức."}</p></div><strong>${Math.round((Number(t.correct) / Math.max(1, Number(t.observations))) * 100)}%</strong>${!staff ? button("Luyện chuyên đề", `data-platform-practice="${id(t.id)}"`) : ""}</article>`, "Chưa có dữ liệu từng câu hỏi. Kết quả cũ vẫn xem được trong tài khoản và bài kiểm tra.")}<button class="button secondary" data-route="account-center">Mở lịch sử học tập hiện có</button></section>`;
+      const evidence = document.createElement('div'); content.append(evidence);
+      const overview = await request(schoolUrl('/overview'));
+      disposeEvidence = mountSchoolEvidence(evidence, { schoolId, classes: overview.classes });
       if (!staff && !user.isTeacher) {
         const advisor = document.createElement('div'); content.append(advisor);
         disposeAdvisor = mountLearningAdvisor(advisor, { scope: 'school', schoolId });
@@ -489,6 +496,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   return () => {
     controller.abort();
     disposeAdvisor();
+    disposeEvidence();
     clearInterval(saveTimer);
   };
 }

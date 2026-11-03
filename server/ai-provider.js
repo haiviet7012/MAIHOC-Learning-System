@@ -23,6 +23,13 @@ export function normalizeModel(value) {
   return model;
 }
 export function geminiConfig(scope = 'shared', env = process.env) {
+  const dedicated = scope === 'room' ? 'ROOM_AI' : scope === 'document' ? 'SCHOOL_DOCUMENT_AI' : null;
+  if (dedicated) {
+    const apiKey = configValue(env[`${dedicated}_API_KEY`]);
+    if (!apiKey) throw aiError('AI_KEY_MISSING', `Chưa cấu hình ${dedicated}_API_KEY trên backend.`);
+    if (/\s/.test(apiKey)) throw aiError('AI_KEY_FORMAT', 'API key chứa khoảng trắng.');
+    return { apiKey, keySource: `${dedicated}_API_KEY`, model: normalizeModel(env[`${dedicated}_MODEL`]), modelSource: `${dedicated}_MODEL` };
+  }
   const key = first(env, scope === 'advisor'
     ? ['LEARNING_ADVISOR_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
     : scope === 'exam' ? ['GEMINI_SOLUTION_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']

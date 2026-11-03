@@ -66,6 +66,9 @@ test('account upgrade: preserves old users, student gate, edu teacher with mailb
     assert.equal(grant.status,404,'Paid plans apply to students only');
     const newStudent=await post('/api/auth/register',{name:'Paid Student',email:'paid@gmail.com',password:'paid-password'});
     const newStudentBody=await newStudent.json(),paidCookie=newStudent.headers.get('set-cookie').split(';')[0];
+    assert.equal(canAccessSchool({role:'user',schoolPlan:'premium'}),true,'historical Premium values remain backward-compatible');
+    const removedPremium=await fetch(origin+`/api/admin/users/${newStudentBody.user.id}/school-plan`,{method:'PUT',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({plan:'premium'})});
+    assert.equal(removedPremium.status,400,'new Premium grants are no longer accepted');
     for(const [plan,status] of [['standard',200],['none',403]]){
       const response=await fetch(origin+`/api/admin/users/${newStudentBody.user.id}/school-plan`,{method:'PUT',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({plan})});
       assert.equal(response.status,200);assert.equal((await get('/api/tests',paidCookie)).status,status);

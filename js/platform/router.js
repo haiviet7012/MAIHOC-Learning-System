@@ -1,4 +1,9 @@
 const paths = {
+  "school-tutor": "/school/tutor",
+  'school-lab': '/school/lab',
+  'school-rooms': '/school/rooms',
+  'school-digitize': '/school/digitize',
+  'school-notebook': '/school/notebook',
   'school-plans': '/school/plans',
   'school-advisor': '/school/advisor',
   'school-ielts': '/school/ielts',

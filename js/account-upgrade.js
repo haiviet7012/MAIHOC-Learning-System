@@ -1,6 +1,64 @@
 import { escapeHTML as e } from './ui.js';
 export function schoolPlansMarkup() {
-  return `<section class="portal-panel"><p class="eyebrow">MAIHOC SCHOOL</p><h1>Tài khoản dành riêng cho trường học</h1><p>Learning dành cho mọi học sinh. School là phiên bản trả phí dành cho học sinh; giáo viên xác nhận quyền sử dụng email trường có đuôi .edu.vn.</p><div class="portal-form-grid">${['School Standard','School Premium'].map(name=>`<article class="portal-panel"><h2>${name}</h2><p><strong>Đang cập nhật giá</strong></p><p>Chi tiết quyền lợi đang được hoàn thiện.</p><button class="button secondary" disabled>Chưa mở đăng ký gói</button></article>`).join('')}</div></section>`;
+  return `<section class="portal-panel school-plans-page">
+    <header class="school-plans-intro">
+      <p class="eyebrow">MAIHOC SCHOOL · KHÔNG GIAN HỌC TẬP MỞ RỘNG</p>
+      <h1>Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.</h1>
+      <p>MAIHOC School kết hợp học liệu, công cụ AI và hoạt động ôn luyện trong một không gian dành cho học sinh. Khám phá những công cụ hỗ trợ bạn học tập có định hướng và quản lý việc học thuận tiện hơn.</p>
+    </header>
+    <section class="school-plans-feature-grid" aria-label="Tính năng nổi bật của MAIHOC School">
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">✦</span>
+        <h2>Gia sư AI &amp; Cố vấn học tập</h2>
+        <p>Hỗ trợ giải thích kiến thức, gợi mở cách làm và định hướng nội dung cần ôn luyện.</p>
+      </article>
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">▤</span>
+        <h2>Số hóa đề &amp; Vở học AI</h2>
+        <p>Hỗ trợ xử lý tài liệu học tập, xem lại nội dung và phát triển ghi chú ôn tập.</p>
+      </article>
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">◉</span>
+        <h2>Phòng học trực tuyến</h2>
+        <p>Không gian học nhóm để trao đổi, cùng học và chia sẻ nội dung.</p>
+      </article>
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">⚗</span>
+        <h2>Thí nghiệm mô phỏng</h2>
+        <p>Quan sát trực quan một số mô hình và hiện tượng Vật lý qua mô phỏng tương tác.</p>
+      </article>
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">✓</span>
+        <h2>Bài tập &amp; kiểm tra</h2>
+        <p>Theo dõi bài được giao, lịch kiểm tra và kết quả học tập trong cùng hệ thống.</p>
+      </article>
+      <article class="school-plans-feature">
+        <span class="school-plans-feature-icon" aria-hidden="true">◎</span>
+        <h2>IELTS &amp; học liệu School</h2>
+        <p>Truy cập không gian học và ôn luyện được tổ chức riêng cho MAIHOC School.</p>
+      </article>
+    </section>
+    <article class="school-standard-offer">
+      <div class="school-standard-offer-head">
+        <span class="school-standard-kicker">GÓI DÀNH CHO HỌC SINH</span>
+        <h2>School Standard</h2>
+        <p>Một gói duy nhất để mở khóa không gian học tập MAIHOC School và các tính năng được giới thiệu ở trên.</p>
+      </div>
+      <ul class="school-standard-includes">
+        <li>Gia sư AI và Cố vấn học tập</li>
+        <li>Số hóa đề, Vở học AI và học liệu School</li>
+        <li>Phòng học trực tuyến và thí nghiệm mô phỏng</li>
+        <li>Bài tập, kiểm tra và theo dõi kết quả</li>
+      </ul>
+      <div class="school-standard-offer-foot">
+        <div class="school-standard-price-note">
+          <strong>Giá và thời hạn đăng ký đang được hoàn thiện</strong>
+          <span>Thông tin thanh toán sẽ được công bố khi hệ thống đăng ký chính thức mở.</span>
+        </div>
+        <button class="button primary" type="button" disabled>Đăng ký School Standard · Sắp mở</button>
+      </div>
+    </article>
+  </section>`;
 }
 const request=async(path,body)=>{
   const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

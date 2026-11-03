@@ -8,6 +8,8 @@ export function canAccessSchool(user) {
 }
 
 export const schoolRoutes = new Set([
+  "school-tutor",
+  'school-lab', 'school-rooms', 'school-digitize', 'school-notebook',
   'school-plans', 'school-advisor', 'school-ielts', 'school-announcements', 'organization', 'school', 'school-class', 'student-progress', 'question-bank',
   'admin', 'assignments', 'assignment-management', 'school-analytics', 'tests', 'timetable',
 ]);

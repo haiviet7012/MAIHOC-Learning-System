@@ -329,10 +329,19 @@ export function translateSqlToPostgres(rawSql, rawArgs = [], options = {}) {
     return s;
   });
 
-  // Replace datetime('now') (which contains single quotes around 'now')
+  // SQLite permits an offset modifier in datetime('now', ...). Preserve its
+  // UTC text representation while translating the modifier to a PostgreSQL
+  // interval (for example, '-24 hours' becomes CURRENT_TIMESTAMP - INTERVAL '24 hours').
   sql = sql.replace(
-    /\bdatetime\s*\(\s*'now'\s*\)/gi,
-    "to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
+    /\bdatetime\s*\(\s*'now'\s*(?:,\s*'([+-])\s*(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)')?\s*\)/gi,
+    (_match, sign, amount, unit) => {
+      const currentTimestamp = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')";
+      if (!sign) {
+        return `to_char(${currentTimestamp}, 'YYYY-MM-DD HH24:MI:SS')`;
+      }
+      const operator = sign === "+" ? "+" : "-";
+      return `to_char(${currentTimestamp} ${operator} INTERVAL '${amount} ${unit}', 'YYYY-MM-DD HH24:MI:SS')`;
+    }
   );
 
   // Safe integer cast for grade ordering

@@ -27,7 +27,7 @@ await mkdir(directory, { recursive: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1050 },
 });
-const page = await context.newPage();
+let page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 // Third-party typography/MathJax are optional; local app and API tests remain real.
@@ -37,9 +37,18 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
 const origin = "http://127.0.0.1:4173";
 async function clickSidebar(route) {
   const space = ['assignments','assignment-management','school-analytics','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
-  if (!(await page.locator(`.education-switch [data-space="${space}"]`).getAttribute('aria-pressed') === 'true')) {
-    await page.locator(`.education-switch [data-space="${space}"]`).click();
+  const activeSpace = await page.locator('body').evaluate(body => body.hasAttribute('data-school-ui') ? 'school' : 'learning');
+  if (activeSpace !== space) {
+    const pageCount = context.pages().length;
+    await page.locator('#menu-toggle').click();
+    const switchButton = page.locator('#workspace-switch');
+    await switchButton.waitFor();
+    assert.equal((await switchButton.textContent()).trim(), space === 'school' ? 'School' : 'Learning');
+    await switchButton.click();
+    await page.waitForFunction(target => document.body.hasAttribute('data-school-ui') === (target === 'school'), space);
+    assert.equal(context.pages().length, pageCount, 'Workspace switching must stay in the current tab');
   }
+  await page.locator(`[data-sidebar-space="${space}"]`).first().waitFor({ state: 'visible' });
   assert.equal(await page.locator(`[data-sidebar-space="${space}"]`).first().isVisible(), true);
   const other = space === 'school' ? 'learning' : 'school';
   assert.equal(await page.locator(`[data-sidebar-space="${other}"]`).first().isVisible(), false);

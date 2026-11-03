@@ -9,6 +9,12 @@ import { SimulationRenderer } from "./core/simulation-renderer.js?v=20261102v4";
 import { GraphManager } from "./core/graph-manager.js?v=20261102v4";
 import { SimulationManager } from "./core/simulation-manager.js?v=20261102v4";
 
+// The School embed shares the visual system without changing standalone Learning labs.
+const schoolEmbed = new URLSearchParams(location.search).get('space') === 'school';
+if (schoolEmbed) {
+  document.body.setAttribute('data-school-ui', '');
+  document.documentElement.setAttribute('data-school-ui', '');
+}
 // DOM Elements
 const simCanvas = document.getElementById("simCanvas");
 const graphCanvas = document.getElementById("graphCanvas");
@@ -293,6 +299,18 @@ btnTheme.addEventListener("click", () => {
   localStorage.setItem(LAB_CONFIG.themeStorageKey, isDark ? "dark" : "light");
   showToast(isDark ? "Chế độ tối" : "Chế độ sáng");
   simulationManager._onEngineRender();
+<<<<<<< HEAD
+=======
+});
+
+// Sync theme changes across the host page and its same-origin School iframe.
+window.addEventListener('storage', event => {
+  if (!schoolEmbed || event.key !== LAB_CONFIG.themeStorageKey) return;
+  const dark = event.newValue === 'dark';
+  document.documentElement.classList.toggle('dark', dark);
+  document.documentElement.classList.toggle('light', !dark);
+  simulationManager._onEngineRender();
+>>>>>>> 2eda32a0f21c22367a560c96c2c52821cabeece2
 });
 
 // 13. Toàn màn hình
@@ -309,7 +327,7 @@ btnBack.addEventListener("click", () => {
   if (window.opener) {
     window.close();
   } else {
-    window.location.href = LAB_CONFIG.returnUrl;
+    window.location.href = schoolEmbed ? '/school/lab' : LAB_CONFIG.returnUrl;
   }
 });
 
