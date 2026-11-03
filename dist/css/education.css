@@ -93,6 +93,9 @@ a {
   color: var(--primary);
   padding: 0 12px;
   margin-bottom: 30px;
+  min-height: 48px;
+  height: 48px;
+  flex: 0 0 48px;
 }
 .education-logo img {
   width: 44px;
@@ -115,13 +118,24 @@ a {
 }
 .education-switch {
   display: flex;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  align-self: stretch;
+  box-sizing: border-box;
   background: #e6eaf3;
   padding: 4px;
   border-radius:0;
   margin: 0 4px 26px;
 }
 .education-switch button {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 8px;
   min-height: 36px;
   border: 0;
   border-radius:0;

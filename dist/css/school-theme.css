@@ -294,27 +294,44 @@ body[data-school-ui]
 body[data-school-ui] .education-sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: 30px 20px 22px;
+  /* Match Learning's shell geometry so workspace switching never shifts the header. */
+  padding: 28px 18px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 body[data-school-ui] .education-logo {
   color: var(--primary);
-  margin-bottom: 28px;
+  gap: 10px;
+  padding: 0 12px;
+  margin-bottom: 30px;
+  min-height: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+body[data-school-ui] .education-logo img {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
 }
 body[data-school-ui] .education-logo strong {
-  letter-spacing: -0.06em;
+  letter-spacing: -1px;
 }
 body[data-school-ui] .education-switch {
+  align-self: stretch;
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
   border-radius: 999px !important;
   background: var(--surface-2);
-  padding: 5px;
-  margin-bottom: 26px;
+  padding: 4px;
+  margin: 0 4px 26px;
 }
 body[data-school-ui] .education-switch button {
   border-radius: 999px !important;
   color: var(--muted);
   min-height: 36px;
+  padding-block: 0;
 }
 body[data-school-ui] .education-switch button.active {
   background: var(--primary);
@@ -929,7 +946,8 @@ body[data-school-ui] .sim-card {
     padding: 24px 16px 80px;
   }
   body[data-school-ui] .education-sidebar {
-    padding: 26px 18px;
+    /* Same mobile inset as Learning (education.css breakpoint <=1200px). */
+    padding: 24px 12px;
     box-shadow: 16px 0 60px #20113225;
   }
   body[data-school-ui] .school-overview-hero {
@@ -1056,5 +1074,180 @@ body[data-school-ui] .topbar .icon-button {
   }
   body[data-school-ui] .view {
     padding-bottom: 96px !important;
+  }
+}
+
+
+/* School plans: one clear Standard offer with a compact feature showcase. */
+body[data-school-ui] .school-plans-page {
+  display: grid;
+  gap: 24px;
+  max-width: 1080px;
+  margin-inline: auto;
+  padding: clamp(18px, 3vw, 32px);
+}
+body[data-school-ui] .school-plans-intro {
+  max-width: 760px;
+}
+body[data-school-ui] .school-plans-intro .eyebrow {
+  color: var(--primary);
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+body[data-school-ui] .school-plans-intro h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.16;
+  letter-spacing: -.045em;
+}
+body[data-school-ui] .school-plans-intro p:last-child {
+  max-width: 720px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.75;
+}
+body[data-school-ui] .school-plans-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+body[data-school-ui] .school-plans-feature {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+}
+body[data-school-ui] .school-plans-feature-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  border-radius: 13px;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 800;
+}
+body[data-school-ui] .school-plans-feature h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+body[data-school-ui] .school-plans-feature p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+body[data-school-ui] .school-standard-offer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, .9fr);
+  gap: 22px 28px;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--surface), var(--surface-2));
+  box-shadow: var(--shadow);
+}
+body[data-school-ui] .school-standard-offer-head {
+  min-width: 0;
+}
+body[data-school-ui] .school-standard-kicker {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+body[data-school-ui] .school-standard-offer h2 {
+  margin: 10px 0 6px;
+  font-size: clamp(25px, 3vw, 34px);
+  letter-spacing: -.04em;
+}
+body[data-school-ui] .school-standard-offer-head p {
+  margin: 0;
+  line-height: 1.7;
+}
+body[data-school-ui] .school-standard-includes {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+body[data-school-ui] .school-standard-includes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  line-height: 1.5;
+  font-size: 13px;
+}
+body[data-school-ui] .school-standard-includes li::before {
+  content: "✓";
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 12px;
+}
+body[data-school-ui] .school-standard-offer-foot {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+body[data-school-ui] .school-standard-price-note strong {
+  display: block;
+  margin-bottom: 2px;
+}
+body[data-school-ui] .school-standard-price-note span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+body[data-school-ui] .school-standard-offer-foot .button {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+@media (max-width: 900px) {
+  body[data-school-ui] .school-plans-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  body[data-school-ui] .school-plans-page {
+    padding: 16px;
+  }
+  body[data-school-ui] .school-plans-feature-grid,
+  body[data-school-ui] .school-standard-offer {
+    grid-template-columns: 1fr;
+  }
+  body[data-school-ui] .school-standard-offer-foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  body[data-school-ui] .school-standard-offer-foot .button {
+    width: 100%;
+  }
+}
+
+
+/* Match the Learning sidebar's responsive horizontal and vertical insets. */
+@media (max-width: 1200px) {
+  body[data-school-ui] .education-sidebar {
+    padding: 24px 12px;
   }
 }

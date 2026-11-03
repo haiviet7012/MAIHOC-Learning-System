@@ -1,3 +1,4 @@
+import { canAccessSchool } from './platform/school-access.js';
 // ====================================================
 // MAI HỌC Real-time Chat Frontend Module
 // Features: Global Room + 1-1 Direct Messages
@@ -16,6 +17,12 @@
 
   // DOM Elements cache
   let dom = {};
+  setInterval(() => {
+    document.querySelectorAll('.chat-message-group[data-expires-at]').forEach(node => {
+      if (Number(node.dataset.expiresAt) <= Date.now()) node.remove();
+    });
+    if (currentUser && isWindowOpen) loadConversations();
+  }, 30000);
 
   // Safe element creator helper
   function el(tag, className = "", text = "") {
@@ -345,15 +352,15 @@
     }
   });
 
-  function schoolChatAvailable() { return document.body.hasAttribute('data-school-ui'); }
+  function schoolChatAvailable() { return document.body.hasAttribute('data-school-ui') && canAccessSchool(currentUser); }
   function syncChatSpace() {
     if (!dom.tabDirect) return;
-    dom.tabDirect.hidden = !schoolChatAvailable();
+    dom.tabDirect.hidden = false;
     if (!schoolChatAvailable()) switchTab('global');
   }
   window.addEventListener('maihoc-route-changed', syncChatSpace);
   function switchTab(tab) {
-    if (tab === 'direct' && !schoolChatAvailable()) tab = 'global';
+    if (tab === 'direct' && !schoolChatAvailable()) { window.location.assign('/school/plans'); return; }
     activeTab = tab;
     dom.tabGlobal.classList.toggle("active", tab === "global");
     dom.tabDirect.classList.toggle("active", tab === "direct");
@@ -422,10 +429,13 @@
   // Messages Rendering
   // ----------------------------------------------------
   function renderMessageItem(msg, container) {
+    const created = Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(msg.createdAt) ? msg.createdAt : msg.createdAt.replace(' ', 'T') + 'Z');
+    if (created <= Date.now() - 86400000) return;
     const isMine = currentUser && Number(msg.senderId) === Number(currentUser.id);
 
     const group = el("div", `chat-message-group ${isMine ? "mine" : "other"}`);
     group.dataset.messageId = msg.id;
+    group.dataset.expiresAt = created + 86400000;
 
     if (!isMine) {
       const senderEl = el("div", "chat-message-sender", msg.senderName || "Học sinh");
