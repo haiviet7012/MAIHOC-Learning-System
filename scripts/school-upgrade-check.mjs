@@ -55,10 +55,20 @@ try {
     await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (r) =>
       r.abort(),
     );
+    const billingRequests = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.startsWith("/api/billing/")) billingRequests.push(request.url());
+    });
     await page.goto(origin + "/school/digitize");
     await page
       .getByRole("heading", { name: "School Standard", exact: true })
       .waitFor();
+    const registerButton = page.locator(".school-standard-offer-foot [data-register-school-standard]");
+    await registerButton.waitFor();
+    assert.equal(await registerButton.isDisabled(), false, "School Standard registration CTA should be enabled");
+    assert.equal(billingRequests.length, 0, "Marketing page must not call Billing APIs");
+    await registerButton.click();
+    await page.waitForURL(/\/school\/plans\?billing=1$/);
     await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).waitFor();
     const login = await context.request.post(origin + "/api/auth/login", {
       headers: { Origin: origin },

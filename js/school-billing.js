@@ -63,12 +63,38 @@
     const response = await fetch(path, { credentials: "same-origin", cache: "no-store", ...options,
       headers: { ...(options.body ? { "Content-Type":"application/json" } : {}), ...(options.headers || {}) } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Không thể xử lý yêu cầu Billing.");
+    if (!response.ok) {
+      const status = response.status;
+      let message = data.error || "Không thể xử lý yêu cầu Billing.";
+      if (status === 404) message = "Backend hiện tại chưa cung cấp API Billing (HTTP 404). Hãy triển khai phiên bản server có /api/billing/plans trên Render.";
+      else if (status >= 500) message = `Backend Billing trả về lỗi HTTP ${status}. Mở Render Logs và tìm dòng [Billing] để xem nguyên nhân.`;
+      else if (status === 401) message = "Phiên đăng nhập không còn hợp lệ (HTTP 401). Vui lòng đăng nhập lại.";
+      const error = new Error(message);
+      error.status = status;
+      throw error;
+    }
     return data;
   }
   function currentUser() { return window.maihocCurrentUser || null; }
   function view() { return document.getElementById("view"); }
   function clearPolling() { if (poll) clearInterval(poll); poll = null; }
+  function isBillingView() {
+    const url = new URL(location.href);
+    return url.pathname.replace(/\/+$/, "") === "/school/plans" && url.searchParams.get("billing") === "1";
+  }
+  function enhanceSchoolIntro() {
+    const footer = view()?.querySelector(".school-standard-offer-foot");
+    if (!footer) return;
+    const note = footer.querySelector(".school-standard-price-note");
+    if (note) note.innerHTML = "<strong>Đăng ký School Standard</strong><span>Giá, thời hạn và phương thức thanh toán sẽ được hiển thị trước khi tạo đơn.</span>";
+    const button = footer.querySelector("button");
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("disabled");
+      button.textContent = "Đăng ký";
+      button.dataset.registerSchoolStandard = "1";
+    }
+  }
   function statusLabel(status) {
     return ({ pending:"Chờ thanh toán", paid:"Đã thanh toán", expired:"Đã hết hạn", cancelled:"Đã hủy" })[status] || status || "Không xác định";
   }
@@ -113,10 +139,9 @@
       if (code) await loadOrder(code);
     } catch (error) {
       const main = root.querySelector("[data-billing-main]");
-      if (main) main.innerHTML = '<div class="maihoc-billing-message">' + esc(error.message) + '</div>';
-      if (error.message.includes("đăng nhập") || error.message.includes("đăng nh\u1eadp")) {
-        root.querySelector("[data-billing-login]")?.addEventListener("click", () => document.querySelector("#login-open")?.click());
-      }
+      if (main) main.innerHTML = '<div class="maihoc-billing-message" role="alert">' + esc(error.message) + '</div><div class="maihoc-billing-actions"><button type="button" class="button secondary small" data-billing-refresh>Thử lại</button><button type="button" class="button secondary small" data-billing-intro>Về giới thiệu School</button></div>';
+      const historyTarget = root.querySelector("[data-billing-history]");
+      if (historyTarget) historyTarget.innerHTML = '<div class="maihoc-billing-empty">Chưa tải được lịch sử thanh toán vì API Billing chưa phản hồi thành công.</div>';
     }
   }
   function renderCurrent(data) {
@@ -218,7 +243,7 @@
       } : { buyerType:"student" };
       const data = await api("/api/billing/orders", { method:"POST", body:JSON.stringify(body) });
       orderCode = data.order.orderCode;
-      history.replaceState(history.state, "", "/school/plans?order=" + encodeURIComponent(orderCode));
+      history.replaceState(history.state, "", "/school/plans?billing=1&order=" + encodeURIComponent(orderCode));
       renderCheckout(data.order);
       const historyData = await api("/api/billing/history");
       renderHistory(historyData.orders || []);
@@ -280,10 +305,24 @@
   }
   function backToPlans() {
     clearPolling(); currentOrder = null; orderCode = null;
-    history.replaceState(history.state, "", "/school/plans");
-    renderPurchase();
+    window.location.assign("/school/plans");
   }
   function onClick(event) {
+    const register = event.target.closest("[data-register-school-standard]");
+    if (register) {
+      event.preventDefault();
+      window.location.assign("/school/plans?billing=1");
+      return;
+    }
+    if (event.target.closest("[data-billing-intro]")) {
+      window.location.assign("/school/plans");
+      return;
+    }
+    if (event.target.closest("[data-billing-login]")) {
+      sessionStorage.setItem("maihoc-open-billing-after-login", "1");
+      document.querySelector("#login-open")?.click();
+      return;
+    }
     const copy = event.target.closest("[data-copy]");
     if (copy) {
       const value = copy.dataset.copy;
@@ -294,7 +333,6 @@
     if (event.target.closest("[data-billing-back]")) backToPlans();
     if (event.target.closest("[data-billing-check]")) void refreshOrder();
     if (event.target.closest("[data-billing-refresh]")) void loadAll();
-    if (event.target.closest("[data-billing-login]")) document.querySelector("#login-open")?.click();
     const open = event.target.closest("[data-open-order]");
     if (open) void loadOrder(open.dataset.openOrder);
   }
@@ -314,10 +352,14 @@
   }
   function routeChanged(event) {
     const route = event.detail?.route;
-    if (route === "school-plans") {
+    if (route === "school-plans" && isBillingView()) {
       active = true;
       clearPolling();
       void loadAll();
+    } else if (route === "school-plans") {
+      active = false;
+      clearPolling();
+      enhanceSchoolIntro();
     } else {
       active = false;
       clearPolling();
@@ -327,12 +369,22 @@
   document.addEventListener("change", onChange);
   document.addEventListener("input", onInput);
   window.addEventListener("maihoc-route-changed", routeChanged);
+  window.addEventListener("maihoc-auth-changed", () => {
+    if (sessionStorage.getItem("maihoc-open-billing-after-login") === "1" && currentUser()) {
+      sessionStorage.removeItem("maihoc-open-billing-after-login");
+      window.location.assign("/school/plans?billing=1");
+    }
+  });
   window.addEventListener("focus", () => { void refreshCurrentUser(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void refreshCurrentUser(); });
   installCss();
   window.setInterval(() => { void refreshCurrentUser(); }, 60000);
-  if (location.pathname.replace(/\/+$/, "") === "/school/plans" && currentUser()) {
-    active = true;
-    void loadAll();
+  if (location.pathname.replace(/\/+$/, "") === "/school/plans") {
+    if (isBillingView()) {
+      active = true;
+      void loadAll();
+    } else {
+      requestAnimationFrame(enhanceSchoolIntro);
+    }
   }
 })();
