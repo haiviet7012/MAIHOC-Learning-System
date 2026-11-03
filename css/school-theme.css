@@ -1242,3 +1242,9 @@ body[data-school-ui] .subject-menu .workspace-switch {
   box-sizing: border-box;
   transform: none !important;
 }
+
+body[data-school-ui] .advisor-pull-star {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+}
