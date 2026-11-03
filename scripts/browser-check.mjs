@@ -27,7 +27,7 @@ await mkdir(directory, { recursive: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1050 },
 });
-const page = await context.newPage();
+let page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 // Third-party typography/MathJax are optional; local app and API tests remain real.
@@ -35,11 +35,38 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
   route.abort(),
 );
 const origin = "http://127.0.0.1:4173";
+async function findWorkspaceTab(space) {
+  const name = space === 'school' ? 'maihoc-school' : 'maihoc-learning';
+  for (const candidate of context.pages()) {
+    if (candidate === page || candidate.isClosed()) continue;
+    try {
+      if (await candidate.evaluate(() => window.name) === name) return candidate;
+    } catch {
+      // Ignore pages outside this same-origin workspace context.
+    }
+  }
+  return null;
+}
 async function clickSidebar(route) {
   const space = ['assignments','assignment-management','school-analytics','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
-  if (!(await page.locator(`.education-switch [data-space="${space}"]`).getAttribute('aria-pressed') === 'true')) {
-    await page.locator(`.education-switch [data-space="${space}"]`).click();
+  const switchButton = page.locator(`.education-switch [data-space="${space}"]`);
+  if (await switchButton.getAttribute('aria-pressed') !== 'true') {
+    const existingTab = await findWorkspaceTab(space);
+    if (existingTab) {
+      // Clicking the switch focuses/reuses the tab; it must not reset its route.
+      await switchButton.click();
+      page = existingTab;
+    } else {
+      // First visit to a workspace creates its named tab from the user gesture.
+      const [openedTab] = await Promise.all([
+        context.waitForEvent('page'),
+        switchButton.click(),
+      ]);
+      page = openedTab;
+      await page.waitForLoadState('domcontentloaded');
+    }
   }
+  await page.locator(`[data-sidebar-space="${space}"]`).first().waitFor({ state: 'visible' });
   assert.equal(await page.locator(`[data-sidebar-space="${space}"]`).first().isVisible(), true);
   const other = space === 'school' ? 'learning' : 'school';
   assert.equal(await page.locator(`[data-sidebar-space="${other}"]`).first().isVisible(), false);
