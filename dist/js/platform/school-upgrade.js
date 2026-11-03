@@ -69,7 +69,7 @@ export function mountSchoolUpgrade(container, route, user, onNavigate) {
             kind: route === "school-notebook" ? "notebook" : "exam",
             request,
             report,
-            onNavigate,
+            onNavigate: (route,params) => onNavigate(route === "ai-solver" ? "school-tutor" : route,params),
             caps,
           });
       }

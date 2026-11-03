@@ -30,7 +30,7 @@ export function mountSchoolLab(container, { schoolId, request, report }) {
       radius: ["Khoảng cách (cm)", 1, 50, 10, 1],
     },
   };
-  container.innerHTML = `<section class="portal-panel"><div class="upgrade-actions">${btn("Thí nghiệm 2D", 'data-lab-tab="2d"')}${btn("Thí nghiệm 3D", 'data-lab-tab="3d"')}</div><div data-lab-2d><p>Thư viện 2D hiện có; dữ liệu và công thức được giữ nguyên.</p><iframe class="upgrade-lab-frame" title="Phòng thí nghiệm 2D" src="/physics-lab/"></iframe></div><div data-lab-3d hidden><label>Thí nghiệm 3D<select data-lab-kind></select></label><p data-lab-description></p><div class="upgrade-lab-grid"><div data-lab-canvas class="upgrade-lab-canvas" aria-label="Mô hình vật lí 3D"></div><div><form data-lab-params class="upgrade-form"></form><div class="upgrade-actions">${btn("Chạy", 'data-lab-action="play"')}${btn("Dừng", 'data-lab-action="pause"')}${btn("Đặt lại", 'data-lab-action="reset"')}${btn("Ghi số đo", 'data-lab-action="measure"')}${btn("Lưu phiên", 'data-lab-action="save"')}</div><output data-lab-results class="upgrade-pre"></output><p>Kéo để xoay, cuộn để phóng to. Các trục chỉ hướng; tỉ lệ hiển thị được chuẩn hóa theo từng thí nghiệm.</p></div></div><div data-lab-measurements></div><h3>Phiên đã lưu</h3><div data-lab-sessions></div></div></section>`;
+  container.innerHTML = `<section class="portal-panel"><div class="upgrade-actions">${btn("Thí nghiệm 2D", 'data-lab-tab="2d"')}${btn("Thí nghiệm 3D", 'data-lab-tab="3d"')}</div><div data-lab-2d><p>Thư viện 2D hiện có; dữ liệu và công thức được giữ nguyên.</p><iframe class="upgrade-lab-frame" title="Phòng thí nghiệm 2D" src="/physics-lab/?space=school"></iframe></div><div data-lab-3d hidden><label>Thí nghiệm 3D<select data-lab-kind></select></label><p data-lab-description></p><div class="upgrade-lab-grid"><div data-lab-canvas class="upgrade-lab-canvas" aria-label="Mô hình vật lí 3D"></div><div><form data-lab-params class="upgrade-form"></form><div class="upgrade-actions">${btn("Chạy", 'data-lab-action="play"')}${btn("Dừng", 'data-lab-action="pause"')}${btn("Đặt lại", 'data-lab-action="reset"')}${btn("Ghi số đo", 'data-lab-action="measure"')}${btn("Lưu phiên", 'data-lab-action="save"')}</div><output data-lab-results class="upgrade-pre"></output><p>Kéo để xoay, cuộn để phóng to. Các trục chỉ hướng; tỉ lệ hiển thị được chuẩn hóa theo từng thí nghiệm.</p></div></div><div data-lab-measurements></div><h3>Phiên đã lưu</h3><div data-lab-sessions></div></div></section>`;
   let catalog = [];
   function readParams() {
     const f = container.querySelector("[data-lab-params]");
@@ -97,7 +97,7 @@ export function mountSchoolLab(container, { schoolId, request, report }) {
     area.append(three.domElement);
     three.domElement.setAttribute("aria-label", "Khung nhìn 3D: kéo để xoay");
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#10213c");
+    scene.background = new THREE.Color(document.documentElement.classList.contains("dark") ? "#171021" : "#291d40");
     const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
     camera.position.set(6, 5, 8);
     const controls = new OrbitControls(camera, three.domElement);
@@ -174,6 +174,11 @@ export function mountSchoolLab(container, { schoolId, request, report }) {
       },
       onRender: () => render(),
     });
+    const themeObserver = new MutationObserver(() => {
+      scene.background.set(document.documentElement.classList.contains('dark') ? '#171021' : '#291d40');
+      render();
+    });
+    themeObserver.observe(document.documentElement, {attributes:true,attributeFilter:['class']});
     const size = new ResizeObserver(() => {
       if (!area.clientWidth) return;
       three.setSize(area.clientWidth, 380);
@@ -185,6 +190,7 @@ export function mountSchoolLab(container, { schoolId, request, report }) {
     cleanup = () => {
       engine.destroy();
       size.disconnect();
+      themeObserver.disconnect();
       controls.dispose();
       scene.traverse((o) => {
         o.geometry?.dispose();

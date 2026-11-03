@@ -47,7 +47,8 @@ try {
   await page.locator('#notifications-open').click();
   const close = page.locator('#notifications-dialog .close-button'); await close.waitFor();
   const box = await close.boundingBox(); assert.equal(box.width, 52); assert.equal(box.height, 40);
-  assert.equal(await close.evaluate(n => getComputedStyle(n).borderRadius), '0px');
+  assert.equal(await page.locator('body').getAttribute('data-school-ui'), '');
+  assert.equal(await close.evaluate(n => getComputedStyle(n).borderRadius), '12px');
   await page.screenshot({ path: 'test-results/notification-close-rectangle.png', fullPage: true });
   await close.click(); assert.equal(await page.locator('#notifications-dialog').evaluate(n => n.open), false);
   await page.locator('#logout-button').click(); await page.locator('#login-open').click();

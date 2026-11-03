@@ -66,7 +66,9 @@ try {
   await page.goto(origin + '/school/advisor');
   await page.locator("[data-advisor-form]").waitFor();
   const schoolUsername = await page.locator('#education-user').boundingBox();
-  assert.ok(Math.abs(learningUsername.x-schoolUsername.x)<1 && Math.abs(learningUsername.y-schoolUsername.y)<1, 'Username stays aligned across Learning and School');
+  const schoolHeader = await page.locator('.app-shell > .topbar').boundingBox();
+  assert.ok(learningUsername.width > 0 && schoolUsername.x >= schoolHeader.x && schoolUsername.x + schoolUsername.width <= schoolHeader.x + schoolHeader.width, 'Username stays within the redesigned School header');
+  assert.ok(Math.abs(schoolUsername.y + schoolUsername.height / 2 - schoolHeader.y - schoolHeader.height / 2) < 2, 'School username is vertically centered');
   assert.equal(await page.locator('[data-advisor-activity], .advisor-chart, .advisor table').count(), 0);
   assert.equal(await page.locator('.advisor details').count(), 0);
   assert.ok(!(await page.locator('.advisor').textContent()).includes('Chọn một chức năng, bổ sung mục tiêu và gửi yêu cầu.'));
