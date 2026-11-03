@@ -33,20 +33,30 @@ try{
   assert.equal((await workspaceSwitch.textContent()).trim(),'School');
   assert.equal(await workspaceSwitch.evaluate(button=>button.parentElement.lastElementChild===button),true);
   await workspaceSwitch.click();
+  assert.equal(await page.locator('#view').evaluate(el=>el.classList.contains('workspace-transition-enter')),true,
+    'Learning to School triggers the fade/morph entrance');
   await page.waitForURL(origin+'/school/plans');
   await page.getByRole('heading',{name:'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.'}).waitFor();
+  await page.waitForFunction(()=>!document.getElementById('view').classList.contains('workspace-transition-enter'));
   assert.equal(page,learningPage,'Workspace navigation stays in the original page');
   assert.equal(context.pages().length,pagesBeforeSwitch,'Switching to School does not open another tab');
   await page.locator('#menu-toggle').click();
   assert.equal((await page.locator('#workspace-switch').textContent()).trim(),'Learning');
   await page.locator('#workspace-switch').click();
+  assert.equal(await page.locator('#view').evaluate(el=>el.classList.contains('workspace-transition-enter')),true,
+    'School to Learning triggers the same entrance animation');
   await page.waitForURL(origin+'/learning');
+  await page.waitForFunction(()=>!document.getElementById('view').classList.contains('workspace-transition-enter'));
   assert.equal(context.pages().length,pagesBeforeSwitch,'Switching back to Learning stays in the same tab');
   await page.locator('#menu-toggle').click();
   assert.equal((await page.locator('#workspace-switch').textContent()).trim(),'School');
+  await page.emulateMedia({reducedMotion:'reduce'});
   await page.locator('#workspace-switch').click();
+  assert.equal(await page.locator('#view').evaluate(el=>el.classList.contains('workspace-transition-enter')),false,
+    'Reduced-motion preference disables the workspace entrance animation');
   await page.waitForURL(origin+'/school/plans');
   await page.getByRole('heading',{name:'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.'}).waitFor();
+  await page.emulateMedia({reducedMotion:'no-preference'});
 assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true}).count(),1);assert.equal(await page.getByText(/School Premium|Premium/,{exact:false}).count(),0);
  await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
  await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);

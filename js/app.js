@@ -182,6 +182,22 @@ function go(route, params = {}) {
     }
     if (route === "exam" || route === "home") requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
 }
+
+function goWorkspaceWithTransition(route, params = {}) {
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    go(route, params);
+    if (reducedMotion || typeof view.animate !== "function") return;
+
+    view.classList.remove("workspace-transition-enter");
+    void view.offsetWidth;
+    view.classList.add("workspace-transition-enter");
+}
+
+view.addEventListener("animationend", event => {
+    if (event.target === view && event.animationName === "maihoc-workspace-enter") {
+        view.classList.remove("workspace-transition-enter");
+    }
+});
 // Khởi tạo lịch sử cho trang MAI HỌC hiện tại.
 history.replaceState(saveRouteHistory(), "", window.location.href);
 // Khôi phục trang khi nhấn Back hoặc Forward.
@@ -1346,6 +1362,11 @@ document.addEventListener("click", async (e) => {
         e.preventDefault();
         const r = routeBtn.dataset.route;
         const chemTab = routeBtn.dataset.chemistryTab;
+        if (routeBtn.id === "workspace-switch") {
+            $("#subject-menu")?.classList.remove("open");
+            goWorkspaceWithTransition(r, { newTimetable: routeBtn.hasAttribute("data-new-timetable") });
+            return;
+        }
         if (r === "ai-solver") {
             $("#subject-menu")?.classList.remove("open");
             go("ai-solver");
