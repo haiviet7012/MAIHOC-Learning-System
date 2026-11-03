@@ -20,7 +20,9 @@
     "test:personal-history-cleanup": "node --test ./tests/personal-history-cleanup.test.js",
     "check:postgres-auth": "node ./check-postgres-auth.js",
     "test:platform-foundation": "node --test ./tests/platform-foundation.test.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "school:worker": "node school-upgrade/worker.js",
+    "test:school-upgrade": "node --test school-upgrade/*.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1159.0",
@@ -29,10 +31,12 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "livekit-server-sdk": "2.19.2",
     "maihoc-learning-system": "file:..",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.1",
     "pdfjs-dist": "6.4.299",
+    "pdfkit": "0.20.2",
     "pg": "^8.23.1",
     "socket.io": "^4.8.4",
     "sqlite3": "^6.0.1"

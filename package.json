@@ -23,7 +23,10 @@
     "test:advisor": "node scripts/learning-advisor-check.mjs",
     "test:auth": "node scripts/auth-check.mjs",
     "mail:check": "node server/check-mail.js",
-    "ai:check": "node server/check-ai.js"
+    "ai:check": "node server/check-ai.js",
+    "school:worker": "node server/school-upgrade/worker.js",
+    "test:school-upgrade": "node --test server/school-upgrade/*.test.js",
+    "test:school-upgrade:browser": "node scripts/school-upgrade-check.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
@@ -31,5 +34,9 @@
     "esbuild": "^0.28.2",
     "exceljs": "^4.4.0",
     "prettier": "^3.9.10"
+  },
+  "dependencies": {
+    "livekit-client": "2.23.0",
+    "three": "0.187.0"
   }
 }

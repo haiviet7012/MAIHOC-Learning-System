@@ -76,6 +76,7 @@ if (process.env.MAIHOC_PREVIEW_ADVISOR_DATA === '1') {
   const { seedAdvisorPreview } = await import('./advisor-preview-data.mjs');
   await seedAdvisorPreview(fixture.db, school.id, year.id, cls.id);
 }
+if (process.env.MAIHOC_SCHOOL_UPGRADE_ENABLED === '1') await fixture.db.query('INSERT INTO school_upgrade_access(school_id) VALUES($1)', [school.id]);
 // The existing server exposes static files, APIs, real cookies, grading and Socket.IO.
 const port = Number(process.env.PREVIEW_PORT || 4173);
 server.listen(port, "127.0.0.1", () =>

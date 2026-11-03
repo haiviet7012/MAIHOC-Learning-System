@@ -1,3 +1,4 @@
+import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
 import { api } from "./api.js";
@@ -80,6 +81,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   }
   const controller = new AbortController();
   let disposeAdvisor = () => {};
+  let disposeEvidence = () => {};
   let context;
   let schoolId = String(target.targetSchoolId || "");
   let activeAttempt = null;
@@ -110,6 +112,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     rows.length ? rows.map(markup).join("") : empty(text);
   async function render() {
     disposeAdvisor();
+    disposeEvidence();
     if (!user) {
       container.innerHTML =
         header(
@@ -214,6 +217,9 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     } else {
       const data = await request(schoolUrl("/analytics"));
       content.innerHTML = `<section class="portal-panel"><h2>${staff ? "Kết quả trong phạm vi phụ trách" : "Nhìn lại hành trình học tập"}</h2><p class="muted">Tỷ lệ đúng được tính từ các câu đã chấm. Đây là tín hiệu luyện tập, chưa phải kết luận năng lực.</p>${list(data.topics, (t) => `<article class="portal-record"><div><strong>${e(t.name)}</strong><p>${t.observations} câu đã chấm · ${t.correct} câu đúng</p><p>${Number(t.observations) < 5 ? "Chưa đủ dữ liệu để nhận định." : Number(t.correct) / Number(t.observations) < 0.7 ? "Nên ôn lại chuyên đề và luyện thêm." : "Tiếp tục ôn tập để củng cố kiến thức."}</p></div><strong>${Math.round((Number(t.correct) / Math.max(1, Number(t.observations))) * 100)}%</strong>${!staff ? button("Luyện chuyên đề", `data-platform-practice="${id(t.id)}"`) : ""}</article>`, "Chưa có dữ liệu từng câu hỏi. Kết quả cũ vẫn xem được trong tài khoản và bài kiểm tra.")}<button class="button secondary" data-route="account-center">Mở lịch sử học tập hiện có</button></section>`;
+      const evidence = document.createElement('div'); content.append(evidence);
+      const overview = await request(schoolUrl('/overview'));
+      disposeEvidence = mountSchoolEvidence(evidence, { schoolId, classes: overview.classes });
       if (!staff && !user.isTeacher) {
         const advisor = document.createElement('div'); content.append(advisor);
         disposeAdvisor = mountLearningAdvisor(advisor, { scope: 'school', schoolId });
@@ -489,6 +495,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   return () => {
     controller.abort();
     disposeAdvisor();
+    disposeEvidence();
     clearInterval(saveTimer);
   };
 }
