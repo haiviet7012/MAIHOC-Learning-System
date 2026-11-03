@@ -835,7 +835,11 @@ function render() {
         return;
     }
     const schoolIelts = state.subject === 'IELTS' && ['subject','theory','practice','exam-select','exam','reader','grade-picker','theory-list','practice-list','exam-list'].includes(state.route);
-    if ((schoolRoutes.has(state.route) || schoolIelts) && !canAccessSchool(currentUser)) state.route = 'school-plans';
+    if ((schoolRoutes.has(state.route) || schoolIelts) && !canAccessSchool(currentUser)) {
+        const needsUpgradeRedirect = state.route !== 'school-plans';
+        state.route = 'school-plans';
+        if (needsUpgradeRedirect) history.replaceState(saveRouteHistory(), "", routeUrl(state));
+    }
     disposeTeachingAdvisor?.(); disposeTeachingAdvisor = null;
 
     if (state.route === "account-center" && Number(currentUser?.adminLevel) >= 2) {
@@ -854,7 +858,9 @@ function render() {
     const workspaceSwitch = document.getElementById('workspace-switch');
     if (workspaceSwitch) {
         const targetSpace = sidebarSpace === 'school' ? 'learning' : 'school';
-        const targetRoute = targetSpace === 'school' ? 'organization' : 'home';
+        const targetRoute = targetSpace === 'school'
+            ? (authResolved && !canAccessSchool(currentUser) ? 'school-plans' : 'organization')
+            : 'home';
         const targetLabel = targetSpace === 'school' ? 'School' : 'Learning';
         workspaceSwitch.dataset.workspaceTarget = targetSpace;
         workspaceSwitch.dataset.route = targetRoute;
