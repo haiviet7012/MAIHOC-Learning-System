@@ -292,6 +292,7 @@ btnTheme.addEventListener("click", () => {
   document.documentElement.classList.toggle("light", !isDark);
   localStorage.setItem(LAB_CONFIG.themeStorageKey, isDark ? "dark" : "light");
   showToast(isDark ? "Chế độ tối" : "Chế độ sáng");
+  simulationManager._onEngineRender();
 });
 
 // 13. Toàn màn hình

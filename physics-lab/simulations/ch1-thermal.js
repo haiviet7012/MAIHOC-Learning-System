@@ -83,7 +83,7 @@ export const thermalSimulations = {
       renderer.drawDialMeter(cx + 60, cy - 90, 36, this.state.temp, 20, 90, "T =", "°C");
 
       // Chú thích
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 11px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText("BÌNH NHIỆT LƯỢNG KẾ & DÂY NUNG", cx, cy + 120);
@@ -192,7 +192,7 @@ export const thermalSimulations = {
       // Đồng hồ đo nhiệt độ
       renderer.drawDialMeter(cx - 120, cy - 40, 32, this.state.temp, -5, 30, "T =", "°C");
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 11px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(`NƯỚC ĐÁ ĐANG TAN Ở ${this.state.temp.toFixed(1)}°C (GIAI ĐOẠN CHUYỂN PHA)`, cx, cy + 115);
@@ -393,7 +393,7 @@ export const thermalSimulations = {
 
       ctx.restore();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 13px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText(
@@ -490,7 +490,7 @@ export const thermalSimulations = {
       // Bình kín
       ctx.fillStyle = "rgba(186, 230, 253, 0.15)";
       ctx.fillRect(cx - 120, cy - 80, 240, 160);
-      ctx.strokeStyle = "#1e293b";
+      ctx.strokeStyle = renderer.borderColor;
       ctx.lineWidth = 3;
       ctx.strokeRect(cx - 120, cy - 80, 240, 160);
 
@@ -517,7 +517,7 @@ export const thermalSimulations = {
 
       ctx.restore();
 
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = renderer.textColor;
       ctx.font = "bold 11px Montserrat";
       ctx.textAlign = "center";
       ctx.fillText("PHA HƠI (BAY HƠI ⇌ NGƯNG TỤ)", cx, cy - 45);
