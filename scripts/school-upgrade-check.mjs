@@ -57,7 +57,7 @@ try {
     );
     await page.goto(origin + "/school/digitize");
     await page
-      .getByRole("heading", { name: "Tài khoản dành riêng cho trường học" })
+      .getByRole("heading", { name: "Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày." })
       .waitFor();
     const login = await context.request.post(origin + "/api/auth/login", {
       headers: { Origin: origin },
