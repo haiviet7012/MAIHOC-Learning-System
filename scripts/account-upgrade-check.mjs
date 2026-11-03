@@ -67,7 +67,7 @@ try{
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
  await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
  await page.goto(origin+'/school');await page.locator('body[data-school-ui]').waitFor();
- assert.equal(await page.locator('[data-route=school-advisor] .nav-glyph').textContent(),'✦');
+ assert.match((await page.locator('[data-sidebar-space=school] [data-route=school-advisor]').textContent()).trim(),/Cố vấn AI/,'School advisor navigation is present');
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').click();
  assert.equal(await page.locator('#chat-pane-direct').isVisible(),true);
  for(const width of [1440,820,390]) {
