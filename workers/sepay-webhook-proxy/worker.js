@@ -68,7 +68,7 @@ async function safeUpstreamError(response) {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_DIAGNOSTIC_RESPONSE_BYTES) {
-        await reader.cancel();
+        void reader.cancel().catch(() => {});
         return "unrecognized_json_response";
       }
       chunks.push(value);
