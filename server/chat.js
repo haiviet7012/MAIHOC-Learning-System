@@ -1,3 +1,4 @@
+import { canAccessSchool } from '../js/platform/school-access.js';
 import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
 import { db, publicUser } from "./auth.js";
@@ -103,6 +104,9 @@ export function getDirectConversationId(userId1, userId2) {
  * Ensures a direct conversation between userA and userB exists in DB.
  */
 export async function getOrCreateDirectConversation(userAId, userBId) {
+  const sender = await db.prepare('SELECT * FROM users WHERE id=?').get(userAId);
+  const recipient = await db.prepare('SELECT * FROM users WHERE id=?').get(userBId);
+  if (!canAccessSchool(sender) || !canAccessSchool(recipient)) throw new Error('Chat riêng chỉ dành cho tài khoản School.');
   if (Number(userAId) === Number(userBId)) {
     throw new Error("Không thể nhắn tin riêng với chính mình.");
   }
@@ -149,6 +153,8 @@ export async function isParticipant(conversationId, userId) {
       .run(userId);
     return true;
   }
+  const user = await db.prepare('SELECT * FROM users WHERE id=?').get(userId);
+  if (!canAccessSchool(user)) return false;
   const row = await db
     .prepare(`
       SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?
@@ -532,7 +538,7 @@ export function setupChat(server, app) {
         })
       );
 
-      res.json({ conversations: conversations.filter(c => c.type !== "direct" || c.partner) });
+      res.json({ conversations: conversations.filter(c => c.type !== "direct" || (canAccessSchool(req.user) && c.partner)) });
     } catch (err) {
       console.error("GET /api/chat/conversations error:", err);
       res.status(500).json({ error: "Không thể lấy danh sách cuộc trò chuyện." });
@@ -541,6 +547,7 @@ export function setupChat(server, app) {
 
   // 2. Search users for direct chat
   app.get("/api/chat/users", async (req, res) => {
+    if (!canAccessSchool(req.user)) return res.status(req.user ? 403 : 401).json({error:'Chat riêng chỉ dành cho School.'});
     if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
     const currentUserId = req.user.id;
     const query = String(req.query.q || req.query.search || "").trim();
@@ -568,7 +575,9 @@ export function setupChat(server, app) {
           .all(currentUserId);
       }
 
-      const results = users.map((u) => ({
+      const eligible = [];
+      for (const u of users) if (canAccessSchool(await db.prepare('SELECT * FROM users WHERE id=?').get(u.id))) eligible.push(u);
+      const results = eligible.map((u) => ({
         id: Number(u.id),
         name: u.name,
         isOnline: isUserOnline(u.id)
