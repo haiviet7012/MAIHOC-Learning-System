@@ -27,7 +27,7 @@ try{
  ]);
  await schoolPage.waitForLoadState('domcontentloaded');
  page=schoolPage;
- await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).waitFor();
+ await page.getByRole('heading',{name:'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.'}).waitFor();
  await learningPage.waitForFunction(()=>window.name==='maihoc-learning');
  await page.waitForFunction(()=>window.name==='maihoc-school');
  const learningUrlBeforeReturn=learningPage.url();
@@ -36,7 +36,7 @@ try{
  assert.equal(learningPage.url(),learningUrlBeforeReturn,'Returning to Learning must retain its current URL');
  assert.equal(page.url(),schoolUrlBeforeReturn,'Returning to Learning must not navigate the School tab');
  assert.equal(context.pages().length,2,'Switching back must reuse the existing Learning tab');
- assert.equal(await page.getByRole('heading',{name:'Tài khoản dành riêng cho trường học'}).isVisible(),true);
+ assert.equal(await page.getByRole('heading',{name:'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.'}).isVisible(),true);
  assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
  await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
  await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
