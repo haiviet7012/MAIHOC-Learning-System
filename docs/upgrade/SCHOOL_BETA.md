@@ -58,7 +58,7 @@ SET enabled=excluded.enabled,expires_at=excluded.expires_at,daily_ai_calls=exclu
 
 7. Web giữ Root Directory `server`, Start Command **`node server.js`**. Migration không tự chạy khi bật flag. Hãy chạy migration trước khi cho người dùng truy cập beta.
 
-Thu hồi beta của một trường bằng `UPDATE school_upgrade_access SET enabled=false WHERE school_id=...`; không thay đổi gói legacy/standard/premium hoặc dữ liệu School cũ. Pilot là lớp cấp quyền bổ sung, không phải hệ thống thanh toán/gia hạn tự động.
+Thu hồi beta của một trường bằng `UPDATE school_upgrade_access SET enabled=false WHERE school_id=...`; không thay đổi quyền legacy/standard đã cấp hoặc dữ liệu School cũ. Giá trị `premium` còn lưu từ phiên bản trước được giữ nguyên để tương thích; không có Premium mới được cấp. Pilot là lớp cấp quyền bổ sung, không phải hệ thống thanh toán/gia hạn tự động.
 
 ## 3. Cấu hình AI và worker
 

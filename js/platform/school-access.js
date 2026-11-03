@@ -4,6 +4,8 @@ export function canAccessSchool(user) {
   const level = Number(user.admin_level ?? user.adminLevel ?? 0);
   if (user.role === 'admin' && level >= 1) return true;
   if (user.role === 'teacher') return true;
+  // "premium" is retained only so historical accounts are not locked out.
+  // The current public catalog and admin grant API expose Standard only.
   return user.role === 'user' && ['legacy','standard','premium'].includes(user.schoolPlan ?? user.school_plan);
 }
 

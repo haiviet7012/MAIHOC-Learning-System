@@ -91,7 +91,9 @@ export function installAccountUpgrade(app, { db, requireAuth, requireSameOrigin,
   app.get('/api/account/school-plan',requireAuth,(req,res)=>res.json({plan:req.user.schoolPlan,pricesPublished:false}));
   app.put('/api/admin/users/:id/school-plan',requireSameOrigin,requireAuth,wrap(async(req,res)=>{
     if(!isSuperAdminUser(req.user))return res.sendStatus(403);
-    if(!['none','standard','premium'].includes(req.body.plan))return res.sendStatus(400);
+    const student=await db.prepare("SELECT id FROM users WHERE id=? AND role='user'").get(req.params.id);
+    if(!student)return res.sendStatus(404);
+    if(!['none','standard'].includes(req.body.plan))return res.sendStatus(400);
     const changed=await db.prepare("UPDATE users SET school_plan=?,account_type=CASE WHEN ?='none' THEN account_type ELSE 'school' END WHERE id=? AND role='user' RETURNING id").get(req.body.plan,req.body.plan,req.params.id);
     if(!changed)return res.sendStatus(404);res.json({ok:true});
   }));
