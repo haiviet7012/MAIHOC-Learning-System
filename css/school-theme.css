@@ -617,85 +617,217 @@ body[data-school-ui] .school-person-avatar {
   background: var(--school-soft);
   color: var(--primary-dark);
 }
-/* Timetable retains subject distinctions using shades of violet, including in dark mode. */
+/* Timetable styling with vibrant, distinct subject colors and bright, clear grid */
 body[data-school-ui] .timetable-subjects {
   gap: 10px;
   padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
 }
 body[data-school-ui] .timetable-subjects h2 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--text);
 }
 body[data-school-ui] .timetable-subjects button {
-  color: var(--primary-dark);
   border: 1px solid var(--border);
-  padding: 11px 12px;
+  border-radius: 10px !important;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+body[data-school-ui] .timetable-subjects button:hover {
+  transform: translateY(-1px);
 }
 body[data-school-ui] .timetable-subjects button[aria-pressed="true"] {
   outline: 2px solid var(--primary);
-  outline-offset: 1px;
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(109, 50, 245, 0.4);
+}
+body[data-school-ui] .timetable-subjects button[data-erase-cell] {
+  background: #fff1f2;
+  color: #b91c1c;
+  border-color: #fecdd3;
+}
+body[data-school-ui] .timetable-subjects button[data-erase-cell]:hover {
+  background: #ffe4e6;
+}
+body[data-school-ui] .timetable-subjects button[data-erase-cell][aria-pressed="true"] {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
 }
 body[data-school-ui] .timetable-grid {
   border-collapse: separate;
-  border-spacing: 5px;
+  border-spacing: 6px;
   background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: var(--shadow);
 }
 body[data-school-ui] .timetable-grid caption {
-  color: var(--muted);
-  padding: 16px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 14px 16px;
 }
 body[data-school-ui] .timetable-grid :is(th, td) {
   border: 0;
-  border-radius: 9px !important;
+  border-radius: 10px !important;
+}
+body[data-school-ui] .timetable-grid th {
+  background: #f1edfc;
+  color: #2b2140;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 10px 8px;
+}
+body[data-school-ui] .timetable-grid th.timetable-session {
+  background: #ede5fd;
+  color: #5121b8;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 14px 10px;
+}
+body[data-school-ui] .timetable-grid th.timetable-period {
+  background: #f7f4fd;
+  color: #6d32f5;
+  font-weight: 700;
+  font-size: 13px;
 }
 body[data-school-ui] .timetable-cell {
-  border-radius: 9px !important;
-  color: #4b2777;
-  background: #f0e8fb;
-  min-height: 50px;
+  border-radius: 10px !important;
+  font-weight: 700;
+  font-size: 13px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  line-height: 1.3;
+  text-align: center;
+}
+/* Distinct, high-contrast tones for Light Mode */
+body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-0 {
+  background: #ffebe6;
+  color: #b42318;
+  border: 1px solid #fecdc7;
 }
 body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-1 {
-  background: #e7d9ff;
+  background: #fef7c3;
+  color: #713f12;
+  border: 1px solid #fde047;
 }
 body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-2 {
-  background: #eee5ff;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
 }
 body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-3 {
-  background: #e0d4f5;
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
 }
 body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-4 {
-  background: #f3eafa;
-}
-body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-5 {
-  background: #e8ddf8;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
 }
 body[data-school-ui] .timetable-cell.tone-empty {
-  color: var(--muted);
-  background: var(--surface-subtle);
+  color: #8c82a2;
+  background: #faf8fe;
+  border: 1px dashed #d5caec;
 }
-html.dark
-  body[data-school-ui]
-  :is(.timetable-cell, .timetable-subjects button) {
-  color: #efe5ff;
-  background: #3e2c58;
+body[data-school-ui] .timetable-cell.tone-empty:hover {
+  background: #f3edfc;
+  border-color: #6d32f5;
+  color: #5121b8;
 }
-html.dark
-  body[data-school-ui]
-  :is(.timetable-cell, .timetable-subjects button).tone-1 {
-  background: #4c3470;
+
+/* Distinct, luminous tones & bright, legible timetable for Dark Mode */
+html.dark body[data-school-ui] .timetable-subjects {
+  background: #251d38;
+  border-color: #4a3869;
 }
-html.dark
-  body[data-school-ui]
-  :is(.timetable-cell, .timetable-subjects button).tone-2 {
-  background: #38274e;
+html.dark body[data-school-ui] .timetable-subjects h2 {
+  color: #ffffff;
 }
-html.dark
-  body[data-school-ui]
-  :is(.timetable-cell, .timetable-subjects button).tone-3 {
-  background: #493559;
+html.dark body[data-school-ui] .timetable-subjects button[aria-pressed="true"] {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+  box-shadow: 0 0 12px rgba(196, 181, 253, 0.55);
+}
+html.dark body[data-school-ui] .timetable-subjects button[data-erase-cell] {
+  background: #471720;
+  color: #fda4af;
+  border-color: #881337;
+}
+html.dark body[data-school-ui] .timetable-subjects button[data-erase-cell]:hover {
+  background: #5b1d29;
+}
+html.dark body[data-school-ui] .timetable-grid {
+  background: #231b36;
+  border-color: #453460;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+html.dark body[data-school-ui] .timetable-grid caption {
+  color: #f1edfc;
+}
+html.dark body[data-school-ui] .timetable-grid th {
+  background: #382754;
+  color: #ffffff;
+  border: 1px solid #523b75;
+}
+html.dark body[data-school-ui] .timetable-grid th.timetable-session {
+  background: #462c70;
+  color: #ffffff;
+  border: 1px solid #633ea6;
+}
+html.dark body[data-school-ui] .timetable-grid th.timetable-period {
+  background: #31214a;
+  color: #d8c7ff;
+  border: 1px solid #48336a;
+}
+html.dark body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-0 {
+  background: #501d29;
+  color: #fecdd3;
+  border: 1px solid #9f1239;
+}
+html.dark body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-1 {
+  background: #472f10;
+  color: #fef08a;
+  border: 1px solid #854d0e;
+}
+html.dark body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-2 {
+  background: #133a27;
+  color: #bbf7d0;
+  border: 1px solid #166534;
+}
+html.dark body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-3 {
+  background: #3b2361;
+  color: #e9d5ff;
+  border: 1px solid #7e22ce;
+}
+html.dark body[data-school-ui] :is(.timetable-cell, .timetable-subjects button).tone-4 {
+  background: #113854;
+  color: #bae6fd;
+  border: 1px solid #0369a1;
 }
 html.dark body[data-school-ui] .timetable-cell.tone-empty {
-  background: var(--surface-subtle);
-  color: var(--muted);
+  background: #2b2040;
+  color: #c4b5fd;
+  border: 1px dashed #664d8c;
+}
+html.dark body[data-school-ui] .timetable-cell.tone-empty:hover {
+  background: #3d2c5c;
+  color: #ffffff;
+  border-color: #a78bfa;
 }
 /* Both advisor audiences and the existing tutor engine use the same School vocabulary. */
 body[data-school-ui]
