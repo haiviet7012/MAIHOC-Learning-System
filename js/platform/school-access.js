@@ -4,9 +4,14 @@ export function canAccessSchool(user) {
   const level = Number(user.admin_level ?? user.adminLevel ?? 0);
   if (user.role === 'admin' && level >= 1) return true;
   if (user.role === 'teacher') return true;
-  // "premium" is retained only so historical accounts are not locked out.
-  // The current public catalog and admin grant API expose Standard only.
-  return user.role === 'user' && ['legacy','standard','premium'].includes(user.schoolPlan ?? user.school_plan);
+  const plan = user.schoolPlan ?? user.school_plan ?? 'none';
+  if (user.role !== 'user') return false;
+  if (plan === 'legacy') return true;
+  if (plan !== 'standard') return false;
+  const expiresAt = user.schoolExpiresAt ?? user.school_expires_at ?? null;
+  if (!expiresAt) return true;
+  const expiresMs = new Date(expiresAt).getTime();
+  return Number.isFinite(expiresMs) && expiresMs > Date.now();
 }
 
 export const schoolRoutes = new Set([

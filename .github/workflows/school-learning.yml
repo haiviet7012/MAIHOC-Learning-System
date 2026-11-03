@@ -41,6 +41,7 @@ jobs:
       - run: npm run test:school-access
       - run: npm run test:account-upgrade
       - run: npm run test:school-mail
+      - run: npm run test:billing
       - run: npm run test:auth
       - run: npm run test:learning
       - run: npm run test:advisor

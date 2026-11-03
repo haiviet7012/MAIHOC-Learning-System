@@ -3,7 +3,7 @@
 ## Hành vi
 
 - Đăng ký công khai có hai lựa chọn: Học sinh và Giáo viên. Học sinh mới luôn có Learning đầy đủ (theo phạm vi Learning mới), không thể tự cấp School bằng `accountType`, `classCode`, `schoolPlan` hay `role` trong request.
-- Switch School luôn hiển thị, kể cả khách. Người chưa có quyền thấy trang giới thiệu MAIHOC School và duy nhất gói School Standard. Giá, checkout, thanh toán và gia hạn chưa được công bố/tích hợp. Trang giới thiệu nêu các tính năng đã có trong hệ thống, không hiển thị gói Premium.
+- Switch School luôn hiển thị, kể cả khách. Người chưa có quyền thấy tab Gói & thanh toán với duy nhất School Standard. Học sinh có thể tự mua; người có vai trò school_admin của trường (hoặc Super Admin) có thể mua theo số lượng và cấp quyền cho học sinh đang là thành viên trường. Thanh toán chuyển khoản VietQR qua SePay; quyền chỉ được kích hoạt sau khi backend xác thực webhook và đối chiếu giao dịch.
 - Giáo viên mới phải xác minh hộp thư có domain kết thúc `.edu.vn`, sau đó mới mở hồ sơ họ tên, mật khẩu, loại giáo viên, bộ môn, lớp chủ nhiệm và các lớp dạy. Xác minh email chỉ xác nhận sở hữu hộp thư, không xác thực độc lập tình trạng công tác.
 - OTP hiệu lực 10 phút, tối đa 5 lần thử; 60 giây giữa hai lần gửi cùng email và tối đa 5 yêu cầu/15 phút theo hash IP. Mã và token được lưu dưới dạng hash; không trả mã trong response/log. Chứng thực chỉ dùng một lần, ràng buộc email phía server; tạo giáo viên và phân công trong một transaction. Mất cấu hình mail thì không bỏ qua xác minh.
 - “Thêm giáo viên” trong Admin được thay bằng “Thêm người quản lý”: chỉ nhập Gmail. Tài khoản tồn tại được nâng quyền, không đổi mật khẩu/dữ liệu; Gmail mới được tạo tài khoản với mật khẩu ngẫu nhiên không công bố và nhận lời mời dùng Quên mật khẩu để tự đặt mật khẩu. Thiếu mail hoặc URL công khai thì không tạo tài khoản mới.
@@ -13,7 +13,7 @@
 
 ## Tương thích và dữ liệu
 
-Thêm `users.school_plan` (none/legacy/standard; giá trị `premium` đã lưu từ các phiên bản trước được giữ để tương thích dữ liệu), `users.is_manager` và bảng `teacher_signup_challenges`. Không đổi ID, email, mật khẩu, vai trò, phân công hoặc lịch sử của tài khoản cũ. Premium không còn là gói được bán/cấp mới; bản ghi cũ không bị xóa và tiếp tục được nhận diện là có quyền School. Vai trò kỹ thuật cũ vẫn được giữ để không phá liên kết backend hiện hành; hai loại đăng ký là phân loại giao diện/sản phẩm.
+Thêm `users.school_plan` (none/legacy/standard), `users.school_expires_at`, `users.is_manager` và bảng `teacher_signup_challenges`. Không đổi ID, email, mật khẩu, vai trò, phân công hoặc lịch sử của tài khoản cũ. Premium bị loại khỏi danh mục; các bản ghi Premium cũ được chuyển thành Legacy để giữ quyền School grandfathered. Vai trò kỹ thuật cũ vẫn được giữ để không phá liên kết backend hiện hành; hai loại đăng ký là phân loại giao diện/sản phẩm.
 
 Migration có đánh dấu `app_migrations.account-plans-v1`, chạy một lần trong transaction với advisory lock. Các tài khoản School/thành viên lớp có sẵn được gán quyền `legacy`. Tài khoản Learning ngoài trường cũ tiếp tục dùng Learning. Tài khoản giáo viên Gmail đang tồn tại vẫn đăng nhập; quy tắc edu áp dụng cho đăng ký giáo viên mới. Restart không tự nâng học sinh mới lên legacy.
 
@@ -21,9 +21,9 @@ Giữ start command `node server.js`, PostgreSQL/R2 hiện hành. DB user cần 
 
 ## Kích hoạt School trước khi có thanh toán
 
-Chưa có cổng thanh toán nên không có tự động kích hoạt gói. Admin hoặc quản lý có thể cấp quyền cho học sinh bằng endpoint quản trị có xác thực và same-origin:
+Billing dùng các bảng `billing_orders`, `billing_order_recipients`, `billing_transactions`, `billing_subscriptions` và `billing_reminders`; giá/thời hạn được snapshot trong đơn, webhook SePay được xác thực HMAC và xử lý idempotent. Gia hạn sau thanh toán nối tiếp thời hạn hiện tại. Reminder email + thông báo nội bộ được xếp hàng trước 7 ngày. Admin vẫn có thể cấp quyền thủ công bằng endpoint có xác thực và same-origin:
 
-`PUT /api/admin/users/:id/school-plan` với JSON `{"plan":"standard"}`; `none` thu hồi quyền. API từ chối cấp mới giá trị `premium`. Các bản ghi `premium` đã tồn tại vẫn được giữ nguyên và tiếp tục có quyền truy cập để tránh gián đoạn tài khoản cũ. Không áp dụng cho giáo viên/Admin. Backend hiện không mô hình hóa hóa đơn hoặc thời hạn gói; chỉ sử dụng cho kích hoạt thủ công đã được đơn vị vận hành xác nhận.
+`PUT /api/admin/users/:id/school-plan` với JSON `{"plan":"standard"}`; `none` thu hồi quyền. API từ chối cấp mới giá trị `premium`. Các bản ghi `premium` đã tồn tại vẫn được giữ nguyên và tiếp tục có quyền truy cập để tránh gián đoạn tài khoản cũ. Không áp dụng cho giáo viên/Admin. Đơn nhà trường lưu danh sách học sinh nhận quyền và chỉ cho phép người có school_memberships.role='school_admin' đang hoạt động (hoặc Super Admin) mua. Học sinh chỉ được xem đơn của tài khoản mình hoặc đơn mà mình là người nhận. Migration Billing là platform:008_school_standard_billing.sql; phải chạy qua npm run db:plan/db:migrate sau khi backup và diễn tập restore.
 
 SMTP/Resend và APP_PUBLIC_URL dùng lại cấu hình email hiện hữu. Không dùng email production để chạy bộ test. Worker thông báo bài/giáo viên vẫn giữ nguyên.
 
