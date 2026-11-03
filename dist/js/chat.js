@@ -345,7 +345,15 @@
     }
   });
 
+  function schoolChatAvailable() { return document.body.hasAttribute('data-school-ui'); }
+  function syncChatSpace() {
+    if (!dom.tabDirect) return;
+    dom.tabDirect.hidden = !schoolChatAvailable();
+    if (!schoolChatAvailable()) switchTab('global');
+  }
+  window.addEventListener('maihoc-route-changed', syncChatSpace);
   function switchTab(tab) {
+    if (tab === 'direct' && !schoolChatAvailable()) tab = 'global';
     activeTab = tab;
     dom.tabGlobal.classList.toggle("active", tab === "global");
     dom.tabDirect.classList.toggle("active", tab === "direct");
@@ -889,11 +897,13 @@
   document.addEventListener("DOMContentLoaded", () => {
     buildWidget();
     checkAuthAndInit();
+    syncChatSpace();
   });
 
   // Re-check auth whenever user logs in or out in MAI HỌC
   window.addEventListener("maihoc-auth-changed", () => {
     checkAuthAndInit();
+    syncChatSpace();
   });
 })();
 
