@@ -62,6 +62,22 @@ try{
  await page.goto(origin+'/account');await page.getByRole('heading',{name:'Trung tâm tài khoản',exact:true}).waitFor();await page.locator('#view .role-chip').filter({hasText:'Giáo viên'}).waitFor();
  await page.locator('#account-progress-list').filter({hasNotText:'Đang tải'}).waitFor();
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
+
+ await page.goto(origin+'/learning');await page.locator('#education-user').filter({hasText:'Giáo viên xác minh'}).waitFor();
+ await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
+ await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
+ await page.goto(origin+'/school');await page.locator('body[data-school-ui]').waitFor();
+ assert.equal(await page.locator('[data-route=school-advisor] .nav-glyph').textContent(),'✦');
+ await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').click();
+ assert.equal(await page.locator('#chat-pane-direct').isVisible(),true);
+ for(const width of [1440,820,390]) {
+  await page.setViewportSize({width,height:950});const sizes=[];
+  for(const path of ['/learning','/school']) {
+   await page.goto(origin+path);await page.locator('.education-switch button[aria-pressed=true]').waitFor();
+   sizes.push(await page.locator('.education-switch').evaluate(n=>[...n.children].map(b=>[b.offsetLeft,b.offsetWidth,b.offsetHeight,getComputedStyle(b).lineHeight])));
+  }
+  assert.deepEqual(sizes[0],sizes[1],`Stable switch layout at ${width}px`);
+ }
  await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
  await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
  assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email confirmed by link before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked; unverified mailbox cannot register.');
