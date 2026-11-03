@@ -33,7 +33,9 @@ try {
   }
   async function learningOnly(path) {
     await page.goto(origin + path);
-    await page.getByRole('heading', { name: 'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.' }).waitFor();
+    const pageHeading = page.locator('#view h1');
+    await pageHeading.waitFor();
+    assert.ok(['School Standard', 'Gói & thanh toán'].includes((await pageHeading.textContent()).trim()));
     await assertWorkspaceAction('Learning');
     assert.equal(await page.getByRole('heading', { name: 'School Standard', exact: true }).count(), 1);
     assert.equal(await page.getByText(/School Premium|Premium/, { exact: false }).count(), 0);

@@ -144,7 +144,7 @@
       return;
     }
     if (!plan) {
-      main.innerHTML = '<span class="maihoc-billing-kicker">SCHOOL STANDARD</span><h2>Chưa thể mở thanh toán</h2><p class="maihoc-billing-message">Giá hoặc thời hạn chưa được cấu hình trên backend.</p>';
+      main.innerHTML = '<span class="maihoc-billing-kicker">GÓI DUY NHẤT · MAIHOC SCHOOL</span><h2 style="font-size:28px;margin:8px 0">School Standard</h2><p class="maihoc-billing-message">Chưa thể mở thanh toán vì giá hoặc thời hạn của gói chưa được cấu hình trên backend. Hệ thống chưa tạo đơn và chưa nhận chuyển khoản.</p>';
       return;
     }
     if (!billingEnabled) {
