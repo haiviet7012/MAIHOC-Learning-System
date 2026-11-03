@@ -9,6 +9,7 @@ export async function ensureAccountUpgrade(db) {
   await db.transaction(async () => {
     await db.query("SELECT pg_advisory_xact_lock(hashtext('maihoc-account-upgrade-v1'))");
     await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS school_plan TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS school_expires_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_manager BOOLEAN NOT NULL DEFAULT false;
       CREATE TABLE IF NOT EXISTS teacher_signup_challenges(id TEXT PRIMARY KEY,email TEXT NOT NULL,code_hash TEXT NOT NULL,expires_at BIGINT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,verified_hash TEXT,consumed BOOLEAN NOT NULL DEFAULT false,created_at BIGINT NOT NULL,requester_key TEXT);
       CREATE INDEX IF NOT EXISTS teacher_signup_email_idx ON teacher_signup_challenges(email,created_at);`);

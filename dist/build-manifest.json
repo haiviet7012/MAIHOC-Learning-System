@@ -45,7 +45,7 @@
     "images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
     "images/poster.jpg": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
-    "index.html": "b489b2f296665fb5421aad4ae87aac45b6b8ab36eae41ca7d477f908bc9e622d",
+    "index.html": "fb13f8a534dc537a772b7efe671c3c8b3df14e00b3101225c0992a18009c523c",
     "js/account-features.js": "f81a85558de3dce090004fcf79fc208f062b5712e312c2f4546dfc77a3fe17fc",
     "js/account-upgrade.js": "b262634f21845337990817435f891fd3cf263b03b4eafdadd7a95ac605b0f80f",
     "js/ai-solver/index.js": "77376069fc1e9ee8f59a67427b7ae508d480d3333942d45def0b544527ea36ec",
@@ -73,7 +73,7 @@
     "js/platform/learning.js": "e13bfb9580af7abe5b964b56c52b6ccb156839c06a989754dd638810479129cc",
     "js/platform/portal.js": "e34f71320f2be809cd87443e70019ae795d104bef1873b28e0d16f125e50a0c0",
     "js/platform/router.js": "6056f6fec7796af91152a2f1b088fe962fd587f94633aeef54807fb3847ed814",
-    "js/platform/school-access.js": "c800e24d73e13c6cb6128b8a4e2fa8a77b66cd794ce7974f10517ad4ff6e41cf",
+    "js/platform/school-access.js": "5b23c2f80d504cf678491407e0efb904b88114bc59e456250e5705db75f555fb",
     "js/platform/school-documents.js": "96ea07d9a71684db56a7db63e70361d7b7dfea4425cd14536a24ab8199003722",
     "js/platform/school-evidence.js": "12790ff5c12f130eb1b377455a6cb8fa7e2bdbbea2cb36e929fbcf11256be2cb",
     "js/platform/school-overview.js": "5917db227eec8b16f1bc12f269b8c0c80aeef6b761c463e8dc3398a28bac131b",
@@ -131,6 +131,7 @@
     "study-rooms/school-client.js": "d8d04c86034af91beb0156698c4b2a483ecde25cb615a9d18330de761d64955c",
     "study-rooms/styles.css": "3e5de5f045385886f78589c5504aa422e1f1a5c8091fc682c4fa78d6125ae956",
     "vendor/exceljs/LICENSE": "2ed526b7e7c7681dc2347995b5036ddf73dc27d0539cdea59b6d4a72b63a57a0",
-    "vendor/exceljs/exceljs.min.js": "7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9"
+    "vendor/exceljs/exceljs.min.js": "7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9",
+    "js/school-billing.js": "9eb9e507f1814012292d6dc8dbecab20a3eed7af26ffbdf529cf5d169ffd8a15"
   }
 }

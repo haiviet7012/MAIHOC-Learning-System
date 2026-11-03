@@ -4,7 +4,16 @@ export function canAccessSchool(user) {
   const level = Number(user.admin_level ?? user.adminLevel ?? 0);
   if (user.role === 'admin' && level >= 1) return true;
   if (user.role === 'teacher') return true;
-  return user.role === 'user' && ['legacy','standard','premium'].includes(user.schoolPlan ?? user.school_plan);
+  const plan = user.schoolPlan ?? user.school_plan ?? 'none';
+  if (user.role !== 'user') return false;
+  // Historical Premium rows remain grandfathered until migration 008 maps them to Legacy.
+  // Premium is not a purchasable or grantable plan in the current catalog.
+  if (plan === 'legacy' || plan === 'premium') return true;
+  if (plan !== 'standard') return false;
+  const expiresAt = user.schoolExpiresAt ?? user.school_expires_at ?? null;
+  if (!expiresAt) return true;
+  const expiresMs = new Date(expiresAt).getTime();
+  return Number.isFinite(expiresMs) && expiresMs > Date.now();
 }
 
 export const schoolRoutes = new Set([

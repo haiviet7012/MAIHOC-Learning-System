@@ -80,6 +80,12 @@ export function publicUser(user) {
   const rawAccountType = String(user.account_type ?? user.accountType ?? "").trim().toLowerCase();
   const accountType = (rawAccountType === "school" || Boolean(classCode) || isTeacher) ? "school" : "external";
   const accountRole = isSuperAdmin ? "admin" : isTeacher ? "teacher" : "student";
+  const rawSchoolPlan = user.school_plan ?? user.schoolPlan ?? "none";
+  const schoolExpiresAt = user.school_expires_at ?? user.schoolExpiresAt ?? null;
+  const expiryMs = schoolExpiresAt ? new Date(schoolExpiresAt).getTime() : null;
+  const schoolPlan = rawSchoolPlan === "premium" ? "legacy"
+    : rawSchoolPlan === "standard" && expiryMs !== null && Number.isFinite(expiryMs) && expiryMs <= Date.now() ? "none"
+    : rawSchoolPlan;
   const roleLabel = isSuperAdmin
     ? "Quản trị MAI HỌC"
     : isTeacher
@@ -100,7 +106,8 @@ export function publicUser(user) {
     isTeacher,
     adminLevel,
     isManager: Boolean(user.is_manager ?? user.isManager),
-    schoolPlan: user.school_plan ?? user.schoolPlan ?? "none",
+    schoolPlan,
+    schoolExpiresAt,
     accountType,
     ...(teacherKind ? { teacherKind } : {}),
     ...(homeroomClass ? { homeroomClass } : {}),
@@ -278,7 +285,7 @@ export async function loadCurrentUser(req, res, next) {
     if (token && /^[a-f0-9]{64}$/i.test(token)) {
       const session = await db
         .prepare(`
-          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.account_type,u.school_plan,u.is_manager,u.created_at,s.expires_at
+          SELECT u.id,u.name,u.email,u.role,u.admin_level,u.account_type,u.school_plan,u.school_expires_at,u.is_manager,u.created_at,s.expires_at
           FROM sessions s JOIN users u ON u.id=s.user_id
           WHERE s.token_hash=?
         `)

@@ -1,5 +1,6 @@
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
+import { installBillingRoutes, createBillingReminderWorker } from './billing.js';
 import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
 import { geminiConfig, geminiClient, providerError } from './ai-provider.js';
 import { schoolAccessGuard } from './school-access.js';
@@ -514,7 +515,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: "30mb" }));
+app.use(express.json({ limit: "30mb", verify(req, _res, buffer) { if (req.originalUrl?.startsWith("/api/billing/sepay/webhook")) req.rawBody = Buffer.from(buffer); } }));
 app.use(loadCurrentUser);
 app.use(schoolAccessGuard);
 app.use(async(req,res,next)=>{
@@ -2981,6 +2982,7 @@ testsModule = installTestsModule({
   notifyAdmins
 });
 installAccountUpgrade(app, { db, requireAuth, requireSameOrigin });
+installBillingRoutes(app, { db, requireAuth, requireSameOrigin });
 installSchoolAnnouncementRoutes(app, { db, requireAuth, requireSameOrigin });
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
@@ -2995,6 +2997,7 @@ app.use((err, _req, res, _next) => {
 });
 
 export const schoolMailWorker = createSchoolMailWorker(db);
+export const billingReminderWorker = createBillingReminderWorker(db);
 let presenceCleanupTimer = null;
 
 export function startPresenceCleanup({ intervalMs = 5 * 60 * 1000, now = () => Date.now() } = {}) {
@@ -3025,7 +3028,7 @@ export async function initializeApplicationRuntime() {
   }
   await createInitialAdmin();
   startPresenceCleanup();
-  if (process.env.NODE_ENV !== 'test') schoolMailWorker.start();
+  if (process.env.NODE_ENV !== 'test') { schoolMailWorker.start(); billingReminderWorker.start(); }
   if (process.env.MAIHOC_RUN_LEGACY_STARTUP_MIGRATIONS === '1') {
     await runLegacyMaintenance();
   }
