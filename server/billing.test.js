@@ -165,7 +165,7 @@ test("Billing creates student and school orders, activates one Standard subscrip
     });
     assert.equal(schoolPayment.status, 200);
     const recipients = (await fixture.db.query(
-      "SELECT user_id,school_plan,school_expires_at FROM users WHERE id=ANY($1::bigint[]) ORDER BY id",
+      "SELECT id,school_plan,school_expires_at FROM users WHERE id=ANY($1::bigint[]) ORDER BY id",
       [[studentTwoId, studentThreeId]],
     )).rows;
     assert.equal(recipients.length, 2);
