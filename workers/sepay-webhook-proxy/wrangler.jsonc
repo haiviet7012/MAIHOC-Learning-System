@@ -1,0 +1,10 @@
+{
+  "$schema": "https://github.com/cloudflare/workers-sdk/raw/main/packages/wrangler/config-schema.json",
+  "name": "maihoc-sepay-webhook-proxy",
+  "main": "./worker.js",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "vars": {
+    "BACKEND_ORIGIN": "https://maihoc-learning-system.onrender.com"
+  }
+}
