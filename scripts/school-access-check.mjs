@@ -35,7 +35,7 @@ try {
     await page.goto(origin + path);
     const pageHeading = page.locator('#view h1');
     await pageHeading.waitFor();
-    assert.ok(['School Standard', 'Gói & thanh toán'].includes((await pageHeading.textContent()).trim()));
+    assert.equal((await pageHeading.textContent()).trim(), 'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.', 'School access redirect should preserve the School introduction page');
     await assertWorkspaceAction('Learning');
     assert.equal(await page.getByRole('heading', { name: 'School Standard', exact: true }).count(), 1);
     assert.equal(await page.getByText(/School Premium|Premium/, { exact: false }).count(), 0);
