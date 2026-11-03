@@ -328,17 +328,20 @@ body[data-school-ui] .education-sidebar nav {
 body[data-school-ui] .education-sidebar nav button {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--text);
   min-height: 46px;
   height: 46px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.35;
   gap: 10px;
   padding: 10px 12px;
+  border-radius: 12px !important;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 body[data-school-ui] .education-sidebar nav button:hover {
   background: var(--surface-2);
-  color: var(--primary-dark);
+  color: #000000;
 }
 body[data-school-ui] .education-sidebar nav button.active {
   background: var(--school-soft);
@@ -1021,6 +1024,19 @@ body[data-school-ui] .education-sidebar nav button.active {
 }
 body[data-school-ui] .education-sidebar nav button.active .nav-glyph {
   color: inherit !important;
+}
+:root.dark body[data-school-ui] .education-sidebar nav button:hover,
+html.dark body[data-school-ui] .education-sidebar nav button:hover,
+body[data-school-ui].dark .education-sidebar nav button:hover {
+  background: #e7ecf7 !important;
+  color: #000000 !important;
+  border-color: #c4d1e8 !important;
+}
+:root.dark body[data-school-ui] .education-sidebar nav button:hover :is(.nav-glyph, img, svg),
+html.dark body[data-school-ui] .education-sidebar nav button:hover :is(.nav-glyph, img, svg),
+body[data-school-ui].dark .education-sidebar nav button:hover :is(.nav-glyph, img, svg) {
+  color: #000000 !important;
+  filter: none !important;
 }
 body[data-school-ui]
   .school-overview-stats
