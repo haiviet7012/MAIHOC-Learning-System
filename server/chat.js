@@ -4,6 +4,18 @@ import { Server as SocketIOServer } from "socket.io";
 import { db, publicUser } from "./auth.js";
 
 let chatIO;
+export async function purgeExpiredChatMessages(database = db) {
+  // created_at is stored as UTC text for legacy SQLite compatibility.
+  // Parse it explicitly before comparing so PostgreSQL never relies on the
+  // session timezone and SQLite-origin timestamp strings remain valid.
+  return database.query(
+    `DELETE FROM chat_messages
+     WHERE COALESCE(
+       NULLIF(created_at, '')::timestamptz,
+       TIMESTAMPTZ 'epoch'
+     ) <= NOW() - INTERVAL '24 hours'`
+  );
+}
 export function notifyDeletedChatUser(userId) {
   chatIO?.emit("chat:account-deleted", { userId: Number(userId) });
   chatIO?.in(`user_${userId}`).disconnectSockets(true);
@@ -64,6 +76,8 @@ export async function initChatDatabase() {
     CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON chat_participants(user_id, conversation_id);
     CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
   `);
+
+  await purgeExpiredChatMessages();
 
   // Remove direct threads whose other account was already deleted.
   await db.query(`DELETE FROM chat_conversations c WHERE c.type='direct' AND
@@ -175,6 +189,16 @@ export function setupChat(server, app) {
     },
     pingTimeout: 30000,
     pingInterval: 25000
+  });
+
+  const retentionTimer = setInterval(() => {
+    purgeExpiredChatMessages().catch(error => console.error('Chat retention cleanup failed:', error.message));
+  }, 60000);
+  retentionTimer.unref();
+  server.once('close', () => clearInterval(retentionTimer));
+  app.use('/api/chat', async (_req, res, next) => {
+    try { await purgeExpiredChatMessages(); next(); }
+    catch { res.status(503).json({ error: 'Không thể tải lịch sử chat lúc này.' }); }
   });
 
   // Track online users: userId (number) => Set of socketId (string)

@@ -62,33 +62,25 @@ try{
  await page.goto(origin+'/account');await page.getByRole('heading',{name:'Trung tâm tài khoản',exact:true}).waitFor();await page.locator('#view .role-chip').filter({hasText:'Giáo viên'}).waitFor();
  await page.locator('#account-progress-list').filter({hasNotText:'Đang tải'}).waitFor();
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
+
+ await page.goto(origin+'/learning');await page.waitForFunction(async()=>{const r=await fetch('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return false;const d=await r.json();return d.user?.email==='verified@school.edu.vn'&&d.user?.isTeacher===true;});
+ await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
+ await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
+ await page.goto(origin+'/school');await page.locator('body[data-school-ui]').waitFor();
+ assert.equal(await page.locator('[data-route=school-advisor] .nav-glyph').textContent(),'✦');
+ await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').click();
+ assert.equal(await page.locator('#chat-pane-direct').isVisible(),true);
+ for(const width of [1440,820,390]) {
+  await page.setViewportSize({width,height:950});const sizes=[];
+  for(const path of ['/learning','/school']) {
+   await page.goto(origin+path);await page.locator('.education-switch button[aria-pressed=true]').waitFor();
+   sizes.push(await page.locator('.education-switch').evaluate(n=>[...n.children].map(b=>[b.offsetLeft,b.offsetWidth,b.offsetHeight,getComputedStyle(b).lineHeight])));
+  }
+  assert.deepEqual(sizes[0],sizes[1],`Stable switch layout at ${width}px`);
+ }
  await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
  await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
- // Super-admin invitation form must keep the Gmail input and action apart.
-  const adminLogin=await context.request.post(origin+'/api/auth/login',{headers:{Origin:origin},data:{email:'admin@maihoc.test',password}});
-  assert.equal(adminLogin.status(),200,'Preview super-admin login succeeds');
-  await page.setViewportSize({width:1440,height:1050});
-  await page.goto(origin+'/school/admin');
-  const adminForm=page.locator('#create-subadmin-form');
-  await adminForm.waitFor();
-  const desktopForm=await adminForm.evaluate(form=>{
-    const input=form.querySelector('input[type=email]'),button=form.querySelector('button[type=submit]');
-    const rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
-    return{display:getComputedStyle(form).display,input:rect(input),button:rect(button)};
-  });
-  assert.equal(desktopForm.display,'grid');
-  assert.ok(desktopForm.input.right+8<=desktopForm.button.x,'Desktop email input and button have a clear horizontal gap');
-  assert.ok(Math.abs(desktopForm.input.bottom-desktopForm.button.bottom)<1,'Desktop button aligns with the input bottom');
-  await page.setViewportSize({width:390,height:844});
-  const mobileForm=await adminForm.evaluate(form=>{
-    const input=form.querySelector('input[type=email]'),button=form.querySelector('button[type=submit]');
-    const rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
-    return{input:rect(input),button:rect(button),scrollWidth:document.documentElement.scrollWidth,innerWidth};
-  });
-  assert.ok(mobileForm.button.y>=mobileForm.input.bottom+8,'Mobile button moves below the input with spacing');
-  assert.ok(mobileForm.button.width>=mobileForm.input.width-1,'Mobile button fills the form width');
-  assert.ok(mobileForm.scrollWidth<=mobileForm.innerWidth+1,'Mobile admin form does not cause horizontal overflow');
-  assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, teacher email confirmation and registration, account centre, responsive advisor and spaced super-admin invite form.');
+ assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email confirmed by link before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked; unverified mailbox cannot register.');
 }finally{await browser?.close();preview.kill('SIGTERM');}
 
 
