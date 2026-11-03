@@ -41,6 +41,13 @@ test("translates SQLite placeholders and case-insensitive email comparisons", ()
   assert.deepEqual(result.values, ["User@Example.com"]);
 });
 
+test("translates SQLite datetime now offsets into PostgreSQL intervals", () => {
+  const result = translateSqlToPostgres(
+    "DELETE FROM chat_messages WHERE created_at <= datetime('now', '-24 hours')"
+  );
+  assert.match(result.sql, /created_at <= to_char\(\(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'\) - INTERVAL '24 hours', 'YYYY-MM-DD HH24:MI:SS'\)/i);
+});
+
 test("translates INSERT OR IGNORE into PostgreSQL conflict handling", () => {
   const result = translateSqlToPostgres(
     "INSERT OR IGNORE INTO user_presence (user_id, last_seen_at) VALUES (?, ?)",
