@@ -26,11 +26,15 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
-  const schoolButton = page.locator('[data-space="school"]');
+  async function assertWorkspaceAction(expected) {
+    await page.locator('#menu-toggle').click();
+    assert.equal((await page.locator('#workspace-switch').textContent()).trim(), expected);
+    await page.locator('#menu-toggle').click();
+  }
   async function learningOnly(path) {
     await page.goto(origin + path);
     await page.getByRole('heading', { name: 'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.' }).waitFor();
-    assert.equal(await schoolButton.isVisible(), true);
+    await assertWorkspaceAction('Learning');
     assert.equal(await page.getByRole('heading', { name: 'School Standard', exact: true }).count(), 1);
     assert.equal(await page.getByText(/School Premium|Premium/, { exact: false }).count(), 0);
     assert.equal(await page.locator('[data-personal-timetable]').count(), 0);
@@ -48,11 +52,11 @@ try {
     assert.equal(login.status(), 200);
     await page.goto(origin + '/school/timetable');
     await page.locator('[data-place="0-0"]').waitFor();
-    assert.equal(await schoolButton.isVisible(), true);
+    await assertWorkspaceAction('Learning');
     assert.equal((await context.request.get(origin + '/api/tests')).status(), 200);
     await page.locator('#logout-button').click();
     await page.waitForURL(origin + '/learning');
-    assert.equal(await schoolButton.isVisible(), true);
+    await assertWorkspaceAction('School');
   }
   assert.deepEqual(errors, []);
   console.log('School access: guest/external redirects, API denial, school student/teacher/admin access and logout passed.');

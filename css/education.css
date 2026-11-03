@@ -116,33 +116,6 @@ a {
   white-space: nowrap;
   color: var(--muted);
 }
-.education-switch {
-  display: flex;
-  height: 44px;
-  min-height: 44px;
-  flex: 0 0 44px;
-  align-self: stretch;
-  box-sizing: border-box;
-  background: #e6eaf3;
-  padding: 4px;
-  border-radius:0;
-  margin: 0 4px 26px;
-}
-.education-switch button {
-  flex: 1;
-  min-height: 36px;
-  border: 0;
-  border-radius:0;
-  background: none;
-  color: var(--muted);
-  font-weight: 800;
-  font-size: 14px;
-}
-.education-switch button.active {
-  background: #fff;
-  color: var(--primary);
-  box-shadow: 0 2px 5px #14264a0d;
-}
 .education-nav-label {
   font-size: 12px;
   letter-spacing: 1.5px;
@@ -332,8 +305,20 @@ a {
 .subject-menu {
   right: 22px;
   top: 68px;
+  width: min(260px, calc(100vw - 24px));
   max-width: 440px;
   left: auto;
+}
+.subject-menu .workspace-switch {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--primary);
+  font-weight: 800;
+}
+:root.dark .subject-menu .workspace-switch {
+  color: var(--primary);
+  border-color: var(--border);
 }
 .app-body {
   display: block;
@@ -1031,13 +1016,6 @@ body.reader-open .app-body {
   background: #315ba4;
   color: #fff;
 }
-:root.dark .education-switch {
-  background: #263750;
-}
-:root.dark .education-switch button.active {
-  background: #3b5074;
-  color: #fff;
-}
 :root.dark .portal-tip {
   background: #293d2b;
 }
@@ -1175,7 +1153,17 @@ body.reader-open .app-body {
     margin-left: 0;
   }
   .topbar #menu-toggle {
-    display: none;
+    display: inline-flex;
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 42px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .subject-menu {
+    top: 60px;
+    right: 12px;
   }
   .app-shell > .topbar .topbar-actions > #theme-toggle {
     display: inline-flex;

@@ -128,7 +128,13 @@ try {
     "No mobile horizontal overflow",
   );
   await page.setViewportSize({ width: 1440, height: 1050 });
-  await page.locator(".education-switch [data-space=school]").click();
+  // Start from Learning before asserting that the opposite-workspace action is School.
+  await page.goto(origin + "/learning");
+  await page.waitForFunction(() => !document.body.hasAttribute("data-school-ui"));
+  await page.locator("#menu-toggle").click();
+  assert.equal((await page.locator("#workspace-switch").textContent()).trim(), "School");
+  await page.locator("#workspace-switch").click();
+  await page.waitForURL(origin + "/school");
   await page
     .locator('.education-sidebar nav [data-route="school-analytics"]')
     .click();

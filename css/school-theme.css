@@ -316,32 +316,6 @@ body[data-school-ui] .education-logo img {
 body[data-school-ui] .education-logo strong {
   letter-spacing: -1px;
 }
-body[data-school-ui] .education-switch {
-  align-self: stretch;
-  box-sizing: border-box;
-  height: 44px;
-  min-height: 44px;
-  flex: 0 0 44px;
-  border-radius: 999px !important;
-  background: var(--surface-2);
-  padding: 4px;
-  margin: 0 4px 26px;
-}
-body[data-school-ui] .education-switch button {
-  border-radius: 999px !important;
-  color: var(--muted);
-  min-height: 36px;
-  padding-block: 0;
-}
-body[data-school-ui] .education-switch button.active {
-  background: var(--primary);
-  color: var(--surface);
-  box-shadow: none;
-}
-html.dark body[data-school-ui] .education-switch button.active {
-  background: #8050db;
-  color: #fff;
-}
 body[data-school-ui] .education-nav-label {
   color: var(--muted);
   font-size: 10px;

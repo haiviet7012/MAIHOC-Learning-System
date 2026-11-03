@@ -196,34 +196,53 @@ try {
       );
       await page.locator("#theme-toggle").click();
     }
-    // Verify the logo and workspace switch occupy identical coordinates in both workspaces.
+    // The logo stays anchored in the sidebar; the opposite-workspace action
+    // must remain inside the top-right dropdown in both workspace layouts.
     await page.goto(origin + "/school");
     await page.locator(".school-overview-hero").waitFor();
+    await page.locator("#menu-toggle").click();
     const schoolHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {
         const element = document.querySelector(selector);
         const box = element.getBoundingClientRect();
         return { x: box.x, y: box.y, width: box.width, height: box.height };
       };
-      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+      return {
+        logo: rect(".education-logo"),
+        switch: rect("#workspace-switch"),
+        menu: rect("#subject-menu"),
+      };
     });
     await page.goto(origin + "/learning");
     await page.locator("[data-personal-timetable]").waitFor();
+    await page.locator("#menu-toggle").click();
     const learningHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {
         const element = document.querySelector(selector);
         const box = element.getBoundingClientRect();
         return { x: box.x, y: box.y, width: box.width, height: box.height };
       };
-      return { logo: rect(".education-logo"), switch: rect(".education-switch") };
+      return {
+        logo: rect(".education-logo"),
+        switch: rect("#workspace-switch"),
+        menu: rect("#subject-menu"),
+      };
     });
-    for (const anchorName of ["logo", "switch"]) {
-      for (const dimension of ["x", "y", "width", "height"]) {
-        assert.ok(
-          Math.abs(schoolHeaderGeometry[anchorName][dimension] - learningHeaderGeometry[anchorName][dimension]) < 0.5,
-          `${device}: ${anchorName} ${dimension} differs between Learning and School: ${JSON.stringify({ school: schoolHeaderGeometry[anchorName], learning: learningHeaderGeometry[anchorName] })}`,
-        );
-      }
+    for (const dimension of ["x", "y", "width", "height"]) {
+      assert.ok(
+        Math.abs(schoolHeaderGeometry.logo[dimension] - learningHeaderGeometry.logo[dimension]) < 0.5,
+        `${device}: sidebar logo ${dimension} differs between Learning and School`,
+      );
+    }
+    for (const geometry of [schoolHeaderGeometry, learningHeaderGeometry]) {
+      assert.ok(geometry.menu.width > 0 && geometry.menu.x >= 0, `${device}: top menu is visible`);
+      assert.ok(
+        geometry.switch.x >= geometry.menu.x &&
+          geometry.switch.y >= geometry.menu.y &&
+          geometry.switch.x + geometry.switch.width <= geometry.menu.x + geometry.menu.width &&
+          geometry.switch.y + geometry.switch.height <= geometry.menu.y + geometry.menu.height,
+        `${device}: workspace switch remains inside the top-right dropdown`,
+      );
     }
     assert.equal(
       await page.locator("body").getAttribute("data-school-ui"),
