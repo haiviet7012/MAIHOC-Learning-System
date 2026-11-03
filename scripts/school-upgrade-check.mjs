@@ -57,8 +57,9 @@ try {
     );
     await page.goto(origin + "/school/digitize");
     await page
-      .getByRole("heading", { name: "Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày." })
+      .getByRole("heading", { name: "School Standard", exact: true })
       .waitFor();
+    await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).waitFor();
     const login = await context.request.post(origin + "/api/auth/login", {
       headers: { Origin: origin },
       data: { email: "student@maihoc.test", password },
