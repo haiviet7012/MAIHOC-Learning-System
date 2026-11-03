@@ -31,7 +31,8 @@ try {
     await page.goto(origin + path);
     await page.getByRole('heading', { name: 'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.' }).waitFor();
     assert.equal(await schoolButton.isVisible(), true);
-    assert.equal(await page.getByText('Đang cập nhật giá', { exact: true }).count(), 2);
+    assert.equal(await page.getByRole('heading', { name: 'School Standard', exact: true }).count(), 1);
+    assert.equal(await page.getByText(/School Premium|Premium/, { exact: false }).count(), 0);
     assert.equal(await page.locator('[data-personal-timetable]').count(), 0);
   }
   await learningOnly('/school/timetable');
