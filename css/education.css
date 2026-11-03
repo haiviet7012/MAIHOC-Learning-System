@@ -1959,33 +1959,20 @@ html { scrollbar-gutter: stable; }
   }
 }
 
-
-/* Prevent the Learning and School captions from drifting during transitions. */
-.education-switch {
-  display: flex;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
-  height: 44px;
-  min-height: 44px;
-  box-sizing: border-box;
-}
-.education-switch > button,
-.education-switch > a,
-.education-switch > [role="button"] {
-  flex: 1 1 0;
-  min-width: 0;
-  width: 50%;
-  height: 36px;
-  min-height: 36px;
-  margin: 0;
-  padding: 0 8px;
+/* Stable dimensions for the topbar Learning / School menu action. */
+.subject-menu .workspace-switch {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 12px;
+  line-height: 20px;
   text-align: center;
-  line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
   transform: none !important;
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }
