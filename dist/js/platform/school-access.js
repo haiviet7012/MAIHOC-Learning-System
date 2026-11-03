@@ -6,7 +6,9 @@ export function canAccessSchool(user) {
   if (user.role === 'teacher') return true;
   const plan = user.schoolPlan ?? user.school_plan ?? 'none';
   if (user.role !== 'user') return false;
-  if (plan === 'legacy') return true;
+  // Historical Premium rows remain grandfathered until migration 008 maps them to Legacy.
+  // Premium is not a purchasable or grantable plan in the current catalog.
+  if (plan === 'legacy' || plan === 'premium') return true;
   if (plan !== 'standard') return false;
   const expiresAt = user.schoolExpiresAt ?? user.school_expires_at ?? null;
   if (!expiresAt) return true;
