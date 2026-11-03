@@ -37,7 +37,7 @@ try{
  assert.equal(page.url(),schoolUrlBeforeReturn,'Returning to Learning must not navigate the School tab');
  assert.equal(context.pages().length,2,'Switching back must reuse the existing Learning tab');
  assert.equal(await page.getByRole('heading',{name:'Học sâu hơn. Chủ động hơn. Tiến bộ mỗi ngày.'}).isVisible(),true);
- assert.equal(await page.getByText('Đang cập nhật giá',{exact:true}).count(),2);
+ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true}).count(),1);assert.equal(await page.getByText(/School Premium|Premium/,{exact:false}).count(),0);
  await page.locator('#register-open').click();assert.equal(await page.locator('#register-form [name=accountType]').count(),2);
  await page.locator('#register-form [value=teacher]').check();assert.equal(await page.locator('[data-registration-details]').isVisible(),false);
  await page.locator('#register-form [name=email]').fill('verified@school.edu.vn.evil.com');
