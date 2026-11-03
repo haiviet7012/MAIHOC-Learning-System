@@ -26,6 +26,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm ci --prefix server --ignore-scripts
+      - run: npm run test:school-upgrade
       - run: npm test
       - run: node --test server/tests/platform-foundation.test.js server/tests/postgres-runtime.test.js
       - run: node --test server/tests/timetable.test.js server/tests/mail-delivery.test.js server/tests/auth-flows.test.js server/tests/school-notifications.test.js server/tests/account-upgrade.test.js
@@ -35,6 +36,7 @@ jobs:
           MAIHOC_TEST_DATABASE_URL: postgresql://postgres:maihoc_test@localhost:5432/maihoc_test
       - run: npm run build && npm run check:dist
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:school-upgrade:browser
       - run: npm run test:school-access
       - run: npm run test:account-upgrade
       - run: npm run test:school-mail

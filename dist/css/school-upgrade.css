@@ -1,0 +1,188 @@
+.upgrade-document-grid,
+.upgrade-room-grid,
+.upgrade-lab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 20px;
+  align-items: start;
+}
+.upgrade-room-grid {
+  grid-template-columns: minmax(0, 1.8fr) minmax(260px, 1fr);
+}
+.upgrade-lab-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr);
+}
+.upgrade-form {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  min-width: 0;
+}
+.upgrade-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.upgrade-form input,
+.upgrade-form textarea,
+.upgrade-form select,
+[data-upgrade-school],
+.upgrade-form fieldset {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 0;
+}
+.upgrade-form input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+}
+.upgrade-form .upgrade-check {
+  display: flex;
+  align-items: start;
+}
+.upgrade-form textarea {
+  resize: vertical;
+}
+.upgrade-form fieldset {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.upgrade-list-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.upgrade-list-item small {
+  display: block;
+}
+.upgrade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.upgrade-actions .button {
+  min-height: 44px;
+}
+.upgrade-source {
+  width: 100%;
+  max-height: 440px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+iframe.upgrade-source {
+  height: 440px;
+}
+.upgrade-warning {
+  border-left: 4px solid #c78a1e;
+  background: var(--surface);
+  padding: 10px;
+}
+.upgrade-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.upgrade-message-list {
+  height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 10px;
+}
+.upgrade-message-list article {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+.upgrade-video-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 160px;
+  background: #10213c;
+  padding: 10px;
+}
+.upgrade-video-grid figure {
+  margin: 0;
+  min-width: 0;
+}
+.upgrade-video-grid video {
+  width: 100%;
+  max-height: 300px;
+  background: #152944;
+  object-fit: contain;
+}
+.upgrade-video-grid figcaption {
+  color: #fff;
+  font-size: 12px;
+}
+.upgrade-video-grid .upgrade-screen-tile {
+  grid-column: 1/-1;
+}
+.upgrade-person {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px;
+}
+.upgrade-person button {
+  font-size: 12px;
+}
+.upgrade-lab-frame {
+  width: 100%;
+  height: 680px;
+  border: 1px solid var(--border);
+}
+.upgrade-lab-canvas {
+  height: 380px;
+  min-width: 0;
+  overflow: hidden;
+}
+.upgrade-lab-canvas canvas {
+  display: block;
+  max-width: 100%;
+}
+.upgrade-evidence {
+  padding: 12px;
+  border: 1px solid var(--border);
+  margin: 8px 0;
+}
+@media (max-width: 1050px) {
+  .upgrade-room-grid {
+    grid-template-columns: 1fr;
+  }
+  .upgrade-document-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .upgrade-lab-grid {
+    grid-template-columns: 1fr;
+  }
+  .upgrade-actions > * {
+    flex: 1 1 140px;
+  }
+  .upgrade-lab-frame {
+    height: 560px;
+  }
+  .upgrade-source {
+    max-height: 320px;
+  }
+  .upgrade-video-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-lab-kind] {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}

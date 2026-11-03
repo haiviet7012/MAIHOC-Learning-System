@@ -6,7 +6,7 @@ import { geminiConfig, providerError, aiError } from './ai-provider.js';
 
 export async function checkAi({ env = process.env, fetcher = fetch, live = false, generate = false } = {}) {
   const results = [], cache = new Map();
-  for (const scope of ['shared', 'advisor', 'exam']) {
+  for (const scope of ['shared', 'advisor', 'exam', ...(env.MAIHOC_SCHOOL_UPGRADE_ENABLED === '1' ? ['room', 'document'] : [])]) {
     let config;
     try {
       config = geminiConfig(scope, env);

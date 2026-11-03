@@ -1,3 +1,4 @@
+import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
 import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
 import { geminiConfig, geminiClient, providerError } from './ai-provider.js';
@@ -2957,6 +2958,7 @@ app.post("/api/ai/difficulty", async (req, res) => {
 app.use("/api/chemistry", chemistryRouter);
 app.use("/api/ai", universalAiRouter);
 
+app.use("/api/school/upgrade", createSchoolUpgradeRouter({ db, requireAuth, requireSameOrigin }));
 app.use("/api/platform", createPlatformRouter({ db, requireAuth, requireSameOrigin }));
 installLegacySessions(app, { db, requireAuth, requireSameOrigin });
 testsModule = installTestsModule({
