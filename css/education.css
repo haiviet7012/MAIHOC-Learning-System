@@ -137,7 +137,7 @@ a {
   border: 2px solid var(--border);
   background: none;
   color: #5c6d89;
-  border-radius:0;
+  border-radius: 12px;
   box-sizing: border-box;
   height: 56px;
   flex-shrink: 0;
@@ -157,6 +157,7 @@ a {
   color: var(--primary);
   font-weight: 700;
   border: 2px solid #c4d1e8;
+  border-radius: 12px;
 }
 .education-sidebar nav img {
   width: 22px;
@@ -951,12 +952,16 @@ body.reader-open .app-body {
 :root.dark .education-sidebar nav button:not(.active) .nav-glyph {
   color: #bdcce2;
 }
+:root.dark .education-sidebar nav button:hover,
 :root.dark .education-sidebar nav button:not(.active):hover {
-  background: #e7ecf7;
-  color: var(--primary-dark);
+  background: #e7ecf7 !important;
+  color: #000000 !important;
+  border-color: #c4d1e8 !important;
 }
-:root.dark .education-sidebar nav button:not(.active):hover .nav-glyph {
-  color: var(--primary-dark);
+:root.dark .education-sidebar nav button:hover :is(.nav-glyph, img, svg),
+:root.dark .education-sidebar nav button:not(.active):hover :is(.nav-glyph, img, svg) {
+  color: #000000 !important;
+  filter: none !important;
 }
 :root.dark .education-sidebar nav button.active {
   color: #111827;
