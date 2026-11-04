@@ -306,13 +306,17 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
     (await call(`/roadmaps/${replacementId}?scope=learning`, { action: "apply" })).status,
     200,
   );
-  const pdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
+  const deletedPdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
+    headers: { "x-user": "1" },
+  });
+  assert.equal(deletedPdfResponse.status, 404, "deleted roadmap PDF is no longer available");
+  const pdfResponse = await fetch(base + `/roadmaps/${replacementId}/pdf?scope=learning`, {
     headers: { "x-user": "1" },
   });
   assert.equal(pdfResponse.status, 200);
   assert.equal(pdfResponse.headers.get("content-type"), "application/pdf");
   assert.ok((await pdfResponse.arrayBuffer()).byteLength > 1000);
-  const changed = await call(`/roadmaps/${id}?scope=learning`, {
+  const changed = await call(`/roadmaps/${replacementId}?scope=learning`, {
     action: "task",
     index: 0,
     done: true,
