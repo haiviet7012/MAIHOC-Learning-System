@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 
-const source = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 function harness(fetch) {
   const elements = new Map(['#admin-users-status', '#admin-users-table', '#admin-user-total'].map(id => [id, { textContent: '', innerHTML: '', classList: { add() {} } }]));
   const toasts = [];

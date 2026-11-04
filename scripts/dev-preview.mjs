@@ -88,12 +88,12 @@ app.get("/__maihoc_dev_events", (req, res) => {
     "Cache-Control": "no-store",
     Connection: "keep-alive",
   });
-  res.write("retry: 500\\n\\n");
+  res.write("retry: 500\n\n");
   reloadClients.add(res);
   req.on("close", () => reloadClients.delete(res));
 });
 const notifyReload = (type) => {
-  const message = `data: ${JSON.stringify({ type })}\\n\\n`;
+  const message = `data: ${JSON.stringify({ type })}\n\n`;
   for (const client of reloadClients) client.write(message);
 };
 for (const folder of ["css", "js", "public"]) {
