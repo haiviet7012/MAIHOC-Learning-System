@@ -21,6 +21,7 @@ import {
 import express from "express";
 import http from "node:http";
 import { setupChat, initChatDatabase, notifyDeletedChatUser } from "./chat.js";
+import { createLearningAdvisorRetentionWorker } from "./learning-advisor/maintenance.js";
 import multer from "multer";
 import dotenv from "dotenv";
 import fs from "node:fs";
@@ -1119,7 +1120,18 @@ async function deleteAccountPermanently(id) {
   const pendingFiles = await db
     .prepare("SELECT filename FROM document_submissions WHERE user_id=?")
     .all(id);
-  const result = await db.prepare("DELETE FROM users WHERE id=?").run(id);
+  const result = await db.transaction(async () => {
+    // Revoke the Standard entitlement before removing the learner record.
+    await db.query(
+      "UPDATE billing_subscriptions SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='active'",
+      [id],
+    );
+    await db.query(
+      "UPDATE users SET school_plan='none',school_expires_at=NULL WHERE id=$1",
+      [id],
+    );
+    return db.prepare("DELETE FROM users WHERE id=?").run(id);
+  });
   if (!result.changes) return false;
   notifyDeletedChatUser(id);
   try {
@@ -2998,6 +3010,7 @@ app.use((err, _req, res, _next) => {
 
 export const schoolMailWorker = createSchoolMailWorker(db);
 export const billingReminderWorker = createBillingReminderWorker(db);
+export const learningAdvisorRetentionWorker = createLearningAdvisorRetentionWorker(db);
 let presenceCleanupTimer = null;
 
 export function startPresenceCleanup({ intervalMs = 5 * 60 * 1000, now = () => Date.now() } = {}) {
@@ -3028,7 +3041,11 @@ export async function initializeApplicationRuntime() {
   }
   await createInitialAdmin();
   startPresenceCleanup();
-  if (process.env.NODE_ENV !== 'test') { schoolMailWorker.start(); billingReminderWorker.start(); }
+  if (process.env.NODE_ENV !== 'test') {
+    schoolMailWorker.start();
+    billingReminderWorker.start();
+    learningAdvisorRetentionWorker.start();
+  }
   if (process.env.MAIHOC_RUN_LEGACY_STARTUP_MIGRATIONS === '1') {
     await runLegacyMaintenance();
   }
