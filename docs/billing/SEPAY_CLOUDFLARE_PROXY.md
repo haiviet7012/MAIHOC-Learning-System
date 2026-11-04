@@ -20,9 +20,33 @@ SePay signs the original request body. This Worker reads the body as bytes and f
 - `X-SePay-Signature`
 - `X-SePay-Timestamp`
 
-It does not forward browser cookies, Authorization, Host, client-IP, or arbitrary forwarding headers. It does not log request bodies, account numbers, signatures, timestamps, or transaction payloads.
+It does not forward browser cookies, Authorization, Host, client-IP, or arbitrary forwarding headers. It does not log request bodies, account numbers, signatures, timestamps, or transaction payloads. For each backend response, it logs only the HTTP status and a strictly allowlisted backend error message; non-JSON and unknown responses are represented by generic labels.
 
 The Worker does not store the HMAC secret. Keep `SEPAY_WEBHOOK_SECRET` only in Render. The Render backend remains responsible for HMAC-SHA256 verification, timestamp/replay protection, recipient-account validation, order-code matching, exact amount matching, transaction deduplication, and subscription activation.
+
+## Safe operational diagnostics
+
+Follow live proxy diagnostics with:
+
+```powershell
+npx wrangler tail maihoc-sepay-webhook-proxy --format pretty
+```
+
+For each request that reaches Render, the Worker emits a `[SePay webhook proxy] backend response` event containing only:
+
+- `upstream_status`: the HTTP status returned by Render.
+- `upstream_error`: a known-safe Billing error message (for example, `Unexpected bank account.`), or a generic label such as `non_json_response` / `unrecognized_json_response`.
+
+Only fixed, allowlisted Billing messages can appear verbatim. Unknown JSON messages and non-JSON bodies are never copied to logs. The Worker does not log request or response bodies, account numbers, transfer content, signatures, timestamps, cookies, or authorization headers. The original backend response status and body are still passed through to SePay unchanged.
+
+Example diagnostic event:
+
+```text
+[SePay webhook proxy] backend response
+{ upstream_status: 403, upstream_error: "Unexpected bank account." }
+```
+
+Use this event together with Render request logs and SePay delivery history to identify which layer returned an error. The event does not imply that a payment was recorded.
 
 ## Deploy as a separate Worker
 
@@ -111,4 +135,4 @@ npm run test:sepay-proxy
 node --check workers/sepay-webhook-proxy/worker.js
 ```
 
-The tests verify exact body-byte preservation, signature-header forwarding, stripping of unrelated sensitive headers, fixed backend routing, response pass-through, method/path restrictions, payload size limits, invalid configuration, and upstream failure handling.
+The tests verify exact body-byte preservation, signature-header forwarding, stripping of unrelated sensitive headers, fixed backend routing, response pass-through, method/path restrictions, payload size limits, invalid configuration, upstream failure handling, and sanitized diagnostic logging.

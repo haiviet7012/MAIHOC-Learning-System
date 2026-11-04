@@ -1,5 +1,13 @@
 const WEBHOOK_PATH = "/api/billing/sepay/webhook";
 const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_DIAGNOSTIC_RESPONSE_BYTES = 4096;
+const SAFE_UPSTREAM_MESSAGES = new Set([
+  "Billing webhook is disabled.",
+  "Invalid webhook signature.",
+  "Invalid payload.",
+  "Missing transaction id.",
+  "Unexpected bank account.",
+]);
 
 function json(data, status, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -37,6 +45,70 @@ function forwardingHeaders(request) {
   return headers;
 }
 
+async function safeUpstreamError(response) {
+  if (response.status < 400) return null;
+
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("json")) return "non_json_response";
+
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_DIAGNOSTIC_RESPONSE_BYTES) {
+    return "unrecognized_json_response";
+  }
+
+  const body = response.clone().body;
+  if (!body) return "empty_response";
+
+  const reader = body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_DIAGNOSTIC_RESPONSE_BYTES) {
+        void reader.cancel().catch(() => {});
+        return "unrecognized_json_response";
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return "unreadable_response";
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    const message = typeof payload?.message === "string" ? payload.message : "";
+    return SAFE_UPSTREAM_MESSAGES.has(message) ? message : "unrecognized_json_response";
+  } catch {
+    return "invalid_json_response";
+  }
+}
+
+async function logUpstreamResponse(logger, response) {
+  const fields = {
+    upstream_status: response.status,
+    upstream_error: await safeUpstreamError(response),
+  };
+  if (response.status >= 400) {
+    logger?.warn?.("[SePay webhook proxy] backend response", fields);
+  } else {
+    logger?.info?.("[SePay webhook proxy] backend response", fields);
+  }
+}
+
 function upstreamResponse(response) {
   const headers = new Headers();
   for (const name of ["content-type", "retry-after"]) {
@@ -48,7 +120,7 @@ function upstreamResponse(response) {
   return new Response(body, { status: response.status, headers });
 }
 
-export function createWorker(fetchImpl = fetch) {
+export function createWorker(fetchImpl = fetch, logger = console) {
   return {
     async fetch(request, env = {}) {
       const incoming = new URL(request.url);
@@ -94,6 +166,9 @@ export function createWorker(fetchImpl = fetch) {
           body: rawBody,
           redirect: "manual",
         });
+        // Log only the upstream status and a strict allowlist of known-safe
+        // backend messages. Never log request data, headers, or raw responses.
+        await logUpstreamResponse(logger, response);
         // Keep the backend status and body so SePay's delivery log shows
         // the actual Render response rather than a synthetic proxy success.
         return upstreamResponse(response);
