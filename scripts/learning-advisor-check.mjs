@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 // Full application + isolated PostgreSQL-compatible database. Only Google is stubbed.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -56,14 +57,14 @@ try {
   await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (r) =>
     r.abort(),
   );
-  await page.goto(origin + "/learning", { waitUntil: "networkidle" });
+  await page.goto(origin + "/learning", { waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page.locator("#login-open").click();
   await page.locator("#login-form [name=email]").fill("student@maihoc.test");
   await page.locator("#login-form [name=password]").fill(password);
   await page.locator("#login-form button[type=submit]").click();
   await page.locator("#login-dialog").waitFor({ state: "hidden" });
   const learningUsername = await page.locator('#education-user').boundingBox();
-  await page.goto(origin + '/school/advisor');
+  await page.goto(origin + '/school/advisor'); await dismissDevelopmentNotice(page);
   await page.locator("[data-advisor-form]").waitFor();
   const schoolUsername = await page.locator('#education-user').boundingBox();
   const schoolHeader = await page.locator('.app-shell > .topbar').boundingBox();
@@ -87,7 +88,7 @@ try {
     ),
     page.locator("[data-advisor-task]").check(),
   ]);
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page.locator("[data-advisor-task]:checked").waitFor();
   await page.locator("[data-advisor-mode=evaluate]").click();
   await page.locator("[data-advisor-form] button[type=submit]").click();
@@ -129,7 +130,7 @@ try {
   );
   await page.setViewportSize({ width: 1440, height: 1050 });
   // Start from Learning before asserting that the opposite-workspace action is School.
-  await page.goto(origin + "/learning");
+  await page.goto(origin + "/learning"); await dismissDevelopmentNotice(page);
   await page.waitForFunction(() => !document.body.hasAttribute("data-school-ui"));
   await page.locator("#menu-toggle").click();
   assert.equal((await page.locator("#workspace-switch").textContent()).trim(), "School");
@@ -158,7 +159,7 @@ try {
   await teacherContext.request.post(origin + '/api/auth/login', { headers: { Origin: origin }, data: { email: 'teacher@maihoc.test', password } });
   const teacherPage = await teacherContext.newPage();
   await teacherPage.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
-  await teacherPage.goto(origin + '/school/advisor');
+  await teacherPage.goto(origin + '/school/advisor'); await dismissDevelopmentNotice(teacherPage);
   await teacherPage.locator('.teaching-advisor h2').waitFor();
   await teacherPage.locator('.teaching-advisor [name=classKey] option').nth(1).waitFor({ state: 'attached' });
   await teacherPage.locator('.teaching-advisor [name=classKey]').selectOption({ index: 1 });

@@ -2033,7 +2033,9 @@ $("#logout-button").addEventListener("click", async () => {
 initTheme();
 // Show once on each full visit to the Learning entry points, before remote data loads.
 const entryPath = window.location.pathname.replace(/\/+$/, "") || "/";
-if (entryPath === "/" || entryPath === "/learning") openDialog("development-notice-dialog");
+const isLearningEntry = (entryPath === "/" || entryPath === "/learning") && state.route === "home";
+const isTeacherConfirmation = window.location.hash.startsWith("#teacher-email-confirm=");
+if (isLearningEntry && !isTeacherConfirmation) openDialog("development-notice-dialog");
 render();
 initRemoteData();
 refreshAuthUI();

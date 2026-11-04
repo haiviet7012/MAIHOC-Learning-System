@@ -27,6 +27,7 @@
     "school:worker": "node server/school-upgrade/worker.js",
     "test:school-upgrade": "node --test server/school-upgrade/*.test.js",
     "test:school-upgrade:browser": "node scripts/school-upgrade-check.mjs",
+    "test:learning-welcome": "node scripts/learning-welcome-check.mjs",
     "test:school-theme": "node scripts/school-theme-check.mjs",
     "test:billing": "node --test server/billing.test.js",
     "test:sepay-proxy": "node --test workers/sepay-webhook-proxy/worker.test.js"
