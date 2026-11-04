@@ -1,5 +1,5 @@
 import { escapeHTML as e } from "../ui.js";
-import { mountClassroomLive } from './classroom-live.js';
+import { mountClassroomLive } from './classroom-live.js?v=20261105livekit1';
 
 // Isolated UI scaffold: no writes to class membership, room APIs or account data.
 export function mountClassroomShell(root, user, {onNavigate, classroomCode} = {}) {

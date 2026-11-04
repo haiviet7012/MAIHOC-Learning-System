@@ -8,6 +8,16 @@ const root = new URL("../", import.meta.url),
 const sources = ["js", "css", "configs", "study-rooms", "public", "physics-lab"];
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
 const check = process.argv.includes("--check");
+// Keep the browser entry usable on hosts that serve source modules directly.
+const livekit = await build({ absWorkingDir: fileURLToPath(root), entryPoints: ['livekit-client'], bundle: true, minify: true, format: 'esm', target: 'es2022', write: false, legalComments: 'inline' });
+const livekitFile = new URL('js/vendor/livekit-client.js', root);
+if (check) {
+  if (!Buffer.from(livekit.outputFiles[0].contents).equals(await readFile(livekitFile))) throw new Error('Stale browser LiveKit bundle');
+} else {
+  await mkdir(new URL('js/vendor/', root), { recursive: true });
+  await writeFile(livekitFile, livekit.outputFiles[0].contents);
+  await cp(new URL('node_modules/livekit-client/LICENSE', root), new URL('js/vendor/livekit-LICENSE', root));
+}
 let index = await readFile(new URL("index.html", root), "utf8");
 const generated = new Map();
 generated.set("vendor/exceljs/exceljs.min.js", await readFile(new URL("node_modules/exceljs/dist/exceljs.min.js", root)));

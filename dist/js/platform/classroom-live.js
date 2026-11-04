@@ -1,4 +1,4 @@
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent, Track } from '../vendor/livekit-client.js';
 
 export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}={}){
   let disposed=false,preview=null,meeting=null,timer=null;
