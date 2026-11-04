@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
 import { testDatabase } from '../platform/test-db.js';
 import { setTestPool } from '../postgres.js';
+import { isOwnerAdminUser, requireOwnerAdmin } from '../auth.js';
 
 test('teacher signup and recovery email success/failure preserve roles, OTP privacy, cooldown and reset', async () => {
   delete process.env.DATABASE_URL; delete process.env.MAIHOC_TEST_DATABASE_URL;
@@ -19,6 +20,32 @@ test('teacher signup and recovery email success/failure preserve roles, OTP priv
   try {
     const runtime = await import('../server.js'); server = runtime.server; stopPresenceCleanup = runtime.stopPresenceCleanup;
     await runtime.initializeApplicationRuntime();
+
+    // Account deletion must be limited to the configured MAIHOC owner, not every Super Admin.
+    const previousOwnerEmail = process.env.ADMIN_EMAIL;
+    process.env.ADMIN_EMAIL = 'owner@maihoc.test';
+    try {
+      const owner = { role: 'admin', adminLevel: 2, email: 'owner@maihoc.test', isManager: false };
+      const otherSuperAdmin = { ...owner, email: 'another-admin@maihoc.test' };
+      const delegatedManager = { ...owner, isManager: true };
+      assert.equal(isOwnerAdminUser(owner), true);
+      assert.equal(isOwnerAdminUser(otherSuperAdmin), false);
+      assert.equal(isOwnerAdminUser(delegatedManager), false);
+
+      const invokeOwnerGuard = user => {
+        const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+        let nextCalled = false;
+        requireOwnerAdmin({ user }, response, () => { nextCalled = true; });
+        return { response, nextCalled };
+      };
+      assert.equal(invokeOwnerGuard(owner).nextCalled, true);
+      const denied = invokeOwnerGuard(otherSuperAdmin);
+      assert.equal(denied.nextCalled, false);
+      assert.equal(denied.response.statusCode, 403);
+    } finally {
+      if (previousOwnerEmail === undefined) delete process.env.ADMIN_EMAIL;
+      else process.env.ADMIN_EMAIL = previousOwnerEmail;
+    }
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
     const post = (path, body, cookie) => fetch(origin + path, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
