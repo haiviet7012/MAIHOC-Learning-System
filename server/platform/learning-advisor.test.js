@@ -333,7 +333,9 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   assert.equal(outside.data.roadmap, null);
   assert.match(outside.data.reply, /chỉ hỗ trợ học tập/);
   const persisted = await call("/?scope=learning");
-  assert.equal(persisted.data.messages.length, 6);
+  // Four advisor interactions (initial plan, replacement plan, evaluation, and out-of-scope chat)
+  // each persist a user/model message pair; cancelling a roadmap must retain this history.
+  assert.equal(persisted.data.messages.length, 8);
   assert.equal(persisted.data.roadmaps[0].plan.tasks[0].done, true);
   assert.equal(
     (await call(`/?scope=school&schoolId=${school.id}`)).data.messages.length,
