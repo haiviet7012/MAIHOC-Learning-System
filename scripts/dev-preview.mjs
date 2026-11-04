@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { watch } from "node:fs";
 // Isolated local preview; never reads DATABASE_URL or production data.
 delete process.env.DATABASE_URL;
 delete process.env.MAIHOC_TEST_DATABASE_URL;
 process.env.MAIHOC_SKIP_AUTO_LISTEN = "1";
+process.env.MAIHOC_DEV_MODE = "1";
 process.env.MAIHOC_PLATFORM_ENABLED = process.env.MAIHOC_PREVIEW_PLATFORM_ENABLED ?? "1";
 process.env.MAIHOC_AI_WORKER_ENABLED = "0";
 process.env.NODE_ENV = "test";
@@ -79,6 +81,25 @@ if (process.env.MAIHOC_PREVIEW_ADVISOR_DATA === '1') {
 if (process.env.MAIHOC_SCHOOL_UPGRADE_ENABLED === '1') await fixture.db.query('INSERT INTO school_upgrade_access(school_id) VALUES($1)', [school.id]);
 // The existing server exposes static files, APIs, real cookies, grading and Socket.IO.
 const port = Number(process.env.PREVIEW_PORT || 4173);
+const reloadClients = new Set();
+app.get("/__maihoc_dev_events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+  });
+  res.write("retry: 500\\n\\n");
+  reloadClients.add(res);
+  req.on("close", () => reloadClients.delete(res));
+});
+const notifyReload = (type) => {
+  const message = `data: ${JSON.stringify({ type })}\\n\\n`;
+  for (const client of reloadClients) client.write(message);
+};
+for (const folder of ["css", "js", "public"]) {
+  watch(new URL(`../${folder}/`, import.meta.url), { recursive: true }, () => notifyReload(folder));
+}
+watch(new URL("../index.html", import.meta.url), () => notifyReload("html"));
 server.listen(port, "127.0.0.1", () =>
   console.log(`MAIHOC isolated preview ready on http://127.0.0.1:${port}`),
 );

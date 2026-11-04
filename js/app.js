@@ -39,6 +39,7 @@ const state = { route: standaloneStudentProgress ? "student-progress" : "home", 
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
 let authResolved = false;
+const schoolHomeRoute = () => canAccessSchool(currentUser) ? "organization" : "school-plans";
 const AUTH_SYNC_STORAGE_KEY = "maihoc:auth-session-change";
 let authSyncChannel = null;
 let authSyncRequest = null;
@@ -93,6 +94,7 @@ let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
 function canRefreshBackgroundView() {
+    if (state.route === 'school-rooms') return false;
     // Mounted portal views fetch their own content, including drawers outside
     // #view; recreating them would close dialogs and discard their draft state.
     return !view.querySelector('form') && (!activePortalCleanup || state.route === 'home');
@@ -157,6 +159,7 @@ function saveRouteHistory() {
     };
 }
 function go(route, params = {}) {
+    if (route === 'school-rooms' && !Object.hasOwn(params, 'classroomCode')) state.classroomCode = null;
     if (route === 'assignments' && !Object.hasOwn(params, 'assignmentId')) {
         state.assignmentId = null;
         state.targetSchoolId = null;
@@ -304,10 +307,45 @@ function subjectPage() {
         ? "Khám phá công cụ Vật lý, tài liệu lý thuyết và phòng thi mô phỏng."
         : "Chọn một khu vực học tập để tiếp tục.";
 
+    const librarySection = state.subject === "IELTS"
+      ? ""
+      : `<section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
+
+    const learningAreas = state.subject === "IELTS"
+      ? [
+          { r: "ielts-skill", skill: "speaking", i: "🎙️", t: "Speaking", d: "Luyện phát âm, phản xạ và trả lời tự nhiên." },
+          { r: "ielts-skill", skill: "reading", i: "📖", t: "Reading", d: "Rèn kỹ năng đọc hiểu và xử lý dạng bài IELTS." },
+          { r: "ielts-skill", skill: "writing", i: "✍️", t: "Writing", d: "Luyện viết Task 1, Task 2 và phát triển ý tưởng." },
+          { r: "ielts-skill", skill: "listening", i: "🎧", t: "Listening", d: "Luyện nghe theo chủ đề và dạng bài thi IELTS." },
+        ]
+      : [
+          { r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." },
+          { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." },
+          { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." },
+          { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." },
+        ];
+
+    const fullTestSection = state.subject === "IELTS"
+      ? `<section class="card ielts-full-test-shell"><div class="section-head"><div><h2>Full test</h2><p>Các đề IELTS đầy đủ 4 kỹ năng, sẵn khung để bổ sung nội dung.</p></div></div><div class="grid four">${[1, 2, 3, 4, 5, 6].map(testNumber => `<article class="card ielts-full-test-option"><span class="pill">IELTS FULL TEST</span><h3>Đề số ${testNumber}</h3><p>Listening · Reading · Writing · Speaking</p><button class="button secondary small" type="button" data-ielts-placeholder>Đang hoàn thiện</button></article>`).join("")}</div></section>`
+      : "";
+
     return `${pageHeading(`Môn ${state.subject}`, pageSubtitle)}
 ${naturalScienceTools}
 <div class="grid four">
-${[{ r: "theory", i: "▤", t: "Ôn tập lý thuyết", d: "Đọc tài liệu và hệ thống kiến thức theo từng lớp." }, { r: "practice", i: "✎", t: "Đề thi ôn tập", d: "Luyện tập theo bộ đề và chủ đề." }, { r: "exam-select", i: "◷", t: "Phòng thi thử", d: "Thi mô phỏng có giới hạn thời gian 90 phút." }, { r: "tests", i: "📝", t: "Bài kiểm tra", d: "Làm bài kiểm tra theo hàng đợi (Queue), tính giờ và lưu điểm." }].map(x => `<article class="card clickable resource-card" data-route="${x.r}"><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div><section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
+${learningAreas.map(x => `<article class="card clickable resource-card" data-route="${x.r}" ${x.skill ? `data-ielts-skill="${x.skill}"` : ""}><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div>${fullTestSection}${librarySection}`;
+}
+function ieltsSkillPage(skill) {
+    const config = {
+        speaking: { title: "Speaking", intro: "Khung luyện nói IELTS theo Part và chủ đề.", options: ["Part 1 · Câu hỏi cá nhân", "Part 2 · Cue Card", "Part 3 · Thảo luận mở rộng"] },
+        reading: { title: "Reading", intro: "Khung luyện đọc IELTS theo dạng bài và passage.", options: ["Từ vựng theo chủ đề", "Dạng bài Reading", "Bài đọc luyện tập"] },
+        writing: { title: "Writing", intro: "Khung luyện viết IELTS theo Task và band mục tiêu.", options: ["Task 1 · Biểu đồ / thư", "Task 2 · Essay", "Bài mẫu và checklist"] },
+        listening: { title: "Listening", intro: "Khung luyện nghe IELTS theo Section và chủ đề.", options: ["Section 1 · Everyday conversation", "Section 2 · Monologue", "Section 3–4 · Academic listening"] },
+    }[skill] || null;
+    if (!config) return subjectPage();
+    const fullTestSection = skill === "listening"
+      ? `<section class="card ielts-full-test-shell"><div class="section-head"><div><h2>Full test</h2><p>Các đề IELTS đầy đủ 4 kỹ năng, sẵn khung để bổ sung nội dung.</p></div></div><div class="grid four">${[1, 2, 3, 4, 5, 6].map(testNumber => `<article class="card ielts-full-test-option"><span class="pill">IELTS FULL TEST</span><h3>Đề số ${testNumber}</h3><p>Listening · Reading · Writing · Speaking</p><button class="button secondary small" type="button" data-ielts-placeholder>Đang hoàn thiện</button></article>`).join("")}</div></section>`
+      : "";
+    return `${breadcrumb(config.title)}${pageHeading(`IELTS · ${config.title}`, config.intro)}<section class="card ielts-skill-shell"><div class="section-head"><div><h2>Lựa chọn nội dung</h2><p>Các mục đã dựng sẵn khung để bổ sung đề IELTS sau.</p></div></div><div class="grid three">${config.options.map((option, index) => `<article class="card ielts-skill-option"><span class="pill">${config.title.toUpperCase()}</span><h3>${option}</h3><p>Chưa có dữ liệu đề. Có thể bổ sung nội dung và giao diện chi tiết tại đây.</p><button class="button secondary small" type="button" data-ielts-placeholder>Đang hoàn thiện</button></article>`).join("")}</div></section>${fullTestSection}`;
 }
 function gradePicker(route, category) { return `${pageHeading(category ? categoryName(category) : "Chọn lớp", "Chọn khối lớp để xem tài liệu môn ${state.subject}.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="${route}" data-category="${category || ""}"><div><span class="pill">MÔN ${escapeHTML(state.subject.toUpperCase())}</span><div class="grade">${gradeLabel(g)}</div><p>${category ? by(g, category).length + " tài liệu" : "Chọn nội dung học"}</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
 function resourceListPage(category, grade) {
@@ -841,6 +879,9 @@ async function loadAdminUsers() {
 
 function render() {
     if ((schoolRoutes.has(state.route) || state.route === "analytics") && !authResolved) {
+        const schoolPending = schoolRoutes.has(state.route);
+        document.body.toggleAttribute('data-school-ui', schoolPending);
+        document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== (schoolPending ? 'school' : 'learning'); });
         view.innerHTML = '<p role="status">Đang kiểm tra tài khoản…</p>';
         return;
     }
@@ -878,7 +919,7 @@ function render() {
     if (workspaceSwitch) {
         const targetSpace = sidebarSpace === 'school' ? 'learning' : 'school';
         const targetRoute = targetSpace === 'school'
-            ? (authResolved && !canAccessSchool(currentUser) ? 'school-plans' : 'organization')
+            ? (authResolved ? schoolHomeRoute() : 'organization')
             : 'home';
         const targetLabel = targetSpace === 'school' ? 'School' : 'Learning';
         workspaceSwitch.dataset.workspaceTarget = targetSpace;
@@ -918,9 +959,10 @@ function render() {
     document.body.classList.toggle("practice-open", state.route === "exam" && !fullscreenExam);
     document.body.classList.toggle("test-open", state.route === "exam" && examCategory === "test");
     if (state.route === 'school-plans') view.innerHTML = schoolPlansMarkup();
-    else if (upgradeRoutes.has(state.route)) activePortalCleanup = mountSchoolUpgrade(view, state.route, currentUser, go);
+    else if (upgradeRoutes.has(state.route)) activePortalCleanup = mountSchoolUpgrade(view, state.route, currentUser, go, state);
     else if (state.route === 'school-advisor') activePortalCleanup = mountLearningAdvisor(view, { teaching: Boolean(currentUser?.isTeacher), inline: true });
     else if (state.route === 'school-ielts') { state.subject='IELTS'; view.innerHTML=subjectPage(); }
+    else if (state.route === 'ielts-skill') { state.subject='IELTS'; view.innerHTML=ieltsSkillPage(state.ieltsSkill); }
     else if (state.route === "home") {
         view.innerHTML = homePage();
         activePortalCleanup = mountTimetablePreview(view, currentUser);
@@ -1369,7 +1411,7 @@ document.addEventListener("click", async (e) => {
             const isSchool = document.body.hasAttribute("data-school-ui") || sessionStorage.getItem("maihoc-sidebar-space") === "school" || schoolRoutes.has(state.route);
             if (isSchool) {
                 $("#subject-menu")?.classList.remove("open");
-                go(canAccessSchool(currentUser) ? "organization" : "school-plans");
+                go(schoolHomeRoute());
                 return;
             }
         }
@@ -1386,6 +1428,11 @@ document.addEventListener("click", async (e) => {
         if (r === "chemistry" && chemTab) {
             $("#subject-menu")?.classList.remove("open");
             go("chemistry", { chemistryTab: chemTab, subject: "Hóa học" });
+            return;
+        }
+        if (r === "ielts-skill") {
+            $("#subject-menu")?.classList.remove("open");
+            go("ielts-skill", { subject: "IELTS", ieltsSkill: routeBtn.dataset.ieltsSkill });
             return;
         }
         $("#subject-menu")?.classList.remove("open");
@@ -1500,7 +1547,7 @@ document.addEventListener("click", async (e) => {
 });
 const handleLogoHomeClick = () => {
     const isSchool = document.body.hasAttribute("data-school-ui") || sessionStorage.getItem("maihoc-sidebar-space") === "school" || schoolRoutes.has(state.route);
-    go(isSchool ? (canAccessSchool(currentUser) ? "organization" : "school-plans") : "home");
+    go(isSchool ? schoolHomeRoute() : "home");
 };
 $("#brand-home").addEventListener("click", handleLogoHomeClick);
 $("#education-home")?.addEventListener("click", handleLogoHomeClick);
@@ -1804,6 +1851,7 @@ function applyAuthUI() {
     $("#user-greeting").textContent = currentUser ? `Xin chào, ${currentUser.name}${greetingRole}` : "";
 }
 async function refreshAuthUI({ preserveOnError = false, deferRender = false } = {}) {
+    const initialAuth = !authResolved;
     let loaded = false;
     try {
         const response = await fetch("/api/auth/me", { credentials: "same-origin" });
@@ -1822,6 +1870,9 @@ async function refreshAuthUI({ preserveOnError = false, deferRender = false } = 
     const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     window.maihocCurrentUser = currentUser;
     if (!deferRender) {
+        // Initial auth must mount a deep-linked room even though background
+        // refreshes are disabled while its camera/meeting is active.
+        if (initialAuth && state.route === 'school-rooms') render();
         await refreshTestsQueue();
         resumePendingTest();
         if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
@@ -1863,11 +1914,12 @@ async function syncAuthFromSharedCookie() {
             schoolRoutes.has(state.route) ||
             state.route === "school-plans";
 
-        // Hide the old account's page while the shared cookie is being checked.
-        view.hidden = true;
+        // Focus also fires after file pickers and tab switching. Keep the page
+        // mounted while checking the cookie; replace it only for a real change.
         try {
             await refreshAuthUI({ preserveOnError: true, deferRender: true });
             if (authIdentity(currentUser) !== previousIdentity) {
+                view.hidden = true;
                 stopTimerIfLeaving("home");
                 activeTestDraft = null;
                 state.answers = {};
@@ -1878,7 +1930,7 @@ async function syncAuthFromSharedCookie() {
                 state.assignmentId = null;
                 state.targetSchoolId = null;
                 state.route = wasSchoolWorkspace
-                    ? (currentUser && canAccessSchool(currentUser) ? "organization" : "school-plans")
+                    ? schoolHomeRoute()
                     : "home";
                 history.replaceState(saveRouteHistory(), "", routeUrl(state));
                 await refreshTestsQueue();
@@ -1950,7 +2002,7 @@ $("#login-form").addEventListener("submit", async (event) => {
         form.reset();
         toast("Đăng nhập thành công.", "success");
         if (emailDestination && canAccessSchool(currentUser)) go(emailDestination.route, emailDestination);
-        else if (loginWorkspace === "school") go(canAccessSchool(currentUser) ? "organization" : "school-plans");
+        else if (loginWorkspace === "school") go(schoolHomeRoute());
         else go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
     }
     catch (err) {

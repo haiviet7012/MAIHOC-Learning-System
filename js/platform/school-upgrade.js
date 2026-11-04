@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { escapeHTML as e } from "../ui.js";
+import { mountClassroomShell } from "./classroom-shell.js";
 export const upgradeRoutes = new Set([
   "school-lab",
   "school-rooms",
@@ -13,7 +14,8 @@ export const field = (name, label, content) =>
   `<label>${label}${content || `<input name="${name}" required maxlength="200">`}</label>`;
 export const schoolSelect = (schools) =>
   `<label>Trường thử nghiệm<select data-upgrade-school>${schools.map((s) => `<option value="${e(s.id)}">${e(s.name)}</option>`).join("")}</select></label>`;
-export function mountSchoolUpgrade(container, route, user, onNavigate) {
+export function mountSchoolUpgrade(container, route, user, onNavigate, state = {}) {
+  if (route === "school-rooms") return mountClassroomShell(container, user, {onNavigate, classroomCode:state.classroomCode});
   let disposed = false,
     child = () => {},
     sid = "",
