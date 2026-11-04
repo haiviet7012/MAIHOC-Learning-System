@@ -287,6 +287,9 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   });
   assert.equal(outside.data.roadmap, null);
   assert.match(outside.data.reply, /chỉ hỗ trợ học tập/);
+  await db.query(
+    "DELETE FROM learning_advisor_threads WHERE id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'",
+  );
   const persisted = await call("/?scope=learning");
   assert.equal(persisted.data.messages.length, 6);
   assert.equal(persisted.data.roadmaps[0].plan.tasks[0].done, true);
