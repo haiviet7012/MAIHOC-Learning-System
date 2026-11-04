@@ -126,7 +126,7 @@ try {
         ["/school/tests", ".test-queue-window"],
         ["/school/digitize", "[data-doc-upload]"],
         ["/school/notebook", "[data-doc-upload]"],
-        ["/school/rooms", "[data-room-create]"],
+        ["/school/rooms", ".classroom-shell [data-cr-search]"],
         ["/school/progress", "[data-evidence-filter]"],
       ]) {
         await page.goto(origin + path);
