@@ -233,7 +233,7 @@ export function installLearningAdvisor(
       if (!roadmap) fail("Không tìm thấy lộ trình.", 404);
 
       const plan = roadmap.plan || {};
-      const fontPath = new URL("../assets/DejaVuSans.ttf", import.meta.url);
+      const fontPath = new URL("../assets/Montserrat-Regular.ttf", import.meta.url);
       const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
       const chunks = [];
       doc.on("data", (chunk) => chunks.push(chunk));
