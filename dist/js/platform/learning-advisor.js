@@ -29,13 +29,13 @@ function mountAdvisorContent(
     '<section class="portal-panel advisor"><h2>Cố vấn học tập AI</h2><p role="status">Đang kết nối dữ liệu học tập…</p></section>';
   function roadmapMarkup(roadmap) {
     const { plan } = roadmap;
-    return `<article class="advisor-plan"><h3>${roadmap.applied_at ? "Lộ trình đã áp dụng" : "Lộ trình đề xuất"}</h3><p>${e(plan.goal || "Mục tiêu học tập cá nhân")} · ${plan.minutesPerDay} phút/ngày</p>${roadmap.applied_at ? `<p class="muted">Ngày 1: ${e(new Date(roadmap.applied_at).toLocaleDateString("vi-VN"))}. Đánh dấu dưới đây là học sinh tự xác nhận.</p>` : `<button type="button" class="button primary" data-advisor-apply="${e(roadmap.id)}">Áp dụng lộ trình</button>`}<ol>${plan.tasks.map((t, i) => `<li><label><input type="checkbox" data-advisor-task="${i}" data-plan="${e(roadmap.id)}" ${t.done ? "checked" : ""} ${roadmap.applied_at ? "" : "disabled"}> <strong>Ngày ${t.day} · ${e(t.subject)}</strong> — ${e(t.title)} (${t.minutes} phút)</label></li>`).join("")}</ol></article>`;
+    return `<article class="advisor-plan"><h3>${roadmap.applied_at && !roadmap.revoked_at ? "Lộ trình đã áp dụng" : "Lộ trình đề xuất"}</h3><p>${e(plan.goal || "Mục tiêu học tập cá nhân")} · ${plan.minutesPerDay} phút/ngày</p>${roadmap.applied_at && !roadmap.revoked_at ? `<p class="muted">Ngày áp dụng: ${e(new Date(roadmap.applied_at).toLocaleDateString("vi-VN"))}. Đánh dấu dưới đây là học sinh tự xác nhận.</p><button type="button" class="button secondary" data-advisor-unapply="${e(roadmap.id)}">Hủy áp dụng lộ trình</button>` : `<button type="button" class="button primary" data-advisor-apply="${e(roadmap.id)}">Áp dụng lộ trình</button>`}<a class="button secondary" href="/api/learning-advisor/roadmaps/${e(roadmap.id)}/pdf?scope=${scope}${schoolId ? `&schoolId=${encodeURIComponent(schoolId)}` : ""}&days=${days}" download>Tải lộ trình PDF</a><ol>${plan.tasks.map((t, i) => `<li><label><input type="checkbox" data-advisor-task="${i}" data-plan="${e(roadmap.id)}" ${t.done ? "checked" : ""} ${roadmap.applied_at && !roadmap.revoked_at ? "" : "disabled"}> <strong>Ngày ${t.day} · ${e(t.subject)}</strong> — ${e(t.title)} (${t.minutes} phút)</label></li>`).join("")}</ol></article>`;
   }
   function render() {
     if (controller.signal.aborted) return;
-    const draft = state.roadmaps.find((p) => !p.applied_at),
+    const draft = state.roadmaps.find((p) => !p.applied_at || p.revoked_at),
       applied = state.roadmaps
-        .filter((p) => p.applied_at)
+        .filter((p) => p.applied_at && !p.revoked_at)
         .sort((a, b) => new Date(b.applied_at) - new Date(a.applied_at))[0];
     container.innerHTML = `<section class="portal-panel advisor"><div class="advisor-heading"><div><p class="eyebrow">MAIHOC · ${scope.toUpperCase()}</p><h2>Cố vấn học tập AI</h2><p>Lộ trình của bạn, dựa trên việc học thực tế.</p></div><label>Khoảng thời gian<select data-advisor-days>${[7, 30, 90].map((n) => `<option value="${n}" ${days === n ? "selected" : ""}>${n} ngày</option>`).join("")}</select></label></div><div class="advisor-options">${Object.entries(
       modes,
@@ -133,18 +133,21 @@ function mountAdvisorContent(
         return;
       }
       const apply = event.target.closest("[data-advisor-apply]");
-      if (apply) {
+      const unapply = event.target.closest("[data-advisor-unapply]");
+      const roadmapAction = apply || unapply;
+      if (roadmapAction) {
         busy = true;
-        apply.disabled = true;
+        roadmapAction.disabled = true;
         try {
-          await request(`/roadmaps/${apply.dataset.advisorApply}`, {
+          const roadmapId = roadmapAction.dataset.advisorApply || roadmapAction.dataset.advisorUnapply;
+          await request(`/roadmaps/${roadmapId}`, {
             method: "POST",
-            body: { action: "apply" },
+            body: { action: apply ? "apply" : "unapply" },
           });
           await load();
         } catch (error) {
           status(error.message);
-          apply.disabled = false;
+          roadmapAction.disabled = false;
         } finally {
           busy = false;
         }
