@@ -1227,7 +1227,7 @@ app.post('/api/admin/admins',requireSameOrigin,requireSuperAdmin,async(req,res)=
   res.json({ok:true,message:'Đã cấp quyền quản lý; giữ nguyên mật khẩu và dữ liệu.'});
 });
 
-app.delete("/api/admin/users/:id", requireSameOrigin, requireAdmin, async (req, res) => {
+app.delete("/api/admin/users/:id", requireSameOrigin, requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "ID tài khoản không hợp lệ." });
   if (id === req.user.id) {
@@ -1305,6 +1305,7 @@ app.post(
   requireSameOrigin,
   requireSuperAdmin,
   async (req, res) => {
+    if (req.user.isManager) return res.status(403).json({ error: "Chỉ chủ sở hữu MAI HỌC mới được duyệt xóa tài khoản." });
     const requestId = Number(req.params.id),
       decision = String(req.body?.decision || "");
     if (!Number.isSafeInteger(requestId) || requestId < 1 || !["approve", "reject"].includes(decision)) {
