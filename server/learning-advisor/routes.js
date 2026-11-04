@@ -233,6 +233,7 @@ export function installLearningAdvisor(
       if (!roadmap) fail("Không tìm thấy lộ trình.", 404);
 
       const plan = roadmap.plan || {};
+      const fontPath = new URL("../assets/DejaVuSans.ttf", import.meta.url);
       const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
       const chunks = [];
       doc.on("data", (chunk) => chunks.push(chunk));
@@ -241,23 +242,24 @@ export function installLearningAdvisor(
         doc.on("error", reject);
       });
 
-      doc.font("Helvetica").fontSize(19).fillColor("#28233d")
-        .text("MAIHOC - LO TRINH HOC TAP", { align: "center" });
+      doc.registerFont("Vietnamese", fontPath.pathname);
+      doc.font("Vietnamese").fontSize(19).fillColor("#28233d")
+        .text("MAIHOC – LỘ TRÌNH HỌC TẬP", { align: "center" });
       doc.moveDown(0.7).fontSize(13).fillColor("#5b536c")
-        .text("Muc tieu: " + String(plan.goal || "Hoc tap ca nhan").replace(/[<>]/g, ""));
-      doc.text("Thoi gian hoc moi ngay: " + (Number(plan.minutesPerDay) || 0) + " phut");
-      doc.text("Trang thai: " + (roadmap.applied_at && !roadmap.revoked_at ? "Dang ap dung" : "Chua ap dung"));
-      doc.text("Ngay tao: " + new Date(roadmap.created_at).toLocaleDateString("vi-VN"));
-      doc.moveDown().fontSize(11).fillColor("#28233d").text("TOM TAT", { underline: true });
+        .text("Mục tiêu: " + String(plan.goal || "Học tập cá nhân").replace(/[<>]/g, ""));
+      doc.text("Thời gian học mỗi ngày: " + (Number(plan.minutesPerDay) || 0) + " phút");
+      doc.text("Trạng thái: " + (roadmap.applied_at && !roadmap.revoked_at ? "Đang áp dụng" : "Chưa áp dụng"));
+      doc.text("Ngày tạo: " + new Date(roadmap.created_at).toLocaleDateString("vi-VN"));
+      doc.moveDown().font("Vietnamese").fontSize(11).fillColor("#28233d").text("TÓM TẮT", { underline: true });
       doc.moveDown(0.3).fontSize(10).text(String(plan.summary || "Lo trinh hoc tap ca nhan"));
-      doc.moveDown().fontSize(11).text("KE HOACH CHI TIET", { underline: true });
+      doc.moveDown().font("Vietnamese").fontSize(11).text("KẾ HOẠCH CHI TIẾT", { underline: true });
       for (const task of Array.isArray(plan.tasks) ? plan.tasks : []) {
         if (doc.y > 720) doc.addPage();
-        doc.moveDown(0.5).fontSize(11).fillColor("#28233d")
-          .text("Ngay " + (Number(task.day) || "-") + " - " + String(task.subject || "Hoc tap"));
-        doc.fontSize(10).fillColor("#40394e").text(String(task.title || ""));
-        doc.text("Thoi luong: " + (Number(task.minutes) || 0) + " phut | " +
-          (task.done ? "Da hoan thanh" : "Chua hoan thanh"));
+        doc.moveDown(0.5).font("Vietnamese").fontSize(11).fillColor("#28233d")
+          .text("Ngày " + (Number(task.day) || "-") + " – " + String(task.subject || "Học tập"));
+        doc.font("Vietnamese").fontSize(10).fillColor("#40394e").text(String(task.title || ""));
+        doc.text("Thời lượng: " + (Number(task.minutes) || 0) + " phút | " +
+          (task.done ? "Đã hoàn thành" : "Chưa hoàn thành"));
       }
       doc.end();
       await completed;
