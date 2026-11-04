@@ -1,6 +1,6 @@
 {
   "files": {
-    "assets/app-6JN4QYUK.js": "a60673cee8d515afee5ab0fbd00bbeaa4f543c2b92262ff465a3923bf9e917cf",
+    "assets/app-J7HSWQIY.js": "32daf6f94f53aaf821ae3fea80c6bf5dd434fccdb9bc4b8a98f28374785526d3",
     "assets/chat-ENARWF3U.js": "49bb65cf35573bee5d7f7424a5c94375b6c9f753d53612c2844b4cb0b35fdedf",
     "assets/chunk-3CRNBVE7.js": "1b09be9161b13b5b893516e3fd718f0c21eb174571269f40621e462cd7d2d146",
     "assets/chunk-AFN5BOAL.js": "60a65d52f78ad3e644981672f205e78b491e98835c6a75ff80a6c67f635e767e",
@@ -47,9 +47,9 @@
     "images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
     "images/poster.jpg": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
-    "index.html": "b90da3f0a742979cce73aff167f8c8dc6fb8e028a350daf46a0bea96b70459f8",
+    "index.html": "3093306e6c0e16b61fbb92ce88da3ab2617250690c84b9b2ab025568652b07f2",
     "js/account-features.js": "7773ef878958336666a78e550854c2f9949047c34492cc1e904384a4cb33bc5b",
-    "js/account-upgrade.js": "06d53e89c9f341391bf24e5e85f2e66d8613d47675f3ebd9221a0a73c9604bab",
+    "js/account-upgrade.js": "89d40a39a6a87b12c544f11c0ec7344abf9688bd5c5c656f83e089f9766ed65f",
     "js/ai-solver/index.js": "75ec5c9fa54e39676ad2af8c101ed0bf029c7f10892b69623ecbf40fc1514c7e",
     "js/ai-solver/solver.css": "6bc399103e0ccaffbd9f6435aaebfc2b980bf8aeb0caa9e02610fcf9601751df",
     "js/ai.js": "1366b3bc790d3f70971a1c44a69795662d34bab34164b48fcd3d4306c62a48a3",

@@ -1,7 +1,7 @@
 import{a as Lt,b as Mt}from"./chunk-OTJQVL2V.js";import{a as pt,b as F,c as g,d as et,e as Ct,f as Tt,g as _t,h as Sa,i as _a,j as Ln,k as La,l as Ma}from"./chunk-QLY7D2U3.js";import"./chunk-AFN5BOAL.js";function Aa(){return`<section class="portal-panel school-plans-page">
     <header class="school-plans-intro">
       <p class="eyebrow">MAIHOC SCHOOL \xB7 KH\xD4NG GIAN H\u1ECCC T\u1EACP M\u1EDE R\u1ED8NG</p>
-      <h1>H\u1ECDc s\xE2u h\u01A1n. Ch\u1EE7 \u0111\u1ED9ng h\u01A1n.<br>Ti\u1EBFn b\u1ED9 m\u1ED7i ng\xE0y.</h1>
+      <h1>H\u1ECDc s\xE2u h\u01A1n. Ch\u1EE7 \u0111\u1ED9ng h\u01A1n.<br> Ti\u1EBFn b\u1ED9 m\u1ED7i ng\xE0y.</h1>
       <p>MAIHOC School k\u1EBFt h\u1EE3p h\u1ECDc li\u1EC7u, c\xF4ng c\u1EE5 AI v\xE0 ho\u1EA1t \u0111\u1ED9ng \xF4n luy\u1EC7n trong m\u1ED9t kh\xF4ng gian d\xE0nh cho h\u1ECDc sinh. Kh\xE1m ph\xE1 nh\u1EEFng c\xF4ng c\u1EE5 h\u1ED7 tr\u1EE3 b\u1EA1n h\u1ECDc t\u1EADp c\xF3 \u0111\u1ECBnh h\u01B0\u1EDBng v\xE0 qu\u1EA3n l\xFD vi\u1EC7c h\u1ECDc thu\u1EADn ti\u1EC7n h\u01A1n.</p>
     </header>
     <section class="school-plans-feature-grid" aria-label="T\xEDnh n\u0103ng n\u1ED5i b\u1EADt c\u1EE7a MAIHOC School">

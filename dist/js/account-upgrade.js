@@ -3,7 +3,7 @@ export function schoolPlansMarkup() {
   return `<section class="portal-panel school-plans-page">
     <header class="school-plans-intro">
       <p class="eyebrow">MAIHOC SCHOOL · KHÔNG GIAN HỌC TẬP MỞ RỘNG</p>
-      <h1>Học sâu hơn. Chủ động hơn.<br>Tiến bộ mỗi ngày.</h1>
+      <h1>Học sâu hơn. Chủ động hơn.<br> Tiến bộ mỗi ngày.</h1>
       <p>MAIHOC School kết hợp học liệu, công cụ AI và hoạt động ôn luyện trong một không gian dành cho học sinh. Khám phá những công cụ hỗ trợ bạn học tập có định hướng và quản lý việc học thuận tiện hơn.</p>
     </header>
     <section class="school-plans-feature-grid" aria-label="Tính năng nổi bật của MAIHOC School">
