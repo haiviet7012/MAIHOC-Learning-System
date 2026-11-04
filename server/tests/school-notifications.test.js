@@ -18,7 +18,8 @@ test('targeted school email: class/grade isolation, routes, dedupe, private deli
     const row = (await db.query('INSERT INTO users(id,name,email,password_hash,role,admin_level,account_type) VALUES($1,$2,$3,\'fixture\',$4,$5,$6) RETURNING *', [id, `User ${id}`, `user${id}@maihoc.test`, role, level, type])).rows[0];
     users.set(id, publicUser({...row,school_plan:type==='school'?'legacy':'none'}));
   }
-  for (const [id,code] of [[2,'10A1'],[3,'10A2'],[4,'11B1'],[5,'10A1'],[6,'10A1'],[8,'10A1'],[8,'10A2']]) await db.query('INSERT INTO school_class_members(user_id,class_code) VALUES($1,$2)', [id,code]);
+  for (const [id,code] of [[2,'10A1'],[3,'10A2'],[4,'11B1'],[5,'10A1'],[8,'10A1'],[8,'10A2']]) await db.query('INSERT INTO school_class_members(user_id,class_code) VALUES($1,$2)', [id,code]);
+  await assert.rejects(db.query("INSERT INTO school_class_members(user_id,class_code) VALUES(6,'10A1')"), /một vai trò/);
   await db.query("INSERT INTO school_teacher_assignments(id,teacher_id,class_code,subject,assignment_type) VALUES('assigned',1,'10A1','Toán','subject')");
   const app = express(); app.use(express.json());
   app.use((req,res,next) => { req.user = users.get(Number(req.headers['x-user'])); next(); }); app.use(schoolAccessGuard);
