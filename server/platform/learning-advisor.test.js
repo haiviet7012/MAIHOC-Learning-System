@@ -197,16 +197,6 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   );
   assert.equal((await call("/?scope=learning")).data.data.observations, 1);
 
-  await db.query(
-    "INSERT INTO learning_advisor_threads(id,user_id,scope) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',1,'learning')",
-  );
-  await db.query(
-    "INSERT INTO learning_advisor_messages(thread_id,role,content,created_at) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','user','expired',now()-interval '25 hours'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','model','fresh',now()-interval '1 hour')",
-  );
-  const retentionView = await call("/?scope=learning");
-  assert.ok(!retentionView.data.messages.some(message => message.content === "expired"));
-  assert.ok(retentionView.data.messages.some(message => message.content === "fresh"));
-
   const body = {
     mode: "plan",
     message: "Lập kế hoạch",
@@ -220,6 +210,24 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   const plan = await call("/chat?scope=learning", body);
   assert.equal(plan.status, 200);
   const id = plan.data.roadmap.id;
+  const sourceThread = (await db.query(
+    "SELECT id FROM learning_advisor_threads WHERE user_id=1 AND scope='learning' AND school_id IS NULL ORDER BY created_at DESC LIMIT 1",
+  )).rows[0];
+  const expiredMessages = await db.query(
+    "INSERT INTO learning_advisor_messages(thread_id,role,content,created_at) VALUES($1,'user','expired-fixture',now()-interval '25 hours') RETURNING id",
+    [sourceThread.id],
+  );
+  const freshMessages = await db.query(
+    "INSERT INTO learning_advisor_messages(thread_id,role,content,created_at) VALUES($1,'model','fresh-fixture',now()-interval '1 hour') RETURNING id",
+    [sourceThread.id],
+  );
+  const retentionView = await call("/?scope=learning");
+  assert.ok(!retentionView.data.messages.some(message => message.content === "expired-fixture"));
+  assert.ok(retentionView.data.messages.some(message => message.content === "fresh-fixture"));
+  await db.query(
+    "DELETE FROM learning_advisor_messages WHERE id = ANY($1::bigint[])",
+    [[expiredMessages.rows[0].id, freshMessages.rows[0].id]],
+  );
   assert.equal(
     (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" }, 2))
       .status,
@@ -287,9 +295,6 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   });
   assert.equal(outside.data.roadmap, null);
   assert.match(outside.data.reply, /chỉ hỗ trợ học tập/);
-  await db.query(
-    "DELETE FROM learning_advisor_threads WHERE id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'",
-  );
   const persisted = await call("/?scope=learning");
   assert.equal(persisted.data.messages.length, 6);
   assert.equal(persisted.data.roadmaps[0].plan.tasks[0].done, true);
