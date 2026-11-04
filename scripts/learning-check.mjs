@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -27,7 +28,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, route => route.abort());
   assert.equal((await context.request.get(origin + '/api/learning/timetable')).status(), 401);
-  await page.goto(origin + '/learning');
+  await page.goto(origin + '/learning'); await dismissDevelopmentNotice(page);
   await page.locator('#login-open').click();
   await page.locator('#login-form [name=email]').fill('student@maihoc.test');
   await page.locator('#login-form [name=password]').fill(password);
@@ -64,7 +65,7 @@ try {
   assert.equal((await put({ cells: { '0-0': '<script>' }, version: saved.version })).status(), 400);
   assert.equal((await put({ cells: {}, version: 0 })).status(), 409);
   assert.equal((await context.request.put(origin + '/api/learning/timetable', { data: { cells: {}, version: saved.version }, headers: { Origin: 'https://untrusted.example' } })).status(), 403);
-  await page.reload();
+  await page.reload(); await dismissDevelopmentNotice(page);
   await page.locator('[data-place="0-0"]').filter({ hasText: 'Toán' }).waitFor();
   await page.getByRole('button', { name: 'Quay lại tổng quan', exact: true }).click();
   await page.getByRole('button', { name: 'Sửa thời khóa biểu hiện tại', exact: true }).waitFor();
@@ -106,7 +107,7 @@ try {
   assert.equal((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells['1-1'], 'Tiếng Anh', 'Import does not persist until Save');
   await page.locator('[data-save-timetable]').click();
   await page.locator('[data-timetable-status]').filter({ hasText: 'Đã lưu thời khóa biểu vào tài khoản.' }).waitFor();
-  await page.reload();
+  await page.reload(); await dismissDevelopmentNotice(page);
   await page.locator('[data-place="8-6"]').filter({ hasText: 'IELTS' }).waitFor();
   assert.deepEqual((await (await context.request.get(origin + '/api/learning/timetable')).json()).timetable.cells, importedCells);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -117,7 +118,7 @@ try {
   await page.screenshot({ path: 'test-results/timetable-desktop.png', fullPage: true });
   await context.request.put(origin + '/api/progress', { headers: { Origin: origin }, data: { itemType: 'document', itemId: 'learning-fixture', itemTitle: 'Tự học Toán', subject: 'Toán', grade: '12', status: 'in_progress', progressPercent: 40 } });
   for (const [itemId, progressPercent] of [['progress-zero', 0], ['progress-full', 100]]) await context.request.put(origin + '/api/progress', { headers: { Origin: origin }, data: { itemType: 'document', itemId, itemTitle: itemId, subject: 'Toán', grade: '12', status: 'in_progress', progressPercent } });
-  await page.goto(origin + '/learning/progress');
+  await page.goto(origin + '/learning/progress'); await dismissDevelopmentNotice(page);
   await page.getByRole('heading', { name: 'Tiến trình học tập', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Tự học Toán', exact: true }).waitFor();
   await page.locator('.learning-progress-list progress').first().waitFor();

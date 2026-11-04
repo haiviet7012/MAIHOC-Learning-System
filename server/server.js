@@ -575,6 +575,7 @@ app.use((req, res, next) => {
 });
 
 if (devMode) {
+  app.use('/vendor/exceljs', express.static(path.join(root, 'node_modules', 'exceljs', 'dist')));
   app.get('/js/app.js', async (req, res, next) => {
     try {
       const { build } = await import('esbuild');

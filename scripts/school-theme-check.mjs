@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -57,7 +58,7 @@ try {
       data: { email: "student@maihoc.test", password },
     });
     for (const theme of ["light", "dark"]) {
-      await page.goto(origin + "/school");
+      await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
       await page.locator(".school-overview-hero").waitFor();
       const dark = await page
         .locator("html")
@@ -129,7 +130,7 @@ try {
         ["/school/rooms", ".classroom-shell [data-cr-search]"],
         ["/school/progress", "[data-evidence-filter]"],
       ]) {
-        await page.goto(origin + path);
+        await page.goto(origin + path); await dismissDevelopmentNotice(page);
         await page.locator(selector).first().waitFor();
         assert.equal(
           await page.locator("body").getAttribute("data-school-ui"),
@@ -161,7 +162,7 @@ try {
             animations: "disabled",
           });
       }
-      await page.goto(origin + "/school/timetable");
+      await page.goto(origin + "/school/timetable"); await dismissDevelopmentNotice(page);
       await page.locator('[data-place="0-0"]').waitFor();
       await page.locator('[data-subject-choice="Toán"]').click();
       await page.locator('[data-place="0-0"]').click();
@@ -169,12 +170,12 @@ try {
       await page
         .getByText("Đã lưu thời khóa biểu vào tài khoản.", { exact: false })
         .waitFor();
-      await page.reload();
+      await page.reload(); await dismissDevelopmentNotice(page);
       await page
         .locator('[data-place="0-0"]')
         .filter({ hasText: "Toán" })
         .waitFor();
-      await page.goto(origin + "/school/lab");
+      await page.goto(origin + "/school/lab"); await dismissDevelopmentNotice(page);
       await page
         .getByRole("heading", { name: "Thí nghiệm School", exact: true })
         .waitFor();
@@ -198,7 +199,7 @@ try {
     }
     // The logo stays anchored in the sidebar; the opposite-workspace action
     // must remain inside the top-right dropdown in both workspace layouts.
-    await page.goto(origin + "/school");
+    await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
     await page.locator(".school-overview-hero").waitFor();
     await page.locator("#menu-toggle").click();
     const schoolHeaderGeometry = await page.evaluate(() => {
@@ -213,7 +214,7 @@ try {
         menu: rect("#subject-menu"),
       };
     });
-    await page.goto(origin + "/learning");
+    await page.goto(origin + "/learning"); await dismissDevelopmentNotice(page);
     await page.locator("[data-personal-timetable]").waitFor();
     await page.locator("#menu-toggle").click();
     const learningHeaderGeometry = await page.evaluate(() => {
@@ -274,7 +275,7 @@ try {
     "/school/assignment-management",
     "/school/advisor",
   ]) {
-    await page.goto(origin + path);
+    await page.goto(origin + path); await dismissDevelopmentNotice(page);
     await page.locator("body[data-school-ui]").waitFor();
     await page.locator(".portal-panel").first().waitFor();
     assert.ok(

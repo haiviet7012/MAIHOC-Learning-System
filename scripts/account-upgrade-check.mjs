@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { writeFile, readFile, mkdir } from 'node:fs/promises';
@@ -19,7 +20,7 @@ let browser;
 try{
  await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(Error('timeout')),60000);preview.stdout.on('data',b=>{out+=b;if(out.includes('isolated preview ready')){clearTimeout(t);resolve()}});preview.stderr.on('data',b=>process.stderr.write(b));preview.on('exit',c=>reject(Error('preview exit '+c)));});
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});const context=await browser.newContext({viewport:{width:1440,height:1050}}),learningPage=await context.newPage();let page=learningPage;const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/,r=>r.abort());
-  await page.goto(origin+'/learning');
+  await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page);
   assert.equal(new URL(learningPage.url()).pathname,'/learning');
   assert.equal(await page.locator('.education-sidebar [data-route=study-rooms]').count(),1);
   assert.equal(await page.locator('.education-sidebar [data-route=ai-solver]').count(),1);
@@ -68,7 +69,7 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
  const emailSent=page.waitForResponse(r=>r.url().endsWith('/teacher/request-link')&&r.status()===200);
  await page.locator('[data-teacher-send-link]').click();await emailSent;
  const message=JSON.parse(await readFile(mailbox,'utf8')),link=message.text.match(/http[^\s]+/)[0];
- await page.goto(link,{waitUntil:'networkidle'});
+ await page.goto(link,{waitUntil:'networkidle'}); await dismissDevelopmentNotice(page);
  assert.equal(await page.locator('[data-registration-details]').isVisible(),false,'Opening link alone does not activate signup');
  assert.equal(await page.evaluate(()=>location.hash),'','Secret fragment removed from URL');
  await page.locator('[data-teacher-confirm-link]').click();
@@ -79,14 +80,14 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
  await page.locator('#register-form [name=subjects][value="Toán"]').check();await page.locator('#register-form [name=teachingClasses][value="10A1"]').check();
  await page.locator('#register-form button[type=submit]').click();await page.waitForURL(origin+'/school/classes');await page.getByRole('heading',{name:'Lớp của bạn',exact:true}).waitFor();
  const user=(await (await context.request.get(origin+'/api/auth/me')).json()).user;assert.equal(user.isTeacher,true);assert.equal(user.email,'verified@school.edu.vn');
- await page.goto(origin+'/account');await page.getByRole('heading',{name:'Trung tâm tài khoản',exact:true}).waitFor();await page.locator('#view .role-chip').filter({hasText:'Giáo viên'}).waitFor();
+ await page.goto(origin+'/account'); await dismissDevelopmentNotice(page);await page.getByRole('heading',{name:'Trung tâm tài khoản',exact:true}).waitFor();await page.locator('#view .role-chip').filter({hasText:'Giáo viên'}).waitFor();
  await page.locator('#account-progress-list').filter({hasNotText:'Đang tải'}).waitFor();
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'test-results/account-teacher-mobile.png',fullPage:true,animations:'disabled'});
 
- await page.goto(origin+'/learning');await page.waitForFunction(async()=>{const r=await fetch('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return false;const d=await r.json();return d.user?.email==='verified@school.edu.vn'&&d.user?.isTeacher===true;});
+ await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page);await page.waitForFunction(async()=>{const r=await fetch('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return false;const d=await r.json();return d.user?.email==='verified@school.edu.vn'&&d.user?.isTeacher===true;});
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
  await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
- await page.goto(origin+'/school');await page.locator('body[data-school-ui]').waitFor();
+ await page.goto(origin+'/school'); await dismissDevelopmentNotice(page);await page.locator('body[data-school-ui]').waitFor();
  assert.match((await page.locator('[data-sidebar-space=school] [data-route=school-advisor]').textContent()).trim(),/Cố vấn AI/,'School advisor navigation is present');
  const advisorNav=page.locator('[data-sidebar-space=school] [data-route=school-advisor]');
  assert.equal((await advisorNav.locator('.nav-glyph').textContent()).trim(),'✦','Cố vấn AI uses the same star glyph as Gia sư AI');
@@ -96,7 +97,7 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
   for(const width of [1440,820,390]) {
    await page.setViewportSize({width,height:950});
    for(const [path,label] of [['/learning','School'],['/school/plans','Learning']]) {
-    await page.goto(origin+path);
+    await page.goto(origin+path); await dismissDevelopmentNotice(page);
     await page.locator('#menu-toggle').click();
     const switchButton=page.locator('#workspace-switch');
     assert.equal((await switchButton.textContent()).trim(),label,`Correct opposite workspace action at ${width}px`);
@@ -118,12 +119,12 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
 
   // Learning and School pages share maihoc.sid. A login/logout in either
   // workspace must update the other page's in-memory account and visible UI.
-  await page.goto(origin+'/learning');
+  await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page);
   const syncPage=await context.newPage();
-  await syncPage.goto(origin+'/school/plans');
+  await syncPage.goto(origin+'/school/plans'); await dismissDevelopmentNotice(syncPage);
   await syncPage.locator('#logout-button').click();
   await page.waitForFunction(()=>window.maihocCurrentUser===null);
-  await syncPage.goto(origin+'/school/plans');
+  await syncPage.goto(origin+'/school/plans'); await dismissDevelopmentNotice(syncPage);
   await syncPage.locator('#login-open').click();
   await syncPage.locator('#login-form [name=email]').fill('student@maihoc.test');
   await syncPage.locator('#login-form [name=password]').fill(password);
@@ -131,18 +132,18 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
   await syncPage.waitForURL(origin+'/school');
   await page.waitForFunction(name => window.maihocCurrentUser?.name === name && document.querySelector('#education-user')?.textContent.includes(name), 'Nguyễn Minh Anh');
 
-  await page.goto(origin+'/school/plans');
+  await page.goto(origin+'/school/plans'); await dismissDevelopmentNotice(page);
   await syncPage.locator('#logout-button').click();
   await page.waitForFunction(()=>window.maihocCurrentUser===null);
-  await syncPage.goto(origin+'/learning');
+  await syncPage.goto(origin+'/learning'); await dismissDevelopmentNotice(syncPage);
   await syncPage.locator('#login-open').click();
   await syncPage.locator('#login-form [name=email]').fill('teacher@maihoc.test');
   await syncPage.locator('#login-form [name=password]').fill(password);
   await syncPage.locator('#login-form button[type=submit]').click();
   await page.waitForFunction(name => window.maihocCurrentUser?.name === name && document.querySelector('#education-user')?.textContent.includes(name), 'Thầy Hải Việt');
   await syncPage.close();
-await page.goto(origin+'/learning/progress');assert.equal(await page.locator('.advisor-pull').count(),0);
- await page.goto(origin+'/school/advisor');await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
+await page.goto(origin+'/learning/progress'); await dismissDevelopmentNotice(page);assert.equal(await page.locator('.advisor-pull').count(),0);
+ await page.goto(origin+'/school/advisor'); await dismissDevelopmentNotice(page);await page.locator('.teaching-advisor h2').waitFor();assert.equal(await page.locator('.advisor-pull').count(),0);
  assert.deepEqual(errors,[]);console.log('Account UI passed: School plans, two account types, edu email confirmed by link before full teacher profile, registration, teacher account centre, mobile and School-only advisor. Mail mocked; unverified mailbox cannot register.');
 }finally{await browser?.close();preview.kill('SIGTERM');}
 

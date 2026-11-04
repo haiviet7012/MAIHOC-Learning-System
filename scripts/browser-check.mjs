@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
@@ -56,7 +57,7 @@ async function clickSidebar(route) {
 }
 
 try {
-  await page.goto(origin + "/learning", { waitUntil: "networkidle" });
+  await page.goto(origin + "/learning", { waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page
     .getByRole("heading", { name: "Mỗi ngày, tiến bộ một chút." })
     .waitFor();
@@ -104,7 +105,7 @@ try {
   }
   await clickSidebar("assignments");
   await page.waitForTimeout(300);
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page
     .getByRole("heading", { name: "Bài được giao", exact: true })
     .waitFor();
@@ -162,7 +163,7 @@ try {
   ])
     assert.equal((await page.request.get(origin + path)).status(), 404);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(origin + "/learning", { waitUntil: "networkidle" });
+  await page.goto(origin + "/learning", { waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page.screenshot({
     path: new URL("dashboard-mobile.png", directory).pathname,
     fullPage: true,
@@ -237,7 +238,7 @@ try {
   const linkedAssignment = await page.locator('[data-platform-results]').getAttribute('data-platform-results');
   const linkedSchool = await page.locator('[data-platform-school]').inputValue();
   await page.locator('#logout-button').click();
-  await page.goto(`${origin}/school/assignments/${linkedAssignment}?schoolId=${linkedSchool}`);
+  await page.goto(`${origin}/school/assignments/${linkedAssignment}?schoolId=${linkedSchool}`); await dismissDevelopmentNotice(page);
   await page.getByRole('heading',{name:'Đăng nhập để xem nội dung'}).waitFor();
   await page.locator('#login-open').click();
   await page.locator('#login-form [name="email"]').fill('student@maihoc.test');await page.locator('#login-form [name="password"]').fill(previewPassword);await page.locator('#login-form button[type="submit"]').click();
@@ -246,7 +247,7 @@ try {
   assert.equal(new URL(page.url()).pathname, `/school/assignments/${linkedAssignment}`);
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
   await page.locator('[data-attempt-form] textarea').fill('1/2');
-  await page.reload({waitUntil:'networkidle'});
+  await page.reload({waitUntil:'networkidle'}); await dismissDevelopmentNotice(page);
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
   assert.equal(await page.locator('[data-attempt-form] textarea').inputValue(),'1/2','Unsynced local draft recovers after reload');
   await page.locator('[data-attempt-form] button[type="submit"]').click();

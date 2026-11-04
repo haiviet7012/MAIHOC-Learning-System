@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
@@ -24,14 +25,14 @@ try {
     await page.locator('#login-form [name=password]').fill(password);
     await page.locator('#login-form button[type=submit]').click();
   };
-  await page.goto(origin+'/learning'); await login(page,'teacher@maihoc.test');
+  await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page); await login(page,'teacher@maihoc.test');
   await page.locator('#education-user').filter({hasText:'Thầy Hải Việt'}).waitFor();
   // Hold startup data until the teacher has filled the form. Releasing it
   // reproduces the late refresh that used to discard the announcement draft.
   let releaseStartup;
   const startupGate = new Promise(resolve => { releaseStartup = resolve; });
   await page.route('**/configs/exam-layouts.json', async route => { await startupGate; await route.continue(); });
-  await page.goto(origin+'/school/classes');
+  await page.goto(origin+'/school/classes'); await dismissDevelopmentNotice(page);
   await page.locator('#school-announcement-form').waitFor();
   await page.locator('#school-announcement-form [name=target]').selectOption('grade:12');
   await page.locator('#school-announcement-form [name=title]').fill('Lịch ôn tập khối 12');
@@ -51,7 +52,7 @@ try {
   const created = await response; assert.equal(created.status(),201); const notice = await created.json(); assert.equal(notice.recipients,1);
   await page.locator('[data-announcement-status]').filter({hasText:'1 học sinh'}).waitFor();
   const student = await browser.newContext({ viewport: { width: 390, height: 844 } }); const target = await student.newPage(); await prepare(target);
-  await target.goto(`${origin}/school/announcements/${notice.id}`);
+  await target.goto(`${origin}/school/announcements/${notice.id}`); await dismissDevelopmentNotice(target);
   await target.getByRole('heading',{name:'Đăng nhập để xem nội dung'}).waitFor();
   assert.equal(new URL(target.url()).pathname,`/school/announcements/${notice.id}`);
   await login(target,'student@maihoc.test');
@@ -63,7 +64,7 @@ try {
   await target.locator('#notifications-open').click();
   const link=target.locator('#notifications-list a').filter({hasText:'Xem nội dung'}); await link.waitFor(); assert.equal(await link.getAttribute('href'),`/school/announcements/${notice.id}`);
   await link.click(); await target.getByRole('heading',{name:'Lịch ôn tập khối 12',exact:true}).waitFor();
-  const guest = await browser.newPage(); await prepare(guest); await guest.goto(origin+'/school/tests/test-email-fixture');
+  const guest = await browser.newPage(); await prepare(guest); await guest.goto(origin+'/school/tests/test-email-fixture'); await dismissDevelopmentNotice(guest);
   await guest.getByRole('heading',{name:'Đăng nhập để xem nội dung'}).waitFor();
   await login(guest,'student@maihoc.test'); await guest.locator('#education-user').filter({hasText:'Nguyễn Minh Anh'}).waitFor();
   assert.equal(new URL(guest.url()).pathname,'/school/tests/test-email-fixture');
