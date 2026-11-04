@@ -2031,6 +2031,9 @@ $("#logout-button").addEventListener("click", async () => {
 });
 // Khởi tạo giao diện như bình thường.
 initTheme();
+// Show once on each full visit to the Learning entry points, before remote data loads.
+const entryPath = window.location.pathname.replace(/\/+$/, "") || "/";
+if (entryPath === "/" || entryPath === "/learning") openDialog("development-notice-dialog");
 render();
 initRemoteData();
 refreshAuthUI();
