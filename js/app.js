@@ -797,11 +797,13 @@ async function loadAdminUsers() {
     if (!response.ok) throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
     if (state.route !== "admin") return;
 
+    // Always render the latest server response; omit invalid/stale entries.
+    const visibleUsers = Array.isArray(payload.users) ? payload.users.filter((u) => u && u.id != null) : [];
     const total = $("#admin-user-total");
-    if (total) total.textContent = String(payload.total ?? payload.users?.length ?? 0);
-    if (status) status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
+    if (total) total.textContent = String(payload.total ?? visibleUsers.length);
+    if (status) status.textContent = `Hiển thị ${visibleUsers.length} tài khoản gần nhất.`;
 
-    const rows = (payload.users || []).map((u) => {
+    const rows = visibleUsers.map((u) => {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
       const isTeacher = Boolean(u.isTeacher || u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2));
@@ -816,19 +818,22 @@ async function loadAdminUsers() {
           : (u.accountType === "school" || u.classCode)
             ? (u.classCode ? `Học sinh trong trường · Lớp ${u.classCode}` : "Học sinh trong trường")
             : "Học sinh ngoài trường";
-      const canRequestDelete = !currentUser.isManager && Number(u.id) !== Number(payload.currentUserId) && !isSuper;
+      const canRequestDelete = Boolean(payload.isOwnerAdmin) && Number(u.id) !== Number(payload.currentUserId) && !isSuper;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
 
     let extra = "";
     if (payload.isSuperAdmin) {
-      extra = `<section class="portal-panel"><h2>Thêm admin</h2><p>Chỉ Admin được cấp quyền bằng Gmail. Admin được thêm có quyền quản lý, nhưng không thể xóa tài khoản người khác, giám sát phòng học hoặc thêm admin. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm admin</button></form></section><section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
+      extra = `<section class="portal-panel"><h2>Thêm admin</h2><p>Chỉ Admin được cấp quyền bằng Gmail. Admin được thêm có quyền quản lý, nhưng không thể xóa tài khoản người khác, giám sát phòng học hoặc thêm admin. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm admin</button></form></section>`;
+    }
+    if (payload.isOwnerAdmin) {
+      extra += `<section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
     }
 
     if (container) {
       container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     }
-    if (payload.isSuperAdmin) await loadAccountDeletionRequests();
+    if (payload.isOwnerAdmin) await loadAccountDeletionRequests();
   } catch (error) {
     if (state.route !== "admin") return;
     if (status) {
@@ -1344,7 +1349,8 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giáo viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
+        if (!confirm("Xóa vĩnh viễn tài khoản này? Chỉ chủ sở hữu MAI HỌC được phép thực hiện.")) return;
+        deleteUserButton.disabled = true;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -1352,10 +1358,12 @@ document.addEventListener("click", async (e) => {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.error || "Không thể xóa người dùng.");
-            toast(payload.deleted ? "Đã xóa tài khoản." : "Đã gửi yêu cầu. Tài khoản chưa bị xóa.", "success");
+            if (!payload.deleted) throw new Error(payload.message || "Máy chủ chưa xác nhận xóa tài khoản.");
+            toast("Đã xóa tài khoản.", "success");
             await loadAdminUsers();
         } catch (error) {
             toast(error.message || "Không thể xóa tài khoản.", "error");
+            deleteUserButton.disabled = false;
         }
         return;
     }

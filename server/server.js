@@ -54,6 +54,8 @@ import {
   requireAuth,
   requireAdmin,
   requireSuperAdmin,
+  requireOwnerAdmin,
+  isOwnerAdminUser,
   requireSameOrigin,
   createInitialAdmin,
   hashPassword,
@@ -1200,7 +1202,8 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     users: formattedUsers,
     total,
     currentUserId: req.user.id,
-    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager
+    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager,
+    isOwnerAdmin: isOwnerAdminUser(req.user)
   });
 });
 
@@ -1227,7 +1230,7 @@ app.post('/api/admin/admins',requireSameOrigin,requireSuperAdmin,async(req,res)=
   res.json({ok:true,message:'Đã cấp quyền quản lý; giữ nguyên mật khẩu và dữ liệu.'});
 });
 
-app.delete("/api/admin/users/:id", requireSameOrigin, requireAdmin, async (req, res) => {
+app.delete("/api/admin/users/:id", requireSameOrigin, requireOwnerAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "ID tài khoản không hợp lệ." });
   if (id === req.user.id) {
@@ -1288,7 +1291,7 @@ app.delete("/api/admin/users/:id", requireSameOrigin, requireAdmin, async (req, 
   });
 });
 
-app.get("/api/admin/account-deletion-requests", requireSuperAdmin, async (req, res) => {
+app.get("/api/admin/account-deletion-requests", requireOwnerAdmin, async (req, res) => {
   const requests = await db
     .prepare(`
       SELECT id,target_user_id AS targetUserId,target_name AS targetName,target_email AS targetEmail,
@@ -1303,7 +1306,7 @@ app.get("/api/admin/account-deletion-requests", requireSuperAdmin, async (req, r
 app.post(
   "/api/admin/account-deletion-requests/:id/review",
   requireSameOrigin,
-  requireSuperAdmin,
+  requireOwnerAdmin,
   async (req, res) => {
     const requestId = Number(req.params.id),
       decision = String(req.body?.decision || "");
