@@ -797,12 +797,12 @@ async function loadAdminUsers() {
     if (!response.ok) throw new Error(payload.error || "Không thể tải danh sách tài khoản.");
     if (state.route !== "admin") return;
 
-    const total = $("#admin-user-total");
-    if (total) total.textContent = String(payload.total ?? payload.users?.length ?? 0);
-    if (status) status.textContent = `Hiển thị ${visibleUsers.length} tài khoản gần nhất.`;
-
     // Always render the latest server response; omit invalid/stale entries.
     const visibleUsers = Array.isArray(payload.users) ? payload.users.filter((u) => u && u.id != null) : [];
+    const total = $("#admin-user-total");
+    if (total) total.textContent = String(payload.total ?? visibleUsers.length);
+    if (status) status.textContent = `Hiển thị ${visibleUsers.length} tài khoản gần nhất.`;
+
     const rows = visibleUsers.map((u) => {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
