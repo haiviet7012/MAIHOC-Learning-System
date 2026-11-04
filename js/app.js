@@ -833,7 +833,7 @@ async function loadAdminUsers() {
     if (container) {
       container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     }
-    if (payload.isSuperAdmin) await loadAccountDeletionRequests();
+    if (payload.isOwnerAdmin) await loadAccountDeletionRequests();
   } catch (error) {
     if (state.route !== "admin") return;
     if (status) {
