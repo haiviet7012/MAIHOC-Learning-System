@@ -10,6 +10,7 @@ import {
 } from "../platform/policy.js";
 import { snapshot } from "./analytics.js";
 import { advise } from "./gemini.js";
+import PDFDocument from "pdfkit";
 export function installLearningAdvisor(
   app,
   {
@@ -77,7 +78,7 @@ export function installLearningAdvisor(
   const plans = async (thread) =>
     thread
       ? rows(
-          `SELECT id,plan,applied_at,created_at FROM learning_advisor_roadmaps WHERE id IN (SELECT id FROM learning_advisor_roadmaps WHERE thread_id=$1 ORDER BY created_at DESC LIMIT 10) OR id IN (SELECT id FROM learning_advisor_roadmaps WHERE thread_id=$1 AND applied_at IS NOT NULL ORDER BY applied_at DESC LIMIT 1) ORDER BY created_at DESC`,
+          `SELECT id,plan,applied_at,revoked_at,created_at FROM learning_advisor_roadmaps WHERE id IN (SELECT id FROM learning_advisor_roadmaps WHERE thread_id=$1 ORDER BY created_at DESC LIMIT 10) OR id IN (SELECT id FROM learning_advisor_roadmaps WHERE thread_id=$1 AND applied_at IS NOT NULL ORDER BY applied_at DESC LIMIT 1) ORDER BY created_at DESC`,
           [thread.id],
         )
       : [];
@@ -90,7 +91,7 @@ export function installLearningAdvisor(
       const messages = thread
         ? (
             await rows(
-              "SELECT role,content FROM learning_advisor_messages WHERE thread_id=$1 ORDER BY id DESC LIMIT 20",
+              "SELECT role,content FROM learning_advisor_messages WHERE thread_id=$1 AND created_at > now()-interval '24 hours' ORDER BY id DESC LIMIT 20",
               [thread.id],
             )
           ).reverse()
@@ -154,7 +155,7 @@ export function installLearningAdvisor(
       const applied =
         (
           await rows(
-            "SELECT plan,applied_at FROM learning_advisor_roadmaps WHERE thread_id=$1 AND applied_at IS NOT NULL ORDER BY applied_at DESC LIMIT 1",
+            "SELECT plan,applied_at FROM learning_advisor_roadmaps WHERE thread_id=$1 AND applied_at IS NOT NULL AND revoked_at IS NULL ORDER BY applied_at DESC LIMIT 1",
             [thread.id],
           )
         )[0] || null;
@@ -164,7 +165,7 @@ export function installLearningAdvisor(
         );
       const history = (
         await rows(
-          "SELECT role,content FROM learning_advisor_messages WHERE thread_id=$1 ORDER BY id DESC LIMIT 12",
+          "SELECT role,content FROM learning_advisor_messages WHERE thread_id=$1 AND created_at > now()-interval '24 hours' ORDER BY id DESC LIMIT 12",
           [thread.id],
         )
       ).reverse();
@@ -210,12 +211,60 @@ export function installLearningAdvisor(
         };
         return (
           await rows(
-            "INSERT INTO learning_advisor_roadmaps(id,thread_id,plan) VALUES($1,$2,$3) RETURNING id,plan,applied_at,created_at",
+            "INSERT INTO learning_advisor_roadmaps(id,thread_id,plan) VALUES($1,$2,$3) RETURNING id,plan,applied_at,revoked_at,created_at",
             [randomUUID(), thread.id, JSON.stringify(plan)],
           )
         )[0];
       })();
       res.json({ reply: checked.reply, roadmap });
+    }),
+  );
+
+  router.get(
+    "/roadmaps/:id/pdf",
+    wrap(async (req, res) => {
+      const thread = await threadFor(req);
+      if (!thread || !/^[a-f0-9-]{36}$/.test(req.params.id))
+        fail("Không tìm thấy lộ trình.", 404);
+      const roadmap = (await rows(
+        "SELECT id,plan,applied_at,revoked_at,created_at FROM learning_advisor_roadmaps WHERE id=$1 AND thread_id=$2",
+        [req.params.id, thread.id],
+      ))[0];
+      if (!roadmap) fail("Không tìm thấy lộ trình.", 404);
+
+      const plan = roadmap.plan || {};
+      const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      const completed = new Promise((resolve, reject) => {
+        doc.on("end", resolve);
+        doc.on("error", reject);
+      });
+
+      doc.font("Helvetica").fontSize(19).fillColor("#28233d")
+        .text("MAIHOC - LO TRINH HOC TAP", { align: "center" });
+      doc.moveDown(0.7).fontSize(13).fillColor("#5b536c")
+        .text("Muc tieu: " + String(plan.goal || "Hoc tap ca nhan").replace(/[<>]/g, ""));
+      doc.text("Thoi gian hoc moi ngay: " + (Number(plan.minutesPerDay) || 0) + " phut");
+      doc.text("Trang thai: " + (roadmap.applied_at && !roadmap.revoked_at ? "Dang ap dung" : "Chua ap dung"));
+      doc.text("Ngay tao: " + new Date(roadmap.created_at).toLocaleDateString("vi-VN"));
+      doc.moveDown().fontSize(11).fillColor("#28233d").text("TOM TAT", { underline: true });
+      doc.moveDown(0.3).fontSize(10).text(String(plan.summary || "Lo trinh hoc tap ca nhan"));
+      doc.moveDown().fontSize(11).text("KE HOACH CHI TIET", { underline: true });
+      for (const task of Array.isArray(plan.tasks) ? plan.tasks : []) {
+        if (doc.y > 720) doc.addPage();
+        doc.moveDown(0.5).fontSize(11).fillColor("#28233d")
+          .text("Ngay " + (Number(task.day) || "-") + " - " + String(task.subject || "Hoc tap"));
+        doc.fontSize(10).fillColor("#40394e").text(String(task.title || ""));
+        doc.text("Thoi luong: " + (Number(task.minutes) || 0) + " phut | " +
+          (task.done ? "Da hoan thanh" : "Chua hoan thanh"));
+      }
+      doc.end();
+      await completed;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'attachment; filename="maihoc-roadmap-' + roadmap.id + '.pdf"');
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(Buffer.concat(chunks));
     }),
   );
   router.post(
@@ -237,11 +286,22 @@ export function installLearningAdvisor(
             "SELECT id FROM learning_advisor_threads WHERE id=$1 FOR UPDATE",
             [thread.id],
           );
-          if (!roadmap.applied_at)
+          await db.query(
+            "UPDATE learning_advisor_roadmaps SET revoked_at=clock_timestamp() WHERE thread_id=$1 AND applied_at IS NOT NULL AND revoked_at IS NULL",
+            [thread.id],
+          );
+          if (!roadmap.applied_at || roadmap.revoked_at)
             await db.query(
-              "UPDATE learning_advisor_roadmaps SET applied_at=clock_timestamp() WHERE id=$1",
+              "UPDATE learning_advisor_roadmaps SET applied_at=COALESCE(applied_at,clock_timestamp()),revoked_at=NULL WHERE id=$1",
               [roadmap.id],
             );
+        } else if (req.body.action === "unapply") {
+          if (!roadmap.applied_at || roadmap.revoked_at)
+            fail("Lộ trình này hiện không được áp dụng.", 409);
+          await db.query(
+            "UPDATE learning_advisor_roadmaps SET revoked_at=clock_timestamp() WHERE id=$1",
+            [roadmap.id],
+          );
         } else if (req.body.action === "task") {
           if (!roadmap.applied_at) fail("Hãy áp dụng lộ trình trước.");
           const index = integer(
@@ -260,7 +320,7 @@ export function installLearningAdvisor(
         } else fail("Thao tác không hợp lệ.");
         return (
           await rows(
-            "SELECT id,plan,applied_at,created_at FROM learning_advisor_roadmaps WHERE id=$1",
+            "SELECT id,plan,applied_at,revoked_at,created_at FROM learning_advisor_roadmaps WHERE id=$1",
             [roadmap.id],
           )
         )[0];
