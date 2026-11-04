@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { answersMatch } from "../grading/engine.js";
 import {
   audit,
+  assertSchoolAccountRole,
   classPermission,
   cleanAnswers,
   date,
@@ -282,10 +283,11 @@ export function createPlatformRouter({
         fail("Vai trò không hợp lệ.");
       const user = await one(
         db,
-        "SELECT id FROM users WHERE lower(email)=lower($1)",
+        "SELECT id,role,admin_level FROM users WHERE lower(email)=lower($1)",
         [text(req.body.email, "Email", 254)],
       );
       if (!user) fail("Email chưa có tài khoản MAIHOC.");
+      assertSchoolAccountRole(user, role);
       await db.transaction(async () => {
         await db.query(
           "INSERT INTO school_memberships(school_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT(school_id,user_id) DO UPDATE SET role=excluded.role,status='active'",
@@ -318,7 +320,7 @@ export function createPlatformRouter({
       if (!cls) fail("Lớp không thuộc trường.", 404);
       const users = await rows(
         db,
-        "SELECT id,email FROM users WHERE lower(email)=ANY($1::text[])",
+        "SELECT id,email,role,admin_level FROM users WHERE lower(email)=ANY($1::text[])",
         [emails.map((x) => x.toLowerCase())],
       );
       const missing = emails.filter(
@@ -326,6 +328,7 @@ export function createPlatformRouter({
       );
       if (missing.length) fail(`Chưa có tài khoản: ${missing.join(", ")}`);
       for (const user of users) {
+        assertSchoolAccountRole(user, "student");
         const member = await one(
           db,
           "SELECT role FROM school_memberships WHERE school_id=$1 AND user_id=$2",
