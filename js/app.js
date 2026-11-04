@@ -799,9 +799,11 @@ async function loadAdminUsers() {
 
     const total = $("#admin-user-total");
     if (total) total.textContent = String(payload.total ?? payload.users?.length ?? 0);
-    if (status) status.textContent = `Hiển thị ${payload.users?.length || 0} tài khoản gần nhất.`;
+    if (status) status.textContent = `Hiển thị ${visibleUsers.length} tài khoản gần nhất.`;
 
-    const rows = (payload.users || []).map((u) => {
+    // Always render the latest server response; omit invalid/stale entries.
+    const visibleUsers = Array.isArray(payload.users) ? payload.users.filter((u) => u && u.id != null) : [];
+    const rows = visibleUsers.map((u) => {
       const created = formatAdminCreatedAt(u.createdAt);
       const isSuper = u.role === "admin" && Number(u.adminLevel) >= 2;
       const isTeacher = Boolean(u.isTeacher || u.role === "teacher" || (u.role === "admin" && Number(u.adminLevel) >= 1 && Number(u.adminLevel) < 2));
@@ -1344,7 +1346,8 @@ document.addEventListener("click", async (e) => {
     const deleteUserButton = e.target.closest("[data-delete-user]");
     if (deleteUserButton) {
         const id = deleteUserButton.dataset.deleteUser;
-        if (!confirm("Gửi yêu cầu xóa tài khoản này? Nếu bạn là Giáo viên, tài khoản chỉ bị xóa sau khi Admin cao nhất chấp thuận.")) return;
+        if (!confirm("Xóa vĩnh viễn tài khoản này? Chỉ chủ sở hữu MAI HỌC được phép thực hiện.")) return;
+        deleteUserButton.disabled = true;
         try {
             const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
                 method: "DELETE",
@@ -1352,10 +1355,12 @@ document.addEventListener("click", async (e) => {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.error || "Không thể xóa người dùng.");
-            toast(payload.deleted ? "Đã xóa tài khoản." : "Đã gửi yêu cầu. Tài khoản chưa bị xóa.", "success");
+            if (!payload.deleted) throw new Error(payload.message || "Máy chủ chưa xác nhận xóa tài khoản.");
+            toast("Đã xóa tài khoản.", "success");
             await loadAdminUsers();
         } catch (error) {
             toast(error.message || "Không thể xóa tài khoản.", "error");
+            deleteUserButton.disabled = false;
         }
         return;
     }
