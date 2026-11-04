@@ -1,4 +1,5 @@
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
+import { installClassroomAccess } from './classroom-access.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
 import { installBillingRoutes, createBillingReminderWorker } from './billing.js';
 import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
@@ -70,7 +71,8 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const staticRoot = fs.existsSync(path.join(root,"dist","build-manifest.json")) ? path.join(root,"dist") : root;
+const devMode = process.env.MAIHOC_DEV_MODE === "1";
+const staticRoot = !devMode && fs.existsSync(path.join(root,"dist","build-manifest.json")) ? path.join(root,"dist") : root;
 
 function createR2Key(folder, fileId, originalName) {
   const extension = path.extname(originalName).toLowerCase();
@@ -565,7 +567,9 @@ app.use(
 
 app.use((req, res, next) => {
   const reqPath = req.path.toLowerCase();
-  if (reqPath === "/" || reqPath.endsWith(".html")) {
+  if (devMode) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  } else if (reqPath === "/" || reqPath.endsWith(".html")) {
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
   } else if (/\.(js|css|json)$/i.test(reqPath)) {
     res.setHeader("Cache-Control", "public, max-age=3600, must-revalidate");
@@ -3001,6 +3005,7 @@ installBillingRoutes(app, { db, requireAuth, requireSameOrigin });
 installSchoolAnnouncementRoutes(app, { db, requireAuth, requireSameOrigin });
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
+installClassroomAccess(app, { db, requireAuth, requireSameOrigin, notifyUser, notifyAdmins });
 
 app.get(['/learning','/learning/*','/school','/school/*','/account'], (_req,res) => {
   res.setHeader('Cache-Control','no-cache'); res.sendFile(path.join(staticRoot,'index.html'));
