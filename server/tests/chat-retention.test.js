@@ -13,7 +13,7 @@ test('24-hour retention deletes old global and direct messages, retaining recent
       (3,'global',(NOW()-INTERVAL '23 hours')::text),
       (4,'direct_1_2',(NOW()-INTERVAL '1 hour')::text),
       (5,'global','2026-11-02 10:00:00'),
-      (6,'direct_1_2','2026-11-03 19:00:00+07')`);
+      (6,'direct_1_2',(((NOW()-INTERVAL '1 hour') AT TIME ZONE 'Asia/Ho_Chi_Minh')::text || '+07'))`);
     await purgeExpiredChatMessages(fixture.db);
     assert.deepEqual((await fixture.db.query('SELECT id FROM chat_messages ORDER BY id')).rows.map(r=>r.id),[3,4,6]);
     await purgeExpiredChatMessages(fixture.db);
