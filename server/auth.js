@@ -345,6 +345,25 @@ export function requireSuperAdmin(req, res, next) {
   next();
 }
 
+export function isOwnerAdminUser(user) {
+  const ownerEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  const userEmail = String(user?.email || "").trim().toLowerCase();
+  return Boolean(
+    ownerEmail &&
+    userEmail === ownerEmail &&
+    isSuperAdminUser(user) &&
+    !Boolean(user.is_manager ?? user.isManager)
+  );
+}
+
+export function requireOwnerAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
+  if (!isOwnerAdminUser(req.user)) {
+    return res.status(403).json({ error: "Chỉ chủ sở hữu MAI HỌC mới có quyền xóa hoặc duyệt xóa tài khoản." });
+  }
+  next();
+}
+
 export async function createInitialAdmin() {
   const email = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const password = String(process.env.ADMIN_PASSWORD || "");
