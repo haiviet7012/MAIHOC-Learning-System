@@ -28,6 +28,10 @@ const paths = {
   admin: "/school/admin",
 };
 export function routeUrl(state) {
+  if (state.route === 'school-rooms' && state.classroomCode)
+    return `/school/rooms/${encodeURIComponent(state.classroomCode)}`;
+  if (state.route === 'ielts-skill')
+    return `/school/ielts/${encodeURIComponent(state.ieltsSkill || 'speaking')}`;
   if (state.route === 'school-announcements' && state.announcementId)
     return `/school/announcements/${encodeURIComponent(state.announcementId)}`;
   if (state.route === 'school-announcements') return '/school/announcements';
@@ -52,6 +56,7 @@ export function routeUrl(state) {
 }
 export function parseRoute(url) {
   const path = url.pathname.replace(/\/$/, "") || "/";
+  if (path.startsWith('/school/rooms/')) return {route:'school-rooms', classroomCode:decodeURIComponent(path.slice('/school/rooms/'.length))};
   if (url.searchParams.has("route"))
     return {
       route: url.searchParams.get("route"),
@@ -59,6 +64,7 @@ export function parseRoute(url) {
       grade: url.searchParams.get("grade") || "10",
     };
   if (path === '/school/announcements') return { route: 'school-announcements', announcementId: null };
+  if (path.startsWith('/school/ielts/')) return { route: 'ielts-skill', subject: 'IELTS', ieltsSkill: decodeURIComponent(path.slice('/school/ielts/'.length)) };
   if (path.startsWith('/school/announcements/')) return { route: 'school-announcements', announcementId: decodeURIComponent(path.slice(22)) };
   if (path.startsWith('/school/assignments/')) return { route: 'assignments', assignmentId: decodeURIComponent(path.slice(20)), targetSchoolId: url.searchParams.get('schoolId') };
   if (path === "/learning/timetable") return { route: "timetable" };

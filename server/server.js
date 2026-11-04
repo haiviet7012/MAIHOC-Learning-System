@@ -574,6 +574,24 @@ app.use((req, res, next) => {
   next();
 });
 
+if (devMode) {
+  app.use('/vendor/exceljs', express.static(path.join(root, 'node_modules', 'exceljs', 'dist')));
+  app.get('/js/app.js', async (req, res, next) => {
+    try {
+      const { build } = await import('esbuild');
+      const result = await build({
+        absWorkingDir: root,
+        entryPoints: ['js/app.js'],
+        bundle: true,
+        format: 'esm',
+        target: 'es2022',
+        external: ['/vendor/*'],
+        write: false,
+      });
+      res.type('application/javascript').send(result.outputFiles[0].text);
+    } catch (error) { next(error); }
+  });
+}
 app.use(express.static(path.join(root, "public"), { etag: true, lastModified: true, maxAge: "1h" }));
 app.use(
   express.static(staticRoot, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h" })

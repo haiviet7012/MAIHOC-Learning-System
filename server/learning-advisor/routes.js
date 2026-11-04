@@ -1,6 +1,7 @@
 import { geminiConfigured } from '../ai-provider.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import {
   membership,
   hasActiveExam,
@@ -242,7 +243,7 @@ export function installLearningAdvisor(
         doc.on("error", reject);
       });
 
-      doc.registerFont("Vietnamese", fontPath.pathname);
+      doc.registerFont("Vietnamese", fileURLToPath(fontPath));
       doc.font("Vietnamese").fontSize(19).fillColor("#28233d")
         .text("MAIHOC – LỘ TRÌNH HỌC TẬP", { align: "center" });
       doc.moveDown(0.7).fontSize(13).fillColor("#5b536c")

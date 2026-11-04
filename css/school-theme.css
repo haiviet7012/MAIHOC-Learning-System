@@ -328,11 +328,11 @@ body[data-school-ui] .education-sidebar nav {
 body[data-school-ui] .education-sidebar nav button {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text);
+  color: #2c2342;
   min-height: 46px;
   height: 46px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 700 !important;
   line-height: 1.35;
   gap: 10px;
   padding: 10px 12px;
@@ -355,8 +355,18 @@ body[data-school-ui] .education-sidebar nav :is(.nav-glyph, img) {
   color: currentColor;
 }
 body[data-school-ui] .education-sidebar nav img {
-  filter: grayscale(1);
-  opacity: 0.65;
+  filter: grayscale(1) brightness(0.62) contrast(1.15);
+  opacity: 0.95;
+}
+body[data-school-ui] .education-logo strong {
+  font-weight: 800 !important;
+}
+body[data-school-ui] .education-sidebar-foot {
+  color: #5b506f;
+}
+body[data-school-ui] .education-sidebar-foot strong {
+  color: #5520c4;
+  font-weight: 800 !important;
 }
 body[data-school-ui] .education-sidebar-foot {
   border-top: 1px solid var(--border);
@@ -947,8 +957,15 @@ body[data-school-ui]
   :is(.chat-launcher, .online-dashboard-fab, #notifications-open) {
   background: var(--floating-action-bg);
   color: #fff;
-  border-color: var(--school-soft) !important;
+  border: 5px solid #4c1d95 !important;
   border-radius: 50% !important;
+}
+body[data-school-ui] .ielts-full-test-shell {
+  margin-top: 32px;
+}
+html.dark body[data-school-ui]
+  :is(.chat-launcher, .online-dashboard-fab, #notifications-open) {
+  border-color: #ffffff !important;
 }
 body[data-school-ui] progress {
   accent-color: var(--primary);
@@ -1131,6 +1148,101 @@ body[data-school-ui] #login-dialog {
   background: var(--surface);
   color: var(--text);
 }
+/* Auth dialogs need explicit dark colors because legacy light-mode rules use
+   fixed navy text and white controls with higher selector specificity. */
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog) {
+  background: #20182f;
+  color: #f8f5ff;
+  border-color: #59486f;
+  color-scheme: dark;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(h2, label) {
+  color: #f8f5ff;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  h2 {
+  font-weight: 800;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  label {
+  font-weight: 700;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(.muted, .tiny) {
+  color: #d5cbe3;
+  font-weight: 500;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  background: #302541;
+  color: #ffffff;
+  border-color: #76638e;
+  font-weight: 600;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(input, textarea)::placeholder {
+  color: #cfc3df;
+  opacity: 1;
+  font-weight: 600;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  input:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px #302541 inset;
+  caret-color: #ffffff;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(fieldset, .account-type-choice) {
+  color: #f8f5ff;
+  border-color: #76638e;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  legend {
+  color: #d7c4ff;
+  font-weight: 700;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  .close-button {
+  background: #302541;
+  color: #ffffff !important;
+  border-color: #76638e !important;
+  font-weight: 700;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  .close-button:hover {
+  background: #46345f;
+  border-color: #ad8fe0 !important;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  .text-button {
+  color: #f3ecff !important;
+  font-weight: 700 !important;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  .button.primary {
+  color: #ffffff;
+  font-weight: 700;
+}
+html.dark body[data-school-ui]
+  :is(#login-dialog, #register-dialog, #forgot-password-dialog)
+  :is(button, input):disabled {
+  opacity: 0.75;
+}
 body[data-school-ui] .view {
   padding: 30px 28px 70px !important;
 }
@@ -1156,6 +1268,27 @@ body[data-school-ui] .education-sidebar nav button.active {
 }
 body[data-school-ui] .education-sidebar nav button.active .nav-glyph {
   color: inherit !important;
+}
+html.dark body[data-school-ui] .education-sidebar nav button {
+  color: #eee7ff;
+  font-weight: 700 !important;
+}
+body[data-school-ui] .education-sidebar nav button:not(.active) .nav-glyph {
+  color: #4b2a93 !important;
+  font-weight: 700;
+}
+html.dark body[data-school-ui] .education-sidebar nav button:not(.active) .nav-glyph {
+  color: #e8ddff !important;
+}
+html.dark body[data-school-ui] .education-sidebar nav img {
+  filter: grayscale(0.15) brightness(1.85) contrast(1.12);
+  opacity: 1;
+}
+html.dark body[data-school-ui] .education-sidebar-foot {
+  color: #c7badb;
+}
+html.dark body[data-school-ui] .education-sidebar-foot strong {
+  color: #cbb5ff;
 }
 :root.dark body[data-school-ui] .education-sidebar nav button:hover,
 html.dark body[data-school-ui] .education-sidebar nav button:hover,
@@ -1217,10 +1350,11 @@ body[data-school-ui] .school-plans-intro .eyebrow {
   letter-spacing: .14em;
 }
 body[data-school-ui] .school-plans-intro h1 {
-  margin: 8px 0 10px;
+  margin: 14px 0 20px;
   font-size: clamp(28px, 4vw, 42px);
-  line-height: 1.16;
-  letter-spacing: -.045em;
+  line-height: 1.42;
+  letter-spacing: -.025em;
+  text-wrap: balance;
 }
 body[data-school-ui] .school-plans-intro p:last-child {
   max-width: 720px;
@@ -1389,5 +1523,56 @@ body[data-school-ui] .subject-menu .workspace-switch {
   white-space: nowrap;
   box-sizing: border-box;
   transform: none !important;
+}
+
+/* Keep nested School cards inset from their rounded parent panels. */
+body[data-school-ui] .school-roster-section {
+  padding: clamp(18px, 2vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: 24px !important;
+  background: var(--surface);
+}
+body[data-school-ui] .school-roster-section > h2 {
+  margin: 0 0 20px;
+}
+body[data-school-ui] .school-class-grid {
+  gap: 18px;
+}
+body[data-school-ui] .school-class-card {
+  border-radius: 20px !important;
+  padding: 20px;
+}
+body[data-school-ui] .tests-page-header {
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 24px !important;
+  margin-bottom: 24px;
+}
+body[data-school-ui] .test-queue-window {
+  padding: 12px;
+  border-radius: 24px !important;
+}
+body[data-school-ui] .test-queue-window-head {
+  border-radius: 16px 16px 0 0 !important;
+  gap: 18px;
+}
+body[data-school-ui] .test-queue-list {
+  padding: 18px;
+  gap: 16px;
+  border-radius: 0 0 16px 16px !important;
+}
+body[data-school-ui] .test-queue-cell {
+  border-radius: 18px !important;
+}
+body[data-school-ui] .test-queue-footer {
+  margin-top: 12px;
+  border-radius: 16px !important;
+}
+@media (max-width: 700px) {
+  body[data-school-ui] .school-roster-section,
+  body[data-school-ui] .tests-page-header { padding: 16px; }
+  body[data-school-ui] .school-class-grid { gap: 14px; }
+  body[data-school-ui] .test-queue-window { padding: 8px; }
+  body[data-school-ui] .test-queue-list { padding: 12px; }
 }
 

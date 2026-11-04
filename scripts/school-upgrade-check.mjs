@@ -132,13 +132,8 @@ try {
     await page
       .getByRole("heading", { name: "Phòng học School", exact: true })
       .waitFor();
-    await page
-      .getByText("Chưa kết nối dịch vụ video.", { exact: false })
-      .waitFor();
-    assert.equal(
-      await page.getByRole("button", { name: "Tạo phòng School" }).isDisabled(),
-      true,
-    );
+    await page.locator('.classroom-shell [data-cr-search]').waitFor();
+    assert.equal(await page.locator('.classroom-shell .cr-tabs button').count(), 3);
     await page.screenshot({
       path: `test-results/school-rooms-${name}.png`,
       fullPage: true,
