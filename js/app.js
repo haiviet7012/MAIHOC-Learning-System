@@ -1365,6 +1365,14 @@ document.addEventListener("click", async (e) => {
         e.preventDefault();
         const r = routeBtn.dataset.route;
         const chemTab = routeBtn.dataset.chemistryTab;
+        if (routeBtn.classList.contains("education-logo")) {
+            const isSchool = document.body.hasAttribute("data-school-ui") || sessionStorage.getItem("maihoc-sidebar-space") === "school" || schoolRoutes.has(state.route);
+            if (isSchool) {
+                $("#subject-menu")?.classList.remove("open");
+                go(canAccessSchool(currentUser) ? "organization" : "school-plans");
+                return;
+            }
+        }
         if (routeBtn.id === "workspace-switch") {
             $("#subject-menu")?.classList.remove("open");
             goWorkspaceWithTransition(r, { newTimetable: routeBtn.hasAttribute("data-new-timetable") });
@@ -1490,7 +1498,12 @@ document.addEventListener("click", async (e) => {
         return;
     }
 });
-$("#brand-home").addEventListener("click", () => go("home"));
+const handleLogoHomeClick = () => {
+    const isSchool = document.body.hasAttribute("data-school-ui") || sessionStorage.getItem("maihoc-sidebar-space") === "school" || schoolRoutes.has(state.route);
+    go(isSchool ? (canAccessSchool(currentUser) ? "organization" : "school-plans") : "home");
+};
+$("#brand-home").addEventListener("click", handleLogoHomeClick);
+$("#education-home")?.addEventListener("click", handleLogoHomeClick);
 $("#menu-toggle").addEventListener("click", () => $("#subject-menu").classList.toggle("open"));
 document.addEventListener("click", e => { if (!e.target.closest("#subject-menu") && !e.target.closest("#menu-toggle") && !e.target.closest('[data-action="browse-subjects"]'))
     $("#subject-menu").classList.remove("open"); });
