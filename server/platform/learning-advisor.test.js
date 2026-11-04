@@ -284,50 +284,39 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   assert.ok(appliedState.rows[0].applied_at);
   assert.equal(appliedState.rows[0].revoked_at, null);
   assert.equal(
-    (await call(`/roadmaps/${id}?scope=learning`, { action: "unapply" })).status,
+    (await call(`/roadmaps/${id}?scope=learning`, { action: "delete" })).status,
     200,
-  );
-  assert.ok(
-    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
-    "cancelling a roadmap records a revocation without deleting the plan",
+    "cancelling an applied roadmap deletes it",
   );
   assert.equal(
-    (await call("/chat?scope=learning", { ...body, mode: "evaluate" })).status,
-    400,
-    "a revoked roadmap is no longer treated as the active plan",
+    (await db.query("SELECT count(*)::int AS count FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].count,
+    0,
+    "cancelled roadmap is removed from persistence",
   );
   assert.equal(
     (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" })).status,
+    404,
+    "a deleted roadmap cannot be applied again",
+  );
+  const replacement = await call("/chat?scope=learning", body);
+  assert.equal(replacement.status, 200, "a replacement roadmap can be generated");
+  const replacementId = replacement.data.roadmap.id;
+  assert.notEqual(replacementId, id);
+  assert.equal(
+    (await call(`/roadmaps/${replacementId}?scope=learning`, { action: "apply" })).status,
     200,
-    "a revoked roadmap can be applied again",
   );
-  assert.equal(
-    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
-    null,
-  );
-  assert.equal(
-    (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" })).status,
-    200,
-    "applying an already-active roadmap must keep it active",
-  );
-  assert.equal(
-    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
-    null,
-  );
-  await call(`/roadmaps/${id}?scope=learning`, { action: "unapply" });
-  assert.equal(
-    (await call(`/roadmaps/${id}?scope=learning`, { action: "task", index: 0, done: false })).status,
-    400,
-    "a cancelled roadmap cannot have its progress edited",
-  );
-  await call(`/roadmaps/${id}?scope=learning`, { action: "apply" });
-  const pdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
+  const deletedPdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
+    headers: { "x-user": "1" },
+  });
+  assert.equal(deletedPdfResponse.status, 404, "deleted roadmap PDF is no longer available");
+  const pdfResponse = await fetch(base + `/roadmaps/${replacementId}/pdf?scope=learning`, {
     headers: { "x-user": "1" },
   });
   assert.equal(pdfResponse.status, 200);
   assert.equal(pdfResponse.headers.get("content-type"), "application/pdf");
   assert.ok((await pdfResponse.arrayBuffer()).byteLength > 1000);
-  const changed = await call(`/roadmaps/${id}?scope=learning`, {
+  const changed = await call(`/roadmaps/${replacementId}?scope=learning`, {
     action: "task",
     index: 0,
     done: true,
@@ -344,7 +333,9 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
   assert.equal(outside.data.roadmap, null);
   assert.match(outside.data.reply, /chỉ hỗ trợ học tập/);
   const persisted = await call("/?scope=learning");
-  assert.equal(persisted.data.messages.length, 6);
+  // Four advisor interactions (initial plan, replacement plan, evaluation, and out-of-scope chat)
+  // each persist a user/model message pair; cancelling a roadmap must retain this history.
+  assert.equal(persisted.data.messages.length, 8);
   assert.equal(persisted.data.roadmaps[0].plan.tasks[0].done, true);
   assert.equal(
     (await call(`/?scope=school&schoolId=${school.id}`)).data.messages.length,
