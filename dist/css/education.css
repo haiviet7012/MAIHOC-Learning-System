@@ -2025,3 +2025,56 @@ html { scrollbar-gutter: stable; }
   width: 9px;
   height: 13px;
 }
+
+/* Learning entry notice and the invitation below the complete dashboard. */
+.development-notice {
+  position: fixed;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--primary);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.development-notice::backdrop {
+  background: rgb(15 12 30 / 55%);
+}
+.development-notice .eyebrow {
+  margin: 0 48px 16px 0;
+}
+.development-notice h2 {
+  margin: 0;
+  font-size: clamp(20px, 4vw, 26px);
+  line-height: 1.5;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.development-notice-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.learning-school-invitation {
+  margin-top: 24px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.learning-school-invitation h2 {
+  margin: 0 0 20px;
+  font-size: clamp(18px, 3vw, 24px);
+  line-height: 1.5;
+}
+.learning-school-invitation .button {
+  min-width: 144px;
+  text-decoration: none;
+}

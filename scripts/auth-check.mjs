@@ -1,3 +1,4 @@
+import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
@@ -15,7 +16,7 @@ try {
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
   await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, r => r.abort());
-  await page.goto(origin + '/learning'); await page.locator('#register-open').click();
+  await page.goto(origin + '/learning'); await dismissDevelopmentNotice(page); await page.locator('#register-open').click();
   assert.equal(await page.locator('#register-form [value=teacher]').count(), 1);
   assert.ok((await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').backgroundImage)).includes('/images/poster.jpg'));
   assert.equal(await page.locator('#register-dialog').evaluate(n => getComputedStyle(n, '::before').borderTopRightRadius), '0px');
