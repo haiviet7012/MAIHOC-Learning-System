@@ -863,6 +863,9 @@ function render() {
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
+    // Paid/active School users should not see the purchase/introduction entry.
+    const schoolPlansNav = document.querySelector('.education-sidebar [data-route="school-plans"]');
+    if (schoolPlansNav) schoolPlansNav.hidden = Boolean(currentUser && canAccessSchool(currentUser));
     const studentOnly = Boolean(currentUser && currentUser.role === 'user' && !currentUser.isTeacher && !currentUser.isSuperAdmin);
     document.querySelectorAll('[data-student-only]').forEach(el => { el.hidden = !studentOnly; });
     document.querySelectorAll('[data-staff-only]').forEach(el => { el.hidden = !currentUser || studentOnly; });
@@ -1809,6 +1812,11 @@ async function refreshAuthUI({ preserveOnError = false, deferRender = false } = 
         await refreshTestsQueue();
         resumePendingTest();
         if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
+    }
+    // A confirmed payment requests one full reload, then opens the School AI tutor.
+    if (sessionStorage.getItem("maihoc-school-paid-go-tutor") === "1" && currentUser && canAccessSchool(currentUser)) {
+        sessionStorage.removeItem("maihoc-school-paid-go-tutor");
+        go("school-tutor");
     }
     return currentUser;
 }
