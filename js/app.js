@@ -818,13 +818,16 @@ async function loadAdminUsers() {
           : (u.accountType === "school" || u.classCode)
             ? (u.classCode ? `Học sinh trong trường · Lớp ${u.classCode}` : "Học sinh trong trường")
             : "Học sinh ngoài trường";
-      const canRequestDelete = !currentUser.isManager && Number(u.id) !== Number(payload.currentUserId) && !isSuper;
+      const canRequestDelete = Boolean(payload.isOwnerAdmin) && Number(u.id) !== Number(payload.currentUserId) && !isSuper;
       return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">${payload.isSuperAdmin ? "Xóa" : "Gửi yêu cầu xóa"}</button>` : "—"}</td></tr>`;
     }).join("");
 
     let extra = "";
     if (payload.isSuperAdmin) {
-      extra = `<section class="portal-panel"><h2>Thêm admin</h2><p>Chỉ Admin được cấp quyền bằng Gmail. Admin được thêm có quyền quản lý, nhưng không thể xóa tài khoản người khác, giám sát phòng học hoặc thêm admin. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm admin</button></form></section><section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
+      extra = `<section class="portal-panel"><h2>Thêm admin</h2><p>Chỉ Admin được cấp quyền bằng Gmail. Admin được thêm có quyền quản lý, nhưng không thể xóa tài khoản người khác, giám sát phòng học hoặc thêm admin. Tài khoản mới nhận lời mời đặt mật khẩu; tài khoản hiện có giữ nguyên dữ liệu.</p><form id="create-subadmin-form"><label>Gmail<input type="email" name="email" required></label><button class="button primary" type="submit">Thêm admin</button></form></section>`;
+    }
+    if (payload.isOwnerAdmin) {
+      extra += `<section><h2>Yêu cầu xóa tài khoản chờ duyệt</h2><div id="account-deletion-requests"></div></section>`;
     }
 
     if (container) {
