@@ -32,7 +32,7 @@ const qrUrl = (order, env = process.env) => {
   url.searchParams.set("acc", config.accountNumber);
   url.searchParams.set("bank", config.bankCode);
   url.searchParams.set("amount", String(order.amount_vnd));
-  url.searchParams.set("des", order.order_code);
+  url.searchParams.set("des", `SEVQR ${order.order_code}`);
   url.searchParams.set("template", "compact");
   url.searchParams.set("showinfo", "true");
   return url.toString();
@@ -166,7 +166,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
         amountVnd: Number(order.amount_vnd), unitPriceVnd: Number(order.unit_price_vnd),
         quantity: Number(order.quantity), durationDays: Number(order.duration_days),
         status: order.status, paymentDeadline: order.payment_deadline,
-        transferContent: order.order_code, qrImageUrl: qrUrl(order, env),
+        transferContent: `SEVQR ${order.order_code}`, qrImageUrl: qrUrl(order, env),
         accountNumber: config.accountNumber, bankCode: config.bankCode,
       },
     });
@@ -189,7 +189,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
       unitPriceVnd: Number(order.unit_price_vnd), quantity: Number(order.quantity),
       durationDays: Number(order.duration_days), status: order.status,
       paymentDeadline: order.payment_deadline, paidAt: order.paid_at,
-      transferContent: order.order_code, qrImageUrl: qrUrl(order, env),
+      transferContent: `SEVQR ${order.order_code}`, qrImageUrl: qrUrl(order, env),
       accountNumber: billingConfig(env).accountNumber, bankCode: billingConfig(env).bankCode,
       recipientCount: Number(order.recipient_count),
     }});
