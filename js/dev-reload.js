@@ -1,5 +1,5 @@
 // Local preview only: refresh the page or styles as soon as source files change.
-if (["localhost", "127.0.0.1"].includes(location.hostname)) {
+if (!navigator.webdriver && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const events = new EventSource("/__maihoc_dev_events");
   events.addEventListener("message", (event) => {
     const { type } = JSON.parse(event.data);
