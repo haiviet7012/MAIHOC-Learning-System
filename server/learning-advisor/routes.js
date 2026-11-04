@@ -296,13 +296,14 @@ export function installLearningAdvisor(
             "UPDATE learning_advisor_roadmaps SET applied_at=COALESCE(applied_at,clock_timestamp()),revoked_at=NULL WHERE id=$1",
             [roadmap.id],
           );
-        } else if (req.body.action === "unapply") {
-          if (!roadmap.applied_at || roadmap.revoked_at)
-            fail("Lộ trình này hiện không được áp dụng.", 409);
+        } else if (req.body.action === "delete") {
+          // Delete only this roadmap. Keep the user's advisor thread, messages,
+          // and learning evidence so a fresh plan can be generated.
           await db.query(
-            "UPDATE learning_advisor_roadmaps SET revoked_at=clock_timestamp() WHERE id=$1",
-            [roadmap.id],
+            "DELETE FROM learning_advisor_roadmaps WHERE id=$1 AND thread_id=$2",
+            [roadmap.id, thread.id],
           );
+          return { id: roadmap.id, deleted: true };
         } else if (req.body.action === "task") {
           if (!roadmap.applied_at || roadmap.revoked_at) fail("Hãy áp dụng lộ trình trước.");
           const index = integer(
