@@ -289,14 +289,13 @@ export function installLearningAdvisor(
             [thread.id],
           );
           await db.query(
-            "UPDATE learning_advisor_roadmaps SET revoked_at=clock_timestamp() WHERE thread_id=$1 AND applied_at IS NOT NULL AND revoked_at IS NULL",
-            [thread.id],
+            "UPDATE learning_advisor_roadmaps SET revoked_at=clock_timestamp() WHERE thread_id=$1 AND id<>$2 AND applied_at IS NOT NULL AND revoked_at IS NULL",
+            [thread.id, roadmap.id],
           );
-          if (!roadmap.applied_at || roadmap.revoked_at)
-            await db.query(
-              "UPDATE learning_advisor_roadmaps SET applied_at=COALESCE(applied_at,clock_timestamp()),revoked_at=NULL WHERE id=$1",
-              [roadmap.id],
-            );
+          await db.query(
+            "UPDATE learning_advisor_roadmaps SET applied_at=COALESCE(applied_at,clock_timestamp()),revoked_at=NULL WHERE id=$1",
+            [roadmap.id],
+          );
         } else if (req.body.action === "unapply") {
           if (!roadmap.applied_at || roadmap.revoked_at)
             fail("Lộ trình này hiện không được áp dụng.", 409);
@@ -305,7 +304,7 @@ export function installLearningAdvisor(
             [roadmap.id],
           );
         } else if (req.body.action === "task") {
-          if (!roadmap.applied_at) fail("Hãy áp dụng lộ trình trước.");
+          if (!roadmap.applied_at || roadmap.revoked_at) fail("Hãy áp dụng lộ trình trước.");
           const index = integer(
             req.body.index,
             "Nhiệm vụ",

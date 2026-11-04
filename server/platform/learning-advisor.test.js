@@ -273,6 +273,26 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
     200,
     "a revoked roadmap can be applied again",
   );
+  assert.equal(
+    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
+    null,
+  );
+  assert.equal(
+    (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" })).status,
+    200,
+    "applying an already-active roadmap must keep it active",
+  );
+  assert.equal(
+    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
+    null,
+  );
+  await call(`/roadmaps/${id}?scope=learning`, { action: "unapply" });
+  assert.equal(
+    (await call(`/roadmaps/${id}?scope=learning`, { action: "task", index: 0, done: false })).status,
+    400,
+    "a cancelled roadmap cannot have its progress edited",
+  );
+  await call(`/roadmaps/${id}?scope=learning`, { action: "apply" });
   const pdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
     headers: { "x-user": "1" },
   });
