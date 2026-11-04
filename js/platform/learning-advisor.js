@@ -46,7 +46,7 @@ function mountAdvisorContent(
       )
       .join(
         "",
-      )}</div><div class="advisor-workspace"><div><div class="advisor-chat" ${state.messages.length ? "" : "hidden"} role="log" aria-label="Hội thoại Cố vấn học tập">${state.messages.length ? state.messages.map((m) => `<article class="advisor-message ${m.role === "user" ? "advisor-user" : ""}"><strong>${m.role === "user" ? "Bạn" : "Cố vấn học tập"}</strong><p>${e(m.content)}</p></article>`).join("") : ""}</div><form data-advisor-form><label>Mục tiêu học tập<input name="goal" maxlength="500" placeholder="Ví dụ: đạt 8 điểm Toán trong 4 tuần"></label><label>Thời gian học mỗi ngày (phút)<input name="minutes" type="number" min="10" max="240" value="45" required></label><label>Trao đổi với cố vấn<textarea name="message" maxlength="4000" rows="3" required>${e(prompts[mode])}</textarea></label><div class="inline-actions"><button class="button primary" type="submit">${e(modes[mode])}</button><button class="button secondary" type="button" data-advisor-chat>Gửi câu hỏi học tập</button></div></form>${!state.aiConfigured ? "<p>Chưa cấu hình API key/model cho Cố vấn. Bạn vẫn xem được biểu đồ và lộ trình đã lưu.</p>" : ""}<p data-advisor-status role="status" aria-live="polite"></p></div><aside>${draft ? roadmapMarkup(draft) : ""}${applied ? roadmapMarkup(applied) : "<p>Chưa có lộ trình đang áp dụng.</p>"}</aside></div></section>`;
+      )}</div><div class="advisor-workspace"><div class="advisor-composer"><form data-advisor-form><label>Mục tiêu học tập<input name="goal" maxlength="500" placeholder="Ví dụ: đạt 8 điểm Toán trong 4 tuần"></label><label>Thời gian học mỗi ngày (phút)<input name="minutes" type="number" min="10" max="240" value="45" required></label><label>Trao đổi với cố vấn<textarea name="message" maxlength="4000" rows="3" required>${e(prompts[mode])}</textarea></label><div class="inline-actions"><button class="button primary" type="submit">${e(modes[mode])}</button><button class="button secondary" type="button" data-advisor-chat>Gửi câu hỏi học tập</button></div></form>${!state.aiConfigured ? "<p>Chưa cấu hình API key/model cho Cố vấn. Bạn vẫn xem được biểu đồ và lộ trình đã lưu.</p>" : ""}<p data-advisor-status role="status" aria-live="polite"></p></div><div class="advisor-results" aria-live="polite"><div class="advisor-chat" ${state.messages.length ? "" : "hidden"} role="log" aria-label="Hội thoại Cố vấn học tập">${state.messages.length ? state.messages.map((m) => `<article class="advisor-message ${m.role === "user" ? "advisor-user" : ""}"><strong>${m.role === "user" ? "Bạn" : "Cố vấn học tập"}</strong><p>${e(m.content)}</p></article>`).join("") : ""}</div><aside>${draft ? roadmapMarkup(draft) : ""}${applied ? roadmapMarkup(applied) : "<p>Chưa có lộ trình đang áp dụng.</p>"}</aside></div></div></section>`;
   }
   async function load() {
     state = await request("/");
@@ -85,8 +85,15 @@ function mountAdvisorContent(
       const nextForm = container.querySelector("form");
       nextForm.elements.goal.value = fields.goal;
       nextForm.elements.minutes.value = fields.minutes;
-      container.querySelector(".advisor-chat").scrollTop =
-        container.querySelector(".advisor-chat").scrollHeight;
+      const results = container.querySelector(".advisor-results");
+      results?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      const chatLog = container.querySelector(".advisor-chat");
+      if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
     } catch (error) {
       if (!controller.signal.aborted) status(error.message);
     } finally {
@@ -142,7 +149,7 @@ function mountAdvisorContent(
           const roadmapId = roadmapAction.dataset.advisorApply || roadmapAction.dataset.advisorUnapply;
           await request(`/roadmaps/${roadmapId}`, {
             method: "POST",
-            body: { action: apply ? "apply" : "unapply" },
+            body: { action: apply ? "apply" : "delete" },
           });
           await load();
         } catch (error) {
