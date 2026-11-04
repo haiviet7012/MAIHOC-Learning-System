@@ -102,15 +102,17 @@ test("Billing creates student and school orders, activates one Standard subscrip
     const selfOrder = (await selfOrderResponse.json()).order;
     assert.equal(selfOrder.amountVnd, 50000);
     assert.match(selfOrder.qrImageUrl, /vietqr\.app\/img/);
+    assert.equal(selfOrder.transferContent, `SEVQR ${selfOrder.orderCode}`);
+    assert.equal(new URL(selfOrder.qrImageUrl).searchParams.get("des"), selfOrder.transferContent);
 
     const invalidSignature = await fetch(origin + "/api/billing/sepay/webhook", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-SePay-Timestamp": String(Math.floor(Date.now() / 1000)), "X-SePay-Signature": "sha256=" + "0".repeat(64) },
-      body: JSON.stringify({ id: 111, transferType: "in", transferAmount: 50000, content: selfOrder.orderCode, accountNumber: env.SEPAY_ACCOUNT_NUMBER }),
+      body: JSON.stringify({ id: 111, transferType: "in", transferAmount: 50000, content: selfOrder.transferContent, accountNumber: env.SEPAY_ACCOUNT_NUMBER }),
     });
     assert.equal(invalidSignature.status, 401);
 
-    const selfPayload = { id: 900001, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER, transferType: "in", transferAmount: 50000, content: selfOrder.orderCode, referenceCode: "FT-BILLING-SELF" };
+    const selfPayload = { id: 900001, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER, transferType: "in", transferAmount: 50000, content: selfOrder.transferContent, referenceCode: "FT-BILLING-SELF" };
     const firstPayment = await sendWebhook(selfPayload);
     assert.equal(firstPayment.status, 200);
     assert.deepEqual(await firstPayment.json(), { success: true });
@@ -132,7 +134,7 @@ test("Billing creates student and school orders, activates one Standard subscrip
     const renewalOrder = (await renewalResponse.json()).order;
     const renewalPayment = await sendWebhook({
       id: 900003, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER,
-      transferType: "in", transferAmount: 50000, content: renewalOrder.orderCode,
+      transferType: "in", transferAmount: 50000, content: renewalOrder.transferContent,
       referenceCode: "FT-BILLING-RENEWAL",
     });
     assert.equal(renewalPayment.status, 200);
@@ -160,7 +162,7 @@ test("Billing creates student and school orders, activates one Standard subscrip
     assert.equal(schoolOrder.amountVnd, 100000);
     const schoolPayment = await sendWebhook({
       id: 900002, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER,
-      transferType: "in", transferAmount: 100000, content: schoolOrder.orderCode,
+      transferType: "in", transferAmount: 100000, content: schoolOrder.transferContent,
       referenceCode: "FT-BILLING-SCHOOL",
     });
     assert.equal(schoolPayment.status, 200);
@@ -174,7 +176,7 @@ test("Billing creates student and school orders, activates one Standard subscrip
     assert.equal(orderState.status, "paid");
     const duplicateAttempt = await sendWebhook({
       id: 900002, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER,
-      transferType: "in", transferAmount: 100000, content: schoolOrder.orderCode,
+      transferType: "in", transferAmount: 100000, content: schoolOrder.transferContent,
       referenceCode: "FT-BILLING-SCHOOL",
     });
     assert.equal(duplicateAttempt.status, 200);
