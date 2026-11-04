@@ -55,6 +55,7 @@ import {
   requireAdmin,
   requireSuperAdmin,
   requireOwnerAdmin,
+  isOwnerAdminUser,
   requireSameOrigin,
   createInitialAdmin,
   hashPassword,
@@ -1201,7 +1202,8 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     users: formattedUsers,
     total,
     currentUserId: req.user.id,
-    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager
+    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager,
+    isOwnerAdmin: isOwnerAdminUser(req.user)
   });
 });
 
