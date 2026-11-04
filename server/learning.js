@@ -7,6 +7,18 @@ export async function ensureLearningSchema(db) {
   )`);
   await db.query("ALTER TABLE learning_timetables ADD COLUMN IF NOT EXISTS layout_version INTEGER NOT NULL DEFAULT 1");
   await db.query("ALTER TABLE learning_timetables ADD COLUMN IF NOT EXISTS legacy_cells JSONB");
+
+  // PR #138 introduced revoked_at in platform migration 009. Some existing
+  // production instances run the application before the platform migration
+  // command is executed, so keep this narrow, idempotent startup guard.
+  const advisorTables = await db.query(
+    "SELECT to_regclass('public.learning_advisor_roadmaps') AS roadmaps",
+  );
+  if (advisorTables.rows[0]?.roadmaps) {
+    await db.query(
+      "ALTER TABLE learning_advisor_roadmaps ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ",
+    );
+  }
 }
 
 export const TIMETABLE_SUBJECTS = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'IELTS', 'Tự học'];

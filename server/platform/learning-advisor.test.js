@@ -3,8 +3,36 @@ import assert from "node:assert/strict";
 import express from "express";
 import { testDatabase } from "./test-db.js";
 import { installLearningAdvisor } from "../learning-advisor/routes.js";
+import { ensureLearningSchema } from "../learning.js";
 import { summarize, vnDay, snapshot } from "../learning-advisor/analytics.js";
 import { advise, validateAdvice } from "../learning-advisor/gemini.js";
+
+test("startup compatibility adds advisor revoked_at when an older database has not run migration 009", async (t) => {
+  const f = await testDatabase({ memoryOnly: true });
+  t.after(() => f.close());
+
+  await f.db.query(
+    "ALTER TABLE learning_advisor_roadmaps DROP COLUMN IF EXISTS revoked_at",
+  );
+  const before = await f.db.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_advisor_roadmaps' AND column_name='revoked_at'",
+  );
+  assert.equal(before.rows.length, 0);
+
+  await ensureLearningSchema(f.db);
+  const after = await f.db.query(
+    "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_advisor_roadmaps' AND column_name='revoked_at'",
+  );
+  assert.equal(after.rows.length, 1);
+  assert.equal(after.rows[0].data_type, "timestamp with time zone");
+
+  // The startup guard is safe to execute on every restart.
+  await ensureLearningSchema(f.db);
+  const repeated = await f.db.query(
+    "SELECT count(*)::int AS count FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_advisor_roadmaps' AND column_name='revoked_at'",
+  );
+  assert.equal(repeated.rows[0].count, 1);
+});
 
 test("advisor metrics normalize scales, preserve zero, exclude missing and use Vietnam dates", () => {
   const result = summarize([

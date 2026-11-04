@@ -13,6 +13,7 @@
 - `npm run db:plan`: chỉ liệt kê migration và checksum, không ghi database.
 - Sau khi schema nền và School runtime cũ đã tồn tại, chạy `npm run db:migrate` trên staging.
 - Production yêu cầu thêm `MAIHOC_BACKUP_VERIFIED=1` sau khi đã thực sự diễn tập restore. Biến này là xác nhận vận hành, không tự tạo backup.
+- Backend có bước tương thích khởi động idempotent để bổ sung cột `revoked_at` nếu schema Cố vấn học tập cũ chưa có cột này. Bước này giúp tránh lỗi 42703 sau deploy, nhưng không ghi migration vào ledger và không thay thế `npm run db:migrate`.
 - Migration chạy transaction với advisory lock và ledger `app_migrations`. Checksum thay đổi sẽ dừng; không sửa file đã áp dụng. Dùng migration tiếp theo để forward-fix.
 - Chạy migration trong bước pre-deploy/maintenance có quyền kết nối đúng database, trước khi start app mới. Không chạy backfill dài trong build frontend hoặc mỗi lần restart.
 

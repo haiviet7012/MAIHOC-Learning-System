@@ -331,13 +331,20 @@ export function installLearningAdvisor(
   );
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    const missing = ["42P01", "42883"].includes(error.pgCode || error.code);
+    const code = error.pgCode || error.code;
+    const missing = ["42P01", "42703", "42883"].includes(code);
+    console.error("[Learning advisor] Request failed", {
+      method: req.method,
+      path: req.path,
+      code: code || null,
+      message: error.message,
+    });
     const status = error.status || (missing ? 503 : 500);
     res.status(status).json({
       error: error.status
         ? error.message
         : missing
-          ? "Cần chạy migration Cố vấn học tập trước khi bật tính năng."
+          ? "Cần cập nhật schema/migration Cố vấn học tập trước khi bật tính năng."
           : "Không xử lý được Cố vấn học tập. Vui lòng thử lại.",
     });
   });
