@@ -196,6 +196,17 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
     403,
   );
   assert.equal((await call("/?scope=learning")).data.data.observations, 1);
+
+  await db.query(
+    "INSERT INTO learning_advisor_threads(id,user_id,scope) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',1,'learning')",
+  );
+  await db.query(
+    "INSERT INTO learning_advisor_messages(thread_id,role,content,created_at) VALUES('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','user','expired',now()-interval '25 hours'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','model','fresh',now()-interval '1 hour')",
+  );
+  const retentionView = await call("/?scope=learning");
+  assert.ok(!retentionView.data.messages.some(message => message.content === "expired"));
+  assert.ok(retentionView.data.messages.some(message => message.content === "fresh"));
+
   const body = {
     mode: "plan",
     message: "Lập kế hoạch",
@@ -230,6 +241,36 @@ test("advisor database, authorization, persistence, isolation and rate limiting"
     (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" })).status,
     200,
   );
+  const appliedState = await db.query(
+    "SELECT applied_at,revoked_at FROM learning_advisor_roadmaps WHERE id=$1",
+    [id],
+  );
+  assert.ok(appliedState.rows[0].applied_at);
+  assert.equal(appliedState.rows[0].revoked_at, null);
+  assert.equal(
+    (await call(`/roadmaps/${id}?scope=learning`, { action: "unapply" })).status,
+    200,
+  );
+  assert.ok(
+    (await db.query("SELECT revoked_at FROM learning_advisor_roadmaps WHERE id=$1", [id])).rows[0].revoked_at,
+    "cancelling a roadmap records a revocation without deleting the plan",
+  );
+  assert.equal(
+    (await call("/chat?scope=learning", { ...body, mode: "evaluate" })).status,
+    400,
+    "a revoked roadmap is no longer treated as the active plan",
+  );
+  assert.equal(
+    (await call(`/roadmaps/${id}?scope=learning`, { action: "apply" })).status,
+    200,
+    "a revoked roadmap can be applied again",
+  );
+  const pdfResponse = await fetch(base + `/roadmaps/${id}/pdf?scope=learning`, {
+    headers: { "x-user": "1" },
+  });
+  assert.equal(pdfResponse.status, 200);
+  assert.equal(pdfResponse.headers.get("content-type"), "application/pdf");
+  assert.ok((await pdfResponse.arrayBuffer()).byteLength > 1000);
   const changed = await call(`/roadmaps/${id}?scope=learning`, {
     action: "task",
     index: 0,
