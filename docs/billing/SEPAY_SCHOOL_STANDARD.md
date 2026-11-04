@@ -36,6 +36,10 @@ SEPAY_WEBHOOK_SECRET phải là Secret Key của phương thức **HMAC-SHA256**
 
 Backend lưu raw request body qua express.json verify và xác thực HMAC trên chuỗi timestamp.raw_body. Không stringify req.body để tính lại chữ ký. Timestamp quá cũ hoặc chữ ký sai bị từ chối.
 
+### Lưu ý bắt buộc khi dùng VietinBank API Banking
+
+SePay yêu cầu nội dung thanh toán của giao dịch VietinBank bắt đầu bằng tiền tố `SEVQR`. Vì vậy MAIHOC tạo nội dung chuyển khoản và QR VietQR theo định dạng `SEVQR MAIHOC<14 ký tự hex>`. Backend vẫn trích xuất mã đơn `MAIHOC<14 ký tự hex>` từ nội dung có tiền tố, nên không thay đổi cấu trúc order code hoặc cơ chế đối soát. Giữ nguyên toàn bộ nội dung được hiển thị/copy từ trang thanh toán; không tự xóa tiền tố `SEVQR`.
+
 SePay phải gửi JSON có các trường id, accountNumber, transferType, transferAmount và content. Giao dịch chỉ được xét khi transferType=in và tài khoản nhận khớp.
 
 ## Luồng mua và cấp quyền
