@@ -73,6 +73,7 @@ export async function ensureChatAttachmentSchema(database = db) {
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_type TEXT;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_size BIGINT;
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
   `);
 }
 
@@ -266,15 +267,22 @@ export function setupChat(server, app) {
     const attachmentType = String(file.mimetype || 'application/octet-stream').slice(0, 120);
     const attachmentKey = `chat/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
     let uploaded = false;
+    let storedInDatabase = false;
     try {
-      await uploadToR2({ key: attachmentKey, body: file.buffer, contentType: attachmentType });
-      uploaded = true;
+      try {
+        await uploadToR2({ key: attachmentKey, body: file.buffer, contentType: attachmentType });
+        uploaded = true;
+      } catch (storageError) {
+        // Keep chat attachments usable when the optional object storage is unavailable.
+        console.warn('Chat attachment R2 upload failed; using database fallback:', storageError.message);
+      }
       let insertedMessage;
       const sendTx = db.transaction(async () => {
         const insert = await db.prepare(`
-          INSERT INTO chat_messages (conversation_id,sender_id,content,attachment_key,attachment_name,attachment_type,attachment_size,created_at)
-          VALUES (?,?,?,?,?,?,?,datetime('now'))
-        `).run(conversationId, req.user.id, content, attachmentKey, attachmentName, attachmentType, file.size);
+          INSERT INTO chat_messages (conversation_id,sender_id,content,attachment_key,attachment_name,attachment_type,attachment_size,attachment_data,created_at)
+          VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+        `).run(conversationId, req.user.id, content, uploaded ? attachmentKey : null, attachmentName, attachmentType, file.size, uploaded ? null : file.buffer);
+        storedInDatabase = !uploaded;
         await db.prepare(`UPDATE chat_conversations SET updated_at=datetime('now') WHERE id=?`).run(conversationId);
         await db.prepare(`UPDATE chat_participants SET last_read_message_id=? WHERE conversation_id=? AND user_id=?`).run(insert.lastInsertRowid, conversationId, req.user.id);
         insertedMessage = await db.prepare(`
@@ -300,8 +308,8 @@ export function setupChat(server, app) {
       if (uploaded) await deleteFromR2(attachmentKey).catch(() => {});
       console.error('Chat attachment error:', error);
       res.status(500).json({
-        error: uploaded ? 'Không lưu được tin nhắn đính kèm. Vui lòng thử lại.' : 'Không tải được tệp lên kho lưu trữ. Vui lòng thử lại.',
-        code: uploaded ? 'CHAT_MESSAGE_SAVE_FAILED' : 'CHAT_STORAGE_UPLOAD_FAILED'
+        error: storedInDatabase ? 'Không lưu được tin nhắn đính kèm. Vui lòng thử lại.' : 'Không thể lưu tệp đính kèm. Vui lòng thử lại.',
+        code: storedInDatabase ? 'CHAT_MESSAGE_SAVE_FAILED' : 'CHAT_ATTACHMENT_STORAGE_FAILED'
       });
     }
   });
@@ -309,13 +317,14 @@ export function setupChat(server, app) {
   app.get('/api/chat/messages/:id/attachment', async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Vui lòng đăng nhập.' });
     const message = await db.prepare(`
-      SELECT conversation_id,attachment_key,attachment_name,attachment_type FROM chat_messages WHERE id=?
+      SELECT conversation_id,attachment_key,attachment_name,attachment_type,attachment_data FROM chat_messages WHERE id=?
     `).get(Number(req.params.id));
-    if (!message?.attachment_key) return res.status(404).json({ error: 'Không tìm thấy tệp đính kèm.' });
+    if (!message?.attachment_key && !message?.attachment_data) return res.status(404).json({ error: 'Không tìm thấy tệp đính kèm.' });
     if (!(await isParticipant(message.conversation_id, req.user.id))) return res.status(403).json({ error: 'Không có quyền xem tệp này.' });
     try {
-      const object = await readFromR2(message.attachment_key);
-      const bytes = Buffer.from(await object.Body.transformToByteArray());
+      const bytes = message.attachment_data
+        ? Buffer.from(message.attachment_data)
+        : Buffer.from(await (await readFromR2(message.attachment_key)).Body.transformToByteArray());
       const type = /^[\w.+-]+\/[\w.+-]+$/.test(message.attachment_type || '') ? message.attachment_type : 'application/octet-stream';
       const inline = type.startsWith('image/');
       res.set('Content-Type', type);
