@@ -48,9 +48,10 @@ export function installClassroomAccess(app,{db,requireAuth,requireSameOrigin,not
   };
   const allowed=async(user,code)=>{
     if(!classes.has(code))return false;
-    if(isSuperAdminUser(user))return true;
-    if(isTeacherUser(user))return true;
-    return Boolean(await db.prepare("SELECT class_code FROM classroom_join_requests WHERE student_id=? AND class_code=? AND status='approved'").get(user.id,code));
+    // Classroom sessions are open to every authenticated school account.
+    // Keep the join-request tables for backwards compatibility and admin review,
+    // but do not block direct entry or force the teacher to open the room first.
+    return true;
   };
   const active=code=>db.prepare('SELECT * FROM classroom_meetings WHERE class_code=? AND closed=false').get(code);
   const host=user=>staff(user);
@@ -181,13 +182,11 @@ export function installClassroomAccess(app,{db,requireAuth,requireSameOrigin,not
   }catch(error){next(error);}});
   app.get('/api/classroom-access/rooms/:code',requireAuth,async(req,res,next)=>{try{
     await ensure();if(!classes.has(req.params.code))return res.status(404).json({error:'Không tìm thấy lớp.'});
-    if(!staff(req.user)&&!await db.prepare("SELECT class_code FROM classroom_join_requests WHERE student_id=? AND class_code=? AND status='approved'").get(req.user.id,req.params.code))return res.status(403).json({error:'Bạn chưa được duyệt tham gia lớp này.'});
     res.json({ok:true});
   }catch(error){next(error);}});
   app.post('/api/classroom-access/rooms/:code/connect',requireSameOrigin,requireAuth,async(req,res,next)=>{try{
     await ensure();const code=req.params.code;
     if(!classes.has(code))return res.status(404).json({error:'Không tìm thấy lớp.'});
-    if(!staff(req.user)&&!await db.prepare("SELECT class_code FROM classroom_join_requests WHERE student_id=? AND class_code=? AND status='approved'").get(req.user.id,code))return res.status(403).json({error:'Bạn chưa được duyệt vào lớp.'});
     if(!['LIVEKIT_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET'].every(k=>process.env[k]?.trim()))return res.status(503).json({error:'Chưa cấu hình LiveKit trên máy chủ.'});
     const url=process.env.LIVEKIT_URL.trim();if(!url.startsWith('wss://'))return res.status(503).json({error:'LiveKit cần URL wss:// hợp lệ.'});
     const liveService=service();
@@ -197,14 +196,13 @@ export function installClassroomAccess(app,{db,requireAuth,requireSameOrigin,not
     if(existing.some(p=>p.identity===String(req.user.id))&&!req.body.takeover)return res.status(409).json({error:'Tài khoản đang ở phòng trên thiết bị khác.',takeover:true});
     if(req.body.takeover&&existing.some(p=>p.identity===String(req.user.id)))await liveService.removeParticipant(name,String(req.user.id));
     const token=new AccessToken(process.env.LIVEKIT_API_KEY,process.env.LIVEKIT_API_SECRET,{identity:String(req.user.id),name:req.user.name,ttl:'2m'});
-    token.addGrant({roomJoin:true,room:name,canPublish:true,canSubscribe:true,canPublishData:true,canUpdateOwnMetadata:true,...(!staff(req.user)?{canPublishSources:[TrackSource.MICROPHONE]}:{})});
+    token.addGrant({roomJoin:true,room:name,canPublish:true,canSubscribe:true,canPublishData:true,canUpdateOwnMetadata:true,canPublishSources:[TrackSource.MICROPHONE,TrackSource.CAMERA,TrackSource.SCREEN_SHARE]});
     await db.prepare('INSERT INTO classroom_live_sessions(class_code,owner_id,expires_at) VALUES(?,?,?) ON CONFLICT(class_code) DO UPDATE SET expires_at=EXCLUDED.expires_at').run(code,req.user.id,Date.now()+60000);
     const stillOpen=await active(code);if(stillOpen?.id!==meeting.id)return res.status(409).json({error:'Buổi học đã kết thúc.'});
     res.set('Cache-Control','private, no-store');res.json({url,token:await token.toJwt(),meetingId:meeting.id});
   }catch(error){next(error);}});
   app.post('/api/classroom-access/rooms/:code/heartbeat',requireSameOrigin,requireAuth,async(req,res,next)=>{try{
     await ensure();const code=req.params.code;
-    if(!staff(req.user)&&!await db.prepare("SELECT class_code FROM classroom_join_requests WHERE student_id=? AND class_code=? AND status='approved'").get(req.user.id,code))return res.status(403).json({error:'Không có quyền.'});
     await db.prepare('UPDATE classroom_live_sessions SET expires_at=? WHERE class_code=?').run(Date.now()+60000,code);res.json({ok:true});
   }catch(error){next(error);}});
 }

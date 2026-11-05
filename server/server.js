@@ -593,7 +593,12 @@ if (devMode) {
 }
 app.use(express.static(path.join(root, "public"), { etag: true, lastModified: true, maxAge: "1h" }));
 app.use(
-  express.static(staticRoot, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h" })
+  express.static(staticRoot, {
+    extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h",
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    }
+  })
 );
 
 const loginAttempts = new Map();

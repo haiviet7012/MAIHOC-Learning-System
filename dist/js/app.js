@@ -1,4 +1,4 @@
-import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js?v=20261105roomsalwaysopen1';
+import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js?v=20261106presentation1';
 import { schoolPlansMarkup, wireAccountUpgrade } from './account-upgrade.js';
 import { mountSchoolAnnouncements } from './school-announcements.js';
 import { canAccessSchool, schoolRoutes } from './platform/school-access.js';

@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { escapeHTML as e } from "../ui.js";
-import { mountClassroomShell } from "./classroom-shell.js?v=20261105roomsalwaysopen1";
+import { mountClassroomShell } from "./classroom-shell.js?v=20261106presentation1";
 export const upgradeRoutes = new Set([
   "school-lab",
   "school-rooms",
