@@ -3,7 +3,17 @@ import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
 import multer from "multer";
 import { db, publicUser } from "./auth.js";
-import { uploadToR2, readFromR2, deleteFromR2 } from "./r2-storage.js";
+// Text chat and retention checks do not require object-storage credentials.
+// Initialize R2 only when an attachment actually needs storage access.
+async function uploadToR2(options) {
+  return (await import('./r2-storage.js')).uploadToR2(options);
+}
+async function readFromR2(key) {
+  return (await import('./r2-storage.js')).readFromR2(key);
+}
+async function deleteFromR2(key) {
+  return (await import('./r2-storage.js')).deleteFromR2(key);
+}
 
 let chatIO;
 export async function purgeExpiredChatMessages(database = db) {
