@@ -50,7 +50,7 @@ export function answerTargetsForLayout(layout) {
         }
       } else {
         targets.push({ targetId: questionId, questionId, sectionId, number, type: section.type,
-          maximumPoints: Number(section.grading?.pointsPerCorrect)||0 });
+          maximumPoints: Number(section.grading?.pointsByQuestion?.[String(number)] ?? section.grading?.pointsPerCorrect)||0 });
       }
     }
   }

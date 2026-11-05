@@ -1593,7 +1593,9 @@ app.post("/api/exams/:id/submit", requireSameOrigin, async (req, res) => {
 
   const grade = answerKey ? gradeAnswers(answerKey, answers, assessmentConfig || {}) : null;
   let resultPayload;
-  if (grade && grade.completeAnswerKey !== false) {
+  if (grade?.gradingStatus === "pending_review") {
+    resultPayload = { ...grade, graded: false };
+  } else if (grade && grade.completeAnswerKey !== false) {
     resultPayload = { graded: true, ...grade };
   } else if (grade && grade.matchedAnswerCount > 0) {
     resultPayload = { graded: true, ...grade };

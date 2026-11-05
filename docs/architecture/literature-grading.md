@@ -1,0 +1,110 @@
+# Ngữ văn: blueprint và engine rubric riêng
+
+## Phạm vi
+
+- `configs/grading/ngu-van.json` là nguồn cấu hình; `configs/exam-layouts.json` là bản tổng hợp.
+- Engine: `server/grading/literature-engine.js`. Adapter AI tùy chọn: `literature-ai.js`.
+- Đây là backend API ở mức module, chưa có endpoint HTTP hoặc giao diện duyệt đề/duyệt điểm mới. Không tự kích hoạt môn trong subjects.json.
+- Luồng submit Learning cũ tiếp tục nhận và lưu bài nhưng không được so khớp Ngữ văn với đáp án mẫu: gradeAnswers trả pending khi grading.engine là literature-rubric-v1. Chưa tự gọi AI trên endpoint submit công khai.
+- School có luồng chấm riêng trong tests-module; chưa chuyển sang engine này. Khi nối School, phải dùng gradeLiteratureSubmission/reviewLiteratureGrade thay vì evaluateTestSubmission cho Ngữ văn.
+- Không thêm dependency, migration database hoặc thay cơ chế chấm các môn còn lại.
+
+## Thang điểm theo yêu cầu sản phẩm
+
+Đây là blueprint theo criteria được cung cấp cho MAIHOC, không phải tuyên bố về mọi đề thi chính thức.
+
+| Câu | Điểm |
+| --- | ---: |
+| I-1 | 0.5 |
+| I-2 | 0.5 |
+| I-3 | 1 |
+| I-4 | 1 |
+| I-5 | 1 |
+| II-1: đoạn nghị luận xã hội khoảng 200 chữ | 2 |
+| II-2: bài nghị luận văn học | 4 |
+
+II-1: xác định vấn đề 0.25; lập luận/giải thích/bàn luận 1; diễn đạt/dùng từ/chính tả 0.5; sáng tạo 0.25.
+
+II-2: xác định vấn đề/cấu trúc/dẫn chứng/luận điểm 1; triển khai và phân tích 2.5; sáng tạo 0.5. Tiêu chí 1 điểm được giữ thành một nhóm để không tự đặt thêm trọng số.
+
+Đọc hiểu có thể điều chỉnh pointsByQuestion cùng criteriaByQuestion theo từng blueprint, nhưng bắt buộc đủ 5 câu, tổng 4 điểm. Viết giữ 2 và 4 điểm. Bước điểm 0.25 là lựa chọn triển khai, có thể bổ sung chính sách khác sau.
+
+## Đọc đề
+
+`prepareLiteratureExam({ sourceText, generate })` nhận văn bản đề đã trích xuất, trả bản draft gồm:
+- schemaVersion: 1; reviewStatus: draft.
+- passage: ngữ liệu đọc hiểu nguyên văn, giữ xuống dòng thơ.
+- source: nguồn trích.
+- questions: đúng 7 targetId I-1..I-5, II-1, II-2; mỗi câu có questionText, guidance và context.
+- context chứa toàn bộ đoạn trích riêng của câu viết khi khác passage.
+- Maximum và criteria lấy từ blueprint, không tin trọng số do AI trả về.
+
+AI có thể đề xuất guidance; giáo viên phải đọc lại, chỉnh và xác nhận toàn bộ ngữ liệu/câu hỏi/hướng dẫn chấm ở backend trước khi đặt reviewStatus = approved. Không nhận trạng thái approved từ request học sinh.
+
+PDF/DOCX/ảnh cần bước trích văn bản hoặc OCR ở tầng nhập liệu trước khi gọi module. Bản này không thêm OCR mới. Đề trích thiếu câu hoặc thiếu ngữ liệu bị từ chối; không tự cắt văn bản dài để vừa giới hạn. Nếu đề không có đáp án chính thức, guidance AI chỉ là bản nháp để giáo viên biên soạn lại.
+
+## Chấm và duyệt điểm
+
+```js
+import {
+  prepareLiteratureExam, gradeLiteratureSubmission, reviewLiteratureGrade
+} from "../../server/grading/literature-engine.js";
+import { createLiteratureGenerator } from "../../server/grading/literature-ai.js";
+
+const generate = createLiteratureGenerator(); // Existing exam-scope Gemini configuration.
+const draft = await prepareLiteratureExam({ sourceText: extractedText, generate });
+// Save draft; teacher reviews it in a separate authorized backend operation.
+// Later load the approved exam and student answers from server storage.
+const proposal = await gradeLiteratureSubmission({ exam: approvedExam, answers, generate });
+// proposal.score === null, proposal.proposedScore may contain 0..10.
+// Save the proposal separately from official score.
+
+// On an authenticated teacher/admin route, use server-owned reviewer identity.
+// review contains questions with criterion-level scores, feedback, exact evidence and confidence.
+// A teacher can create these rows manually, without AI.
+const official = reviewLiteratureGrade({
+  exam: approvedExam, answers, review: reviewedCriterionRows, reviewerId: req.user.id
+});
+```
+
+Module không xác thực quyền; caller phải xác thực giáo viên/admin, quyền trên bài, chống CSRF, giới hạn tần suất gọi AI, và lấy đề/bài làm từ storage thay vì tin request. Không gọi adapter AI trực tiếp từ trình duyệt hoặc lộ API key.
+
+Đầu ra AI:
+```json
+{
+  "questions": [{
+    "targetId": "I-1",
+    "confidence": 0.95,
+    "criteria": [{
+      "id": "content",
+      "points": 0.5,
+      "feedback": "Nêu đúng ý, có căn cứ từ ngữ liệu.",
+      "evidence": ["trích nguyên văn trong bài làm"]
+    }]
+  }]
+}
+```
+
+Phải trả đủ mọi câu có bài làm, không trả câu trống. Mỗi câu phải đủ đúng các ID tiêu chí. Điểm phải là number hữu hạn, đúng bước và trong trần tiêu chí. Điểm dương bắt buộc có trích dẫn nguyên văn bài học sinh; việc tồn tại trích dẫn chỉ kiểm tra được căn cứ có thật, không chứng minh nhận xét AI đúng về ngữ nghĩa.
+
+Bài trống được đề xuất 0 mà không gọi provider. Thiếu đề đã duyệt/ngữ liệu/guidance, thiếu provider, lỗi API/JSON, ID trùng/lạ, điểm sai hoặc trích dẫn bịa đều trả pending_review với score = null. Confidence thấp hơn 0.75 cũng không có tổng điểm đề xuất; confidence do model tự báo chỉ là tín hiệu để yêu cầu duyệt, không phải xác suất đã hiệu chuẩn.
+
+Kết quả hợp lệ của AI là provisional, graded = false, score/percent = null; điểm gợi ý nằm ở proposedScore/proposedPercent. Chỉ reviewLiteratureGrade trả graded = true và score chính thức, kèm reviewedBy/reviewedAt. Caller phải lưu audit bản rubric, đề, bài, proposal, chỉnh sửa và người duyệt; module không tự ghi database.
+
+Không chấm bằng khớp từ khóa, độ giống văn mẫu hoặc số chữ. wordCount là ước lượng đơn vị cách nhau bởi khoảng trắng; không phải tách từ tiếng Việt và không tự trừ điểm ngoài khoảng 200 chữ.
+
+System instruction tách khỏi dữ liệu bài làm và bỏ qua chỉ dẫn thay rubric trong bài; vẫn cần người duyệt, không coi đây là bảo đảm chống prompt injection tuyệt đối.
+
+## Cấu hình và kiểm thử
+
+Adapter dùng geminiConfig("exam") và geminiClient hiện có: GEMINI_SOLUTION_API_KEY/GEMINI_SOLUTION_MODEL hoặc cấu hình shared tương ứng. Timeout và lỗi an toàn dùng chung ai-provider.js. Không chọn tên model mới, không tự cài công nghệ hoặc dịch vụ khác.
+
+```sh
+node scripts/sync-grading-configs.js
+node --test tests/literature-grading.test.js tests/grading-config.test.js tests/subject-config.test.js
+npm test
+npm run build
+npm run check:dist
+```
+
+Các test dùng provider giả, không gửi bài làm ra dịch vụ thật, không tốn quota. Trước khi tự động công bố điểm AI trong tương lai, cần tập bài giáo viên đã chấm và đối chiếu sai lệch theo từng tiêu chí, dạng đề và mức điểm.
