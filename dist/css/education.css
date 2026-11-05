@@ -195,6 +195,37 @@ a {
 .education-sidebar-foot .privacy-policy-link span {
   white-space: nowrap;
 }
+.community-footer {
+  margin-left: var(--sidebar);
+  padding: 24px clamp(18px, 4vw, 48px);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+}
+.community-footer h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.community-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 24px;
+}
+.community-footer-links a {
+  color: var(--primary);
+  text-underline-offset: 4px;
+}
+.community-footer-links a:hover {
+  color: var(--text);
+}
+body.practice-open .community-footer,
+body.exam-open .community-footer,
+body.reader-open .community-footer {
+  display: none;
+}
 .education-top-title {
   margin-right: 0;
   padding-left: 18px;
