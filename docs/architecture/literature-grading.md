@@ -51,7 +51,7 @@ import {
 } from "../../server/grading/literature-engine.js";
 import { createLiteratureGenerator } from "../../server/grading/literature-ai.js";
 
-const generate = createLiteratureGenerator(); // Dedicated LITERATURE_AI_API_KEY / LITERATURE_AI_MODEL.
+const generate = createLiteratureGenerator(); // Provider selected by LITERATURE_AI_PROVIDER; dedicated key/model.
 const draft = await prepareLiteratureExam({ sourceText: extractedText, generate });
 // Save draft; teacher reviews it in a separate authorized backend operation.
 // Later load the approved exam and student answers from server storage.
@@ -124,20 +124,40 @@ API trả `Cache-Control: private, no-store`. Giới hạn tần suất theo t�
 
 ## Cấu hình và kiểm thử
 
-Điền các giá trị thật trong `server/.env` hoặc Environment của backend (Render), không commit key. `server/.env.example` chứa sẵn hai biến trống:
+Điền các giá trị thật trong `server/.env` hoặc Environment của backend (Render), không commit key. Mặc định tiếp tục dùng Gemini nếu không đặt provider:
 
 ```dotenv
+LITERATURE_AI_PROVIDER=gemini
 LITERATURE_AI_API_KEY=
 LITERATURE_AI_MODEL=
 ```
 
-Adapter dùng `geminiConfig("literature")`: bắt buộc đủ key và model riêng, không fallback sang `GEMINI_API_KEY` hoặc `GEMINI_SOLUTION_API_KEY`. Model là tên đã xác minh với tài khoản provider; không đặt mặc định suy đoán. Timeout 45 giây và lỗi an toàn dùng chung `ai-provider.js`. Cấu hình đọc khi gọi AI nên không chặn server khởi động khi hai biến còn trống. Bài trống được đề xuất 0 mà không cần key/model.
+Để sử dụng model do NVIDIA API Catalog phục vụ:
 
-`createLiteratureGenerator()` dùng hai biến riêng này cho cả module đọc đề và chấm bài. Các override backend `apiKey` và `modelName` nếu dùng phải có đủ cả hai. Restart backend sau khi sửa `.env`; cấu hình trên host tiếp tục có ưu tiên cao hơn file `.env`. `npm run ai:check` tự kiểm tra thêm scope literature khi một trong hai biến được đặt; `-- --live` hoặc `-- --generate` xác minh với provider thật và có thể dùng quota.
+```dotenv
+LITERATURE_AI_PROVIDER=nvidia
+LITERATURE_AI_API_KEY=
+LITERATURE_AI_MODEL=
+LITERATURE_AI_BASE_URL=https://integrate.api.nvidia.com/v1
+LITERATURE_AI_MAX_TOKENS=4096
+LITERATURE_AI_TIMEOUT_MS=45000
+```
+
+Key cần là key NVIDIA; model là ID chính xác dạng `namespace/model` từ trang model trong NVIDIA API Catalog, không phải tên hiển thị. ID có thể thuộc NVIDIA hoặc nhà phát triển model khác được NVIDIA phục vụ. Không hardcode model mặc định; điền model đã xác minh với tài khoản provider. Không tự đổi provider khi lỗi, không fallback sang `GEMINI_API_KEY` hoặc `GEMINI_SOLUTION_API_KEY`.
+
+`literatureConfig()` kiểm tra provider và cấu hình trước khi gọi. Adapter NVIDIA dùng `POST /v1/chat/completions`, Bearer token ở header, `system` instruction tách khỏi dữ liệu bài làm, `stream:false`. Chỉ hỗ trợ NVIDIA cloud ở base URL trên; không tự chuyển key tới host khác hoặc theo redirect. Bản này chưa hỗ trợ NIM tự host.
+
+Giới hạn max_tokens mặc định 4096, có thể cấu hình 256–32768 nhưng phải nằm trong khả năng của model đã chọn. Timeout NVIDIA mặc định 45000 ms, cho phép 1000–180000 ms. Gemini giữ timeout 45 giây hiện có. Nếu NVIDIA trả phản hồi chờ HTTP 202, bị cắt vì hết token, chỉ có reasoning, sai JSON, hoặc API lỗi, bài chuyển `pending_review`; không lấy một phần phản hồi làm điểm và không tự polling. Các tham số riêng của từng model như reasoning_effort không được suy đoán hoặc tự thêm.
+
+Cấu hình đọc khi gọi AI nên không chặn server khởi động khi key/model còn trống. Bài trống được đề xuất 0 mà không cần provider. `createLiteratureGenerator()` áp dụng provider đã chọn cho cả module đọc đề và chấm bài. Các override backend `apiKey` và `modelName` nếu dùng phải có đủ cả hai; khi chỉ định key/model thủ công cho NVIDIA, truyền thêm `provider: "nvidia"`. API HTTP không nhận các override này từ client. Các kết nối AI ngoài engine Văn giữ cấu hình hiện có.
+
+Restart backend sau khi sửa `.env`; cấu hình trên host tiếp tục có ưu tiên cao hơn file `.env`. `npm run ai:check` kiểm tra cấu hình offline cho cả hai provider. Với NVIDIA, `npm run ai:check -- --generate` gửi một yêu cầu JSON nhỏ để xác minh kết nối; có thể dùng quota. `-- --live` không tự coi kết nối NVIDIA đã được xác minh, mà trả `NVIDIA_GENERATE_CHECK_REQUIRED` và yêu cầu kiểm tra bằng `--generate`.
+
+Tài liệu protocol tham chiếu: [NVIDIA LLM APIs](https://docs.api.nvidia.com/nim/reference/llm-apis), [Chat Completions](https://docs.api.nvidia.com/nim/reference/openai-gpt-oss-120b-infer). Khả năng và giới hạn tham số thay đổi theo model; xem trang model được cấu hình trước khi triển khai.
 
 ```sh
 node scripts/sync-grading-configs.js
-node --test tests/literature-api.test.js tests/literature-grading.test.js tests/grading-config.test.js tests/subject-config.test.js
+node --test tests/nvidia-literature.test.js tests/literature-api.test.js tests/literature-grading.test.js tests/grading-config.test.js tests/subject-config.test.js
 npm test
 npm run build
 npm run check:dist

@@ -1,4 +1,4 @@
-import { geminiConfig } from "../ai-provider.js";
+import { literatureConfig } from "./literature-provider.js";
 import { createLiteratureGenerator } from "./literature-ai.js";
 import { gradeLiteratureSubmission, validateLiteratureExam } from "./literature-engine.js";
 
@@ -51,11 +51,14 @@ export function installLiteratureRoutes(app, {
     let generate;
     if (Object.values(answers).some(value => value.trim())) {
       try {
-        const config = geminiConfig("literature", env);
-        generate = generatorFactory({ apiKey: config.apiKey, modelName: config.model });
+        const config = literatureConfig(env);
+        generate = generatorFactory({ apiKey: config.apiKey, modelName: config.model,
+          provider: config.provider, ...(config.provider === "nvidia" ? {
+            baseUrl: config.baseUrl, maxTokens: config.maxTokens, timeoutMs: config.timeoutMs
+          } : {}) });
       } catch {
         return res.status(503).json({ code: "LITERATURE_AI_NOT_CONFIGURED",
-          error: "Cần cấu hình đủ LITERATURE_AI_API_KEY và LITERATURE_AI_MODEL hợp lệ trên backend." });
+          error: "Cần cấu hình provider, API key và model riêng Ngữ văn hợp lệ trên backend." });
       }
     }
     // The engine converts provider failures/malformed scores to pending without leaking errors or secrets.
