@@ -4,7 +4,7 @@
 
 - `configs/grading/ngu-van.json` là nguồn cấu hình; `configs/exam-layouts.json` là bản tổng hợp.
 - Engine: `server/grading/literature-engine.js`. Adapter AI tùy chọn: `literature-ai.js`.
-- Đây là backend API ở mức module, chưa có endpoint HTTP hoặc giao diện duyệt đề/duyệt điểm mới. Không tự kích hoạt môn trong subjects.json.
+- Có API HTTP riêng `POST /api/admin/literature/grade` dành cho giáo viên/admin; chưa thêm giao diện duyệt đề/duyệt điểm mới. Không tự kích hoạt môn trong subjects.json.
 - Luồng submit Learning cũ tiếp tục nhận và lưu bài nhưng không được so khớp Ngữ văn với đáp án mẫu: gradeAnswers trả pending khi grading.engine là literature-rubric-v1. Chưa tự gọi AI trên endpoint submit công khai.
 - School có luồng chấm riêng trong tests-module; chưa chuyển sang engine này. Khi nối School, phải dùng gradeLiteratureSubmission/reviewLiteratureGrade thay vì evaluateTestSubmission cho Ngữ văn.
 - Không thêm dependency, migration database hoặc thay cơ chế chấm các môn còn lại.
@@ -51,7 +51,7 @@ import {
 } from "../../server/grading/literature-engine.js";
 import { createLiteratureGenerator } from "../../server/grading/literature-ai.js";
 
-const generate = createLiteratureGenerator(); // Existing exam-scope Gemini configuration.
+const generate = createLiteratureGenerator(); // Dedicated LITERATURE_AI_API_KEY / LITERATURE_AI_MODEL.
 const draft = await prepareLiteratureExam({ sourceText: extractedText, generate });
 // Save draft; teacher reviews it in a separate authorized backend operation.
 // Later load the approved exam and student answers from server storage.
@@ -95,13 +95,49 @@ Không chấm bằng khớp từ khóa, độ giống văn mẫu hoặc số ch�
 
 System instruction tách khỏi dữ liệu bài làm và bỏ qua chỉ dẫn thay rubric trong bài; vẫn cần người duyệt, không coi đây là bảo đảm chống prompt injection tuyệt đối.
 
+## API chấm Văn riêng
+
+`POST /api/admin/literature/grade` dùng session đăng nhập và middleware `requireAdmin` (giáo viên hoặc admin) cùng `requireSameOrigin` hiện có. Học sinh hoặc khách không được gọi API này.
+
+Body chỉ gồm `exam` và `answers`. `exam` tuân theo schema ở trên, `reviewStatus: "approved"`, đủ 7 câu, ngữ liệu và guidance; giáo viên/admin chịu trách nhiệm về bản đề gửi để chấm thử. `answers` ánh xạ ID `I-1`..`I-5`, `II-1`, `II-2` sang văn bản bài làm. Câu thiếu được coi là bỏ trống. Mỗi câu tối đa 30000 ký tự; tổng JSON tối đa 512 KiB. Không nhận API key, model hoặc blueprint từ request.
+
+```js
+const response = await fetch("/api/admin/literature/grade", {
+  method: "POST",
+  credentials: "same-origin",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ exam: approvedExam, answers: studentAnswers })
+});
+const result = await response.json();
+```
+
+| HTTP | Ý nghĩa |
+| --- | --- |
+| 200 | Kết quả đề xuất: `gradingStatus: "provisional"`, `graded: false`, `score: null`, điểm ở `proposedScore` |
+| 202 | AI lỗi, độ tin cậy thấp hoặc kết quả không hợp lệ; `pending_review`, không tạo điểm 0 giả |
+| 400 / 413 | Đề/bài làm không hợp lệ hoặc vượt giới hạn dung lượng |
+| 401 / 403 | Chưa đăng nhập, không có quyền hoặc khác nguồn gốc |
+| 429 | Vượt 12 yêu cầu/phút/người dùng, có header `Retry-After` |
+| 503 | Thiếu hoặc sai cấu hình riêng Ngữ văn: `LITERATURE_AI_NOT_CONFIGURED` |
+
+API trả `Cache-Control: private, no-store`. Giới hạn tần suất theo từng tiến trình backend. API này chấm thử stateless cho giáo viên/admin: chưa ghi bài/điểm vào database hoặc công bố điểm chính thức. Chưa thay thế luồng submit Learning/School. Khi triển khai API cho học sinh, phải lấy đề đã duyệt từ storage theo ID và kiểm tra quyền với bài thay vì nhận `exam` từ học sinh.
+
 ## Cấu hình và kiểm thử
 
-Adapter dùng geminiConfig("exam") và geminiClient hiện có: GEMINI_SOLUTION_API_KEY/GEMINI_SOLUTION_MODEL hoặc cấu hình shared tương ứng. Timeout và lỗi an toàn dùng chung ai-provider.js. Không chọn tên model mới, không tự cài công nghệ hoặc dịch vụ khác.
+Điền các giá trị thật trong `server/.env` hoặc Environment của backend (Render), không commit key. `server/.env.example` chứa sẵn hai biến trống:
+
+```dotenv
+LITERATURE_AI_API_KEY=
+LITERATURE_AI_MODEL=
+```
+
+Adapter dùng `geminiConfig("literature")`: bắt buộc đủ key và model riêng, không fallback sang `GEMINI_API_KEY` hoặc `GEMINI_SOLUTION_API_KEY`. Model là tên đã xác minh với tài khoản provider; không đặt mặc định suy đoán. Timeout 45 giây và lỗi an toàn dùng chung `ai-provider.js`. Cấu hình đọc khi gọi AI nên không chặn server khởi động khi hai biến còn trống. Bài trống được đề xuất 0 mà không cần key/model.
+
+`createLiteratureGenerator()` dùng hai biến riêng này cho cả module đọc đề và chấm bài. Các override backend `apiKey` và `modelName` nếu dùng phải có đủ cả hai. Restart backend sau khi sửa `.env`; cấu hình trên host tiếp tục có ưu tiên cao hơn file `.env`. `npm run ai:check` tự kiểm tra thêm scope literature khi một trong hai biến được đặt; `-- --live` hoặc `-- --generate` xác minh với provider thật và có thể dùng quota.
 
 ```sh
 node scripts/sync-grading-configs.js
-node --test tests/literature-grading.test.js tests/grading-config.test.js tests/subject-config.test.js
+node --test tests/literature-api.test.js tests/literature-grading.test.js tests/grading-config.test.js tests/subject-config.test.js
 npm test
 npm run build
 npm run check:dist

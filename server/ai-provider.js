@@ -23,7 +23,8 @@ export function normalizeModel(value) {
   return model;
 }
 export function geminiConfig(scope = 'shared', env = process.env) {
-  const dedicated = scope === 'room' ? 'ROOM_AI' : scope === 'document' ? 'SCHOOL_DOCUMENT_AI' : null;
+  const dedicated = scope === 'room' ? 'ROOM_AI' : scope === 'document' ? 'SCHOOL_DOCUMENT_AI'
+    : scope === 'literature' ? 'LITERATURE_AI' : null;
   if (dedicated) {
     const apiKey = configValue(env[`${dedicated}_API_KEY`]);
     if (!apiKey) throw aiError('AI_KEY_MISSING', `Chưa cấu hình ${dedicated}_API_KEY trên backend.`);

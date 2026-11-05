@@ -32,6 +32,7 @@ import nodemailer from "nodemailer";
 import { deliverMail, mailConfig } from "./mail-delivery.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
+import { installLiteratureRoutes } from "./grading/literature-routes.js";
 import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import {
@@ -1431,6 +1432,7 @@ app.get("/api/admin/progress", requireSuperAdmin, async (req, res) => {
 installLearningRoutes(app, { db, requireAuth, requireSameOrigin });
 installTeachingAdvisor(app, { db, requireAuth, requireSameOrigin });
 installLearningAdvisor(app, { db, requireAuth, requireSameOrigin });
+installLiteratureRoutes(app, { requireAdmin, requireSameOrigin });
 
 app.get("/api/progress", requireAuth, async (req, res) => {
   const rows = await db
