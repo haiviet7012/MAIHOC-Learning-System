@@ -16,7 +16,6 @@ import {
     refreshDocuments,
     uploadDocument
 } from "./documents.js";
-import { evaluateDifficulty } from "./ai.js";
 import { mountPdfReader } from "./pdf-reader.js";
 import { applyQuestionLayout, extractDocxText, parseQuestionText, questionSummary } from "./question-parser.js";
 import "./account-features.js?v=20261030notifications2";
@@ -354,7 +353,7 @@ function resourceListPage(category, grade) {
     return `${pageHeading(`${categoryName(category)} \u2014 ${gradeLabel(grade)}`, `T\u00e0i li\u1ec7u m\u00f4n To\u00e1n ${gradeLabel(grade).toLowerCase()}.`)}<div class="stat-row"><div class="stat"><span class="muted">T\u00e0i li\u1ec7u</span><strong>${list.length}</strong></div><div class="stat"><span class="muted">M\u00f4n h\u1ecdc</span><strong>To\u00e1n</strong></div><div class="stat"><span class="muted">Kh\u1ed1i l\u1edbp</span><strong>${grade}</strong></div></div>${list.length ? `<div class="resource-list">${list.map(d => `<div class="resource-row"><div class="card-icon">${CATEGORIES[d.category]?.icon || "\u25a7"}</div><div class="resource-main"><h3>${escapeHTML(d.title)}</h3><p>${escapeHTML(d.description || "T\u00e0i li\u1ec7u m\u00f4n To\u00e1n")} \u00b7 ${d.sample ? "T\u00e0i li\u1ec7u m\u1eabu" : d.localOnly ? "L\u01b0u trong tr\u00ecnh duy\u1ec7t" : "\u0110\u00e3 t\u1ea3i l\u00ean"}</p></div><div class="resource-actions"><button class="button secondary small" data-action="read-doc" data-id="${escapeHTML(d.id)}">M\u1edf t\u00e0i li\u1ec7u</button>${isAssessment ? `<button class="button primary small" data-action="start-exam" data-id="${escapeHTML(d.id)}">${category === "practice" ? "L\u00e0m b\u00e0i c\u00f3 ch\u1ea5m \u0111i\u1ec3m" : "B\u1eaft \u0111\u1ea7u thi"}</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty-state"><h3>Ch\u01b0a c\u00f3 t\u00e0i li\u1ec7u cho m\u1ee5c n\u00e0y</h3><p>H\u00e3y upload t\u00e0i li\u1ec7u b\u1eb1ng n\u00fat \u1edf thanh tr\u00ean ho\u1eb7c ch\u1ecdn l\u1edbp kh\u00e1c.</p><button class="button primary" data-action="open-upload" data-category="${category}">Upload t\u00e0i li\u1ec7u</button></div>`}`;
 }
 function examSelectPage() { return `${pageHeading("Phòng thi thử", "Chọn khối lớp và đề thi. Mỗi lượt thi có thời gian tối đa 90 phút.")}<div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="select-grade-route" data-grade="${g}" data-next="exam-list" data-category="exam"><div><span class="pill">THI THỬ · 90 PHÚT</span><div class="grade">${gradeLabel(g)}</div><p>${by(g, "exam").length} đề thi có sẵn</p></div><span class="arrow">→</span></article>`).join("")}</div>`; }
-function examListPage(grade) { const list = by(grade, "exam"); return `${pageHeading(`Chọn đề thi — ${gradeLabel(grade)}`, "Mỗi đề có thời gian 90 phút. Độ khó được AI đánh giá khi backend Gemini đã được cấu hình.")}${list.length ? `<div class="exam-list">${list.map((d, i) => `<article class="exam-card"><span class="pill">ĐỀ ${String(i + 1).padStart(2, "0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>◷ Thời gian: 90 phút</span><span>✦ Độ khó: AI đánh giá</span><span>▤ ${gradeLabel(d.grade)}</span></div><button class="button secondary" data-action="evaluate" data-id="${d.id}">Đánh giá độ khó bằng AI</button><button class="button primary" data-action="start-exam" data-id="${d.id}">Vào phòng thi →</button></article>`).join("")}</div>` : `<div class="empty-state"><h3>Chưa có đề thi cho lớp ${grade}</h3><p>Upload đề thi thử để bắt đầu.</p><button class="button primary" data-action="open-upload">Upload đề thi</button></div>`}<p class="footer-note">Đề thi mẫu là dữ liệu minh họa; nội dung và thang điểm cần được quản trị viên bổ sung.</p>`; }
+function examListPage(grade) { const list = by(grade, "exam"); return `${pageHeading(`Chọn đề thi — ${gradeLabel(grade)}`, "Mỗi đề có thời gian 90 phút.")}${list.length ? `<div class="exam-list">${list.map((d, i) => `<article class="exam-card"><span class="pill">ĐỀ ${String(i + 1).padStart(2, "0")}</span><h3>${escapeHTML(d.title)}</h3><div class="exam-meta"><span>◷ Thời gian: 90 phút</span><span>▤ ${gradeLabel(d.grade)}</span></div><button class="button primary" data-action="start-exam" data-id="${d.id}">Vào phòng thi →</button></article>`).join("")}</div>` : `<div class="empty-state"><h3>Chưa có đề thi cho lớp ${grade}</h3><p>Upload đề thi thử để bắt đầu.</p><button class="button primary" data-action="open-upload">Upload đề thi</button></div>`}<p class="footer-note">Đề thi mẫu là dữ liệu minh họa; nội dung và thang điểm cần được quản trị viên bổ sung.</p>`; }
 function readerPage() {
     const d = findDoc(state.docId);
     if (!d) return subjectPage();
@@ -1371,14 +1370,6 @@ async function openSavedTestSubmission(id) {
         toast(error.message || "Không tải được kết quả bài kiểm tra.", "error");
     }
 }
-async function doEvaluate(id) { const d = findDoc(id); if (!d)
-    return; $("#difficulty-result").innerHTML = '<span class="spinner"></span> Đang phân tích…'; openDialog("difficulty-dialog"); try {
-    const result = await evaluateDifficulty(d.content || d.description, d.title);
-    $("#difficulty-result").textContent = result.analysis || result.text || "AI chưa trả về kết quả.";
-}
-catch (e) {
-    $("#difficulty-result").textContent = `Chưa thể đánh giá bằng Gemini.\n\n${e.message}\n\nBạn vẫn có thể làm đề. Hãy cấu hình GEMINI_API_KEY ở backend để bật tính năng này.`;
-} }
 function subjectClick(subject) {
     const config = getSubjectConfig(subject);
     if (!config || !config.enabled) {
@@ -1533,10 +1524,6 @@ document.addEventListener("click", async (e) => {
         }
         if (a === "start-exam") {
             startExam(action.dataset.id);
-            return;
-        }
-        if (a === "evaluate") {
-            doEvaluate(action.dataset.id);
             return;
         }
         if (a === "view-exam-result") {

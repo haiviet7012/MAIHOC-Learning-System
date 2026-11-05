@@ -998,10 +998,6 @@ body.reader-open .app-body {
   color: #183c80;
   font-weight: 700;
 }
-:root.dark .exam-card [data-action="evaluate"] {
-  color: #183c80;
-  font-weight: 700;
-}
 :root.dark .result-panel .modal-actions .button.secondary {
   color: #183c80;
   font-weight: 700;

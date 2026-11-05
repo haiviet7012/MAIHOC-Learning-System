@@ -3,14 +3,13 @@ import { installClassroomAccess } from './classroom-access.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
 import { installBillingRoutes, createBillingReminderWorker } from './billing.js';
 import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
-import { geminiConfig, geminiClient, providerError } from './ai-provider.js';
+import { geminiConfig } from './ai-provider.js';
 import { schoolAccessGuard } from './school-access.js';
 import { canAccessSchool } from '../js/platform/school-access.js';
 import { installTeachingAdvisor } from './learning-advisor/teaching.js';
 import { installLearningAdvisor } from './learning-advisor/routes.js';
 import { ensureLearningSchema, installLearningRoutes } from "./learning.js";
 import { aiExamGuard } from './platform/ai-guard.js';
-import { geminiModels } from './ai-models.js';
 import { createPlatformRouter } from './platform/routes.js';
 import { installLegacySessions } from './platform/legacy.js';
 import {
@@ -2937,27 +2936,6 @@ app.post("/api/admin/submissions/:id/review", requireSameOrigin, requireAdmin, a
     return res.json({ ok: true, status: decision });
   } catch (e) {
     return next(e);
-  }
-});
-
-app.post("/api/ai/difficulty", async (req, res) => {
-  const { text = "", title = "Đề thi" } = req.body || {};
-  if (!String(text).trim()) {
-    return res.status(400).json({ error: "Đề thi chưa có nội dung văn bản để phân tích." });
-  }
-  try {
-    const { apiKey } = geminiConfig();
-    const genAI = geminiClient(apiKey);
-    const model = genAI.getGenerativeModel({ model: geminiModels()[0] });
-    const prompt = `Bạn là trợ lý đánh giá độ khó đề thi Toán THPT. Hãy phân tích đề sau bằng tiếng Việt, không tự khẳng định đáp án nếu thiếu dữ liệu. Trả lời ngắn gọn theo cấu trúc: Mức độ tổng quát (dễ/trung bình/khó), phân tích theo kiến thức, độ phân hóa, thời gian ước lượng và lưu ý.\nTên đề: ${String(
-      title
-    ).slice(0, 120)}\nNội dung đề:\n${String(text).slice(0, 18000)}`;
-    const result = await model.generateContent(prompt);
-    res.json({ analysis: result.response.text() });
-  } catch (err) {
-    const error = providerError(err);
-    console.error('Gemini difficulty:', error.code);
-    res.status(error.status).json({ error: error.message, code: error.code });
   }
 });
 
