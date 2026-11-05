@@ -58,8 +58,3 @@ Một nền tảng hỗ trợ học tập và ôn luyện, được xây dựng 
 
 </div>
 
-## School và Learning upgrade
-
-Xem [chức năng và kiến trúc](docs/upgrade/README.md), [migration và triển khai](docs/upgrade/DEPLOYMENT.md), [kiểm chứng](docs/upgrade/VERIFICATION.md) và [thiết kế](docs/upgrade/UI.md).
-
-Build từ source: `npm ci --ignore-scripts && npm run build`. Backend vẫn dùng PostgreSQL/R2 và API hiện tại. Nền tảng School mới được bật riêng sau migration; không chạy importer SQLite vào database đang hoạt động.
