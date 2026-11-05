@@ -1,3 +1,5 @@
+import { mountLiterature } from "./platform/literature.js";
+let disposeLiterature = null;
 import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js?v=20261106presentation1';
 import { schoolPlansMarkup, wireAccountUpgrade } from './account-upgrade.js';
 import { mountSchoolAnnouncements } from './school-announcements.js';
@@ -880,6 +882,7 @@ async function loadAdminUsers() {
 }
 
 function render() {
+    disposeLiterature?.(); disposeLiterature = null;
     if ((schoolRoutes.has(state.route) || state.route === "analytics") && !authResolved) {
         const schoolPending = schoolRoutes.has(state.route);
         document.body.toggleAttribute('data-school-ui', schoolPending);
@@ -999,8 +1002,11 @@ function render() {
         view.innerHTML = "";
         activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
     }
-    else if (state.route === "subject")
-        view.innerHTML = subjectPage();
+    else if (state.route === "subject") {
+        disposeLiterature?.();
+        if (state.subject === "Ngữ văn") disposeLiterature = mountLiterature(view, { documents: docs(), user: currentUser });
+        else view.innerHTML = subjectPage();
+    }
     else if (state.route === "subject-picker")
         view.innerHTML = subjectPickerPage();
     else if (state.route === "theory")
