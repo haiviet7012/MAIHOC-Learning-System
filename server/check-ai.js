@@ -2,15 +2,35 @@
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { geminiConfig, providerError, aiError } from './ai-provider.js';
+import { geminiConfig, providerError, aiError, configValue } from './ai-provider.js';
+import { literatureConfig } from './grading/literature-provider.js';
+import { createLiteratureGenerator } from './grading/literature-ai.js';
 
 export async function checkAi({ env = process.env, fetcher = fetch, live = false, generate = false } = {}) {
   const results = [], cache = new Map();
-  for (const scope of ['shared', 'advisor', 'exam', ...(env.MAIHOC_SCHOOL_UPGRADE_ENABLED === '1' ? ['room', 'document'] : [])]) {
+  const literatureProvider = configValue(env.LITERATURE_AI_PROVIDER).toLowerCase();
+  for (const scope of ['shared', 'advisor', 'exam',
+    ...(env.LITERATURE_AI_API_KEY || env.LITERATURE_AI_MODEL || (literatureProvider && literatureProvider !== 'gemini') ? ['literature'] : []),
+    ...(env.MAIHOC_SCHOOL_UPGRADE_ENABLED === '1' ? ['room', 'document'] : [])]) {
     let config;
     try {
-      config = geminiConfig(scope, env);
+      config = scope === 'literature' ? literatureConfig(env) : geminiConfig(scope, env);
       const result = { scope, keySource: config.keySource, modelSource: config.modelSource, model: config.model, status: 'CONFIGURED_NOT_VERIFIED' };
+      if (config.provider === 'nvidia') {
+        result.provider = 'nvidia';
+        if (generate) {
+          const answer = await createLiteratureGenerator({ env, fetcher })({
+            instruction: 'Chỉ trả JSON {"ok":true}.', data: { diagnostic: true }
+          });
+          if (answer.ok !== true) throw aiError('AI_RESPONSE_INVALID', 'NVIDIA chưa trả JSON hợp lệ cho yêu cầu kiểm tra.', 502);
+          result.status = 'GENERATE_VERIFIED';
+        } else if (live) {
+          result.status = 'NVIDIA_GENERATE_CHECK_REQUIRED';
+          result.message = 'Dùng --generate để xác minh kết nối NVIDIA bằng yêu cầu JSON nhỏ.';
+        }
+        results.push(result);
+        continue;
+      }
       if (live || generate) {
         // Distinct keys may belong to different projects. Never cache by model alone.
         let models = cache.get(config.apiKey);

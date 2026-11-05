@@ -32,6 +32,7 @@ import nodemailer from "nodemailer";
 import { deliverMail, mailConfig } from "./mail-delivery.js";
 import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./grading/engine.js";
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
+import { installLiteratureRoutes } from "./grading/literature-routes.js";
 import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import {
@@ -1431,6 +1432,7 @@ app.get("/api/admin/progress", requireSuperAdmin, async (req, res) => {
 installLearningRoutes(app, { db, requireAuth, requireSameOrigin });
 installTeachingAdvisor(app, { db, requireAuth, requireSameOrigin });
 installLearningAdvisor(app, { db, requireAuth, requireSameOrigin });
+installLiteratureRoutes(app, { requireAdmin, requireSameOrigin });
 
 app.get("/api/progress", requireAuth, async (req, res) => {
   const rows = await db
@@ -1593,7 +1595,9 @@ app.post("/api/exams/:id/submit", requireSameOrigin, async (req, res) => {
 
   const grade = answerKey ? gradeAnswers(answerKey, answers, assessmentConfig || {}) : null;
   let resultPayload;
-  if (grade && grade.completeAnswerKey !== false) {
+  if (grade?.gradingStatus === "pending_review") {
+    resultPayload = { ...grade, graded: false };
+  } else if (grade && grade.completeAnswerKey !== false) {
     resultPayload = { graded: true, ...grade };
   } else if (grade && grade.matchedAnswerCount > 0) {
     resultPayload = { graded: true, ...grade };

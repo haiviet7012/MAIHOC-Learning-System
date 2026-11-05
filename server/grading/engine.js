@@ -1,3 +1,4 @@
+import { pendingLiteratureGrade } from "./literature-engine.js";
 import { inflateRawSync } from "node:zlib";
 import { spawn } from "node:child_process";
 
@@ -1026,6 +1027,10 @@ function gradeConfiguredAnswers(answerKey, submittedAnswers, layout, grading) {
 }
 
 export function gradeAnswers(answerKey, submittedAnswers = {}, options = {}) {
+  if (options.grading?.engine === "literature-rubric-v1") {
+    return { ...pendingLiteratureGrade("Ngữ văn cần engine rubric riêng và giáo viên duyệt; không so khớp đáp án."),
+      completeAnswerKey: false, matchedAnswerCount: 0, missingAnswerCount: 0 };
+  }
   if (!answerKey?.answers || typeof answerKey.answers !== "object") {
     throw new Error("The answer key is not in a supported structured format.");
   }
