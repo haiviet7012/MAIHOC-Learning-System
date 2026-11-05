@@ -102,7 +102,7 @@ test("Grading API uses Literature credentials and returns only a proposal", asyn
   assert.equal(result.score, null);
   assert.equal(result.graded, false);
   assert.equal(result.gradingStatus, "provisional");
-  assert.deepEqual(config, { apiKey: env.LITERATURE_AI_API_KEY, modelName: env.LITERATURE_AI_MODEL });
+  assert.deepEqual(config, { apiKey: env.LITERATURE_AI_API_KEY, modelName: env.LITERATURE_AI_MODEL, provider: "gemini" });
   assert.ok(!JSON.stringify(result).includes(env.LITERATURE_AI_API_KEY));
 });
 
