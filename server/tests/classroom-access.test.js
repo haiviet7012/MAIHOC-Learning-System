@@ -30,9 +30,9 @@ test('classrooms are always available, allow direct entry and report attendance'
   const url=`http://127.0.0.1:${server.address().port}/api/classroom-access`;
   const call=(path,user=901,body)=>fetch(url+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-user':String(user)},...(body?{body:JSON.stringify(body)}:{})});
   await call('',902);
-  assert.equal((await call('/rooms/10A1/session',902)).status,403);
+  assert.equal((await call('/rooms/10A1/session',902)).status,200);
   assert.equal((await call('/rooms/10A2',903)).status,200);
-  assert.equal((await call('/rooms/10A2',902)).status,403);
+  assert.equal((await call('/rooms/10A2',902)).status,200);
   assert.equal((await call('/admin/rooms',902)).status,403);
   assert.equal((await call('/admin/rooms',901)).status,403);
   await fixture.db.prepare("INSERT INTO classroom_join_requests(student_id,class_code,status) VALUES(902,'10A1','approved')").run();

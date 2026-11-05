@@ -2,6 +2,16 @@ import { Room, RoomEvent, Track } from '../vendor/livekit-client.js';
 
 export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}={}){
   let disposed=false,preview=null,meeting=null,timer=null;
+  const pinnedVideo=new Set();
+  let refreshVideoTiles=()=>{};
+  let pinHideTimer,activePinTile;
+  function showPinControl(tile){
+    if(!tile)return;
+    clearTimeout(pinHideTimer);
+    if(activePinTile!==tile)activePinTile?.classList.remove('cr-pin-visible');
+    activePinTile=tile;tile.classList.add('cr-pin-visible');
+    pinHideTimer=setTimeout(()=>{tile.classList.remove('cr-pin-visible');activePinTile=null;},3000);
+  }
   let session=null,polling=false;
   const stage=root.querySelector('.cr-stage');
   const meetingStyle=document.createElement('style');meetingStyle.textContent=`
@@ -15,6 +25,12 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   .cr-in-call .cr-video-tile{position:relative;overflow:hidden;border-radius:24px!important;background:#202326;min-height:200px;height:100%;max-height:calc(100dvh - 180px);display:flex;align-items:center;justify-content:center}
   .cr-in-call .cr-video-tile p{position:absolute;bottom:12px;left:16px;z-index:2;background:#0007;color:#fff;padding:5px 10px;border-radius:10px;font-size:13px}
   .cr-in-call .cr-video-tile video{width:100%!important;height:100%;max-height:calc(100dvh - 180px)!important;object-fit:contain;border-radius:24px!important}
+  .cr-in-call .cr-screen-tile{grid-column:1/-1;min-height:min(62vh,620px)}
+  .cr-in-call [data-live-videos].has-pinned{grid-template-columns:minmax(0,1fr)!important}
+  .cr-in-call [data-live-videos].has-pinned .cr-video-tile:not(.is-pinned){display:none}
+  .cr-in-call .cr-pin-video{position:absolute;top:12px;right:12px;left:auto;z-index:6;border:0;border-radius:999px;background:#111d;color:#fff;width:40px;height:40px;padding:0;cursor:pointer;font-size:20px;opacity:0;pointer-events:none;transform:scale(.86);transition:opacity .18s ease,transform .18s ease,background .18s ease}
+  .cr-in-call .cr-video-tile.cr-pin-visible .cr-pin-video,.cr-in-call .cr-pin-video:focus-visible{opacity:1;pointer-events:auto;transform:scale(1)}
+  .cr-in-call .cr-pin-video:hover,.cr-in-call .cr-pin-video:focus-visible,.cr-in-call .cr-pin-video[aria-pressed="true"]{background:#7254b6;outline:2px solid #fff;outline-offset:2px}
   .classroom-shell.cr-in-call .cr-tools{position:absolute;bottom:16px;left:16px;right:16px;display:flex;justify-content:center;align-items:center;gap:12px;margin:0;padding:10px;background:#202326;border-radius:30px;flex-wrap:wrap}
   .classroom-shell.cr-in-call .cr-tools button{border-radius:22px!important;min-height:48px;padding:10px 16px!important;background:#34383d;color:#fff;border:0}
   .classroom-shell.cr-in-call .cr-tools button[aria-pressed=false]{background:#84333c}.classroom-shell.cr-in-call .cr-tools [data-cr-leave]{background:#dc3545!important;color:white}
@@ -55,13 +71,42 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   body[data-school-ui] .cr-in-call.cr-chat-hidden .cr-layout{grid-template-columns:1fr!important}
   body[data-school-ui] .cr-in-call .cr-layout>aside{grid-column:2;grid-row:1;min-width:0;width:auto}
   body[data-school-ui] .cr-in-call [data-live-videos]{grid-template-columns:repeat(var(--video-columns,1),minmax(0,1fr))!important;grid-auto-rows:minmax(0,1fr);align-content:stretch!important;align-items:stretch;min-height:0!important}
+  body[data-school-ui] .cr-in-call [data-live-videos].has-pinned{grid-template-columns:minmax(0,1fr)!important}
   body[data-school-ui] .cr-in-call .cr-video-tile{min-height:0!important;max-height:none!important;transition:width .25s ease,height .25s ease}
   body[data-school-ui] .cr-in-call .cr-video-tile video{width:100%!important;height:100%!important;max-height:100%!important;object-fit:contain}
   body[data-school-ui] .cr-in-call .cr-layout>section{position:relative}
   body[data-school-ui] .cr-in-call [data-session-panel]{flex:0 0 auto;max-height:130px;overflow:auto}
   @media(max-width:800px){body[data-school-ui] .cr-in-call .cr-layout{grid-template-columns:1fr!important}body[data-school-ui] .cr-in-call .cr-layout>aside{grid-column:auto}}
   body[data-school-ui] .classroom-shell .cr-video-tile [data-hand-badge]{background:transparent!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important;padding:4px!important}
+  .classroom-shell .cr-presentation-bar[hidden]{display:none!important}
+  .classroom-shell .cr-presentation-bar{flex:0 0 auto;display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:8px 12px;border:1px solid #ffffff18;border-radius:20px;background:#272a2e;color:#e8eaed;font-size:13px;min-width:0}
+  .cr-presentation-bar [data-presenter-name]{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .classroom-shell .cr-presentation-bar button{flex-shrink:0;border:0;border-radius:22px;padding:8px 16px;background:#aecbfa;color:#162d50;font-weight:600}
+  .cr-presentation-bar [data-presentation-audio]{font-size:12px;color:#bdc5d0}
+  .cr-presentation-main,.cr-participant-rail{display:contents}
+  body .cr-in-call [data-live-videos].has-presentation:not(.has-pinned){grid-template-columns:minmax(0,1fr) clamp(180px,18vw,240px)!important;grid-template-rows:minmax(0,1fr)!important;gap:16px!important}
+  .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-presentation-main{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow:auto;grid-column:1;grid-row:1}
+  .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-presentation-main .cr-screen-tile{flex:1 1 0;min-height:160px!important;background:#0b0c0e;border-radius:16px!important}
+  .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-participant-rail{display:flex;flex-direction:column;justify-content:safe flex-end;gap:12px;grid-column:2;grid-row:1;min-width:0;min-height:0;overflow-y:auto;scrollbar-width:thin}
+  body .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-participant-rail .cr-video-tile{flex:0 0 auto!important;width:100%;height:auto!important;aspect-ratio:16/10;max-height:170px!important;border-radius:14px!important}
+  .has-presentation:not(.has-pinned) .cr-participant-rail .cr-video-tile p{font-size:11px;bottom:6px;left:8px;padding:3px 6px;max-width:calc(100% - 48px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .has-presentation:not(.has-pinned) .cr-participant-rail .cr-video-tile .cr-avatar{width:64px;height:64px;font-size:28px}
+  body[data-school-ui] .cr-presenting [data-session-panel]{display:none!important}
+  .classroom-shell .cr-tools [data-cr-feature="Chia sẻ màn hình"][aria-pressed="true"]{background:#aecbfa!important;color:#162d50!important}
+  @media(max-width:700px){
+    body .cr-in-call [data-live-videos].has-presentation:not(.has-pinned){grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) 108px!important;gap:10px!important}
+    .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-participant-rail{grid-column:1;grid-row:2;flex-direction:row;justify-content:flex-start;overflow-x:auto;overflow-y:hidden}
+    body .cr-in-call [data-live-videos].has-presentation:not(.has-pinned) .cr-participant-rail .cr-video-tile{width:160px;height:100px!important}
+    .classroom-shell .cr-presentation-bar{gap:8px;padding:8px;font-size:11px}.classroom-shell .cr-presentation-bar button{padding:8px 10px;font-size:11px}.cr-presentation-bar [data-presentation-audio]{display:none}
+  }
   `;document.head.append(meetingStyle);
+  const presentationBar=document.createElement('div');presentationBar.className='cr-presentation-bar';presentationBar.hidden=true;
+  presentationBar.innerHTML='<span aria-hidden="true">▣</span><span data-presenter-name></span><span data-presentation-audio></span><button type="button" data-stop-presentation hidden>Dừng trình bày</button>';
+  stage.before(presentationBar);
+  presentationBar.querySelector('[data-stop-presentation]').onclick=async event=>{
+    const button=event.currentTarget;button.disabled=true;
+    try{await meeting?.localParticipant.setScreenShareEnabled(false);refreshVideoTiles();}catch(error){report(error.message);}finally{button.disabled=false;}
+  };
   const seenMessages=new Set();
   let reactionCloseTimer;
   meetingStyle.textContent+=`
@@ -201,7 +246,7 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
     const off=root.querySelector('[data-camera-off]');if(off)off.hidden=cam;
     const micButton=root.querySelector('[data-preview-mic]');if(micButton){micButton.innerHTML=deviceIcon('mic',mic);micButton.setAttribute('aria-pressed',String(mic));micButton.setAttribute('aria-label',mic?'Tắt mic':'Bật mic');micButton.title=mic?'Tắt mic':'Bật mic';}
   }
-  if(!staff){root.querySelector('[data-preview-camera]').hidden=true;root.querySelector('[data-cr-feature="Camera"]')?.setAttribute('hidden','');root.querySelector('[data-cr-feature="Chia sẻ màn hình"]')?.setAttribute('hidden','');}
+  if(!staff){root.querySelector('[data-preview-camera]').hidden=true;root.querySelector('[data-cr-feature="Camera"]')?.setAttribute('hidden','');}
   root.querySelector('[data-live-connect]').onclick=async event=>{
     const button=event.currentTarget;button.disabled=true;
     try{
@@ -223,30 +268,58 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
       const attachedAudio=new Map();let videoSignature='';
       function updateMicBadges(people){
         for(const person of people){
-          const tile=Array.from(videos.children).find(el=>el.dataset.identity===person.identity);if(!tile)continue;
+          const tile=Array.from(videos.querySelectorAll('.cr-video-tile')).find(el=>el.dataset.identity===person.identity&&!el.classList.contains('cr-screen-tile'));if(!tile)continue;
           let badge=tile.querySelector('[data-mic-muted]');
           if(person.isMicrophoneEnabled){badge?.remove();continue;}
           if(!badge){badge=document.createElement('span');badge.dataset.micMuted='';badge.title='Mic đang tắt';badge.setAttribute('aria-label','Mic đang tắt');badge.innerHTML=deviceIcon('mic',false);badge.style.cssText='position:absolute;bottom:16px;right:16px;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#dc3545;color:white;z-index:3;pointer-events:none';tile.append(badge);}
         }
       }
-      function media(){if(disposed)return;
+      function media(force=false){if(disposed)return;
         const people=[meeting.localParticipant,...meeting.remoteParticipants.values()];
         const audioTracks=new Map();for(const person of meeting.remoteParticipants.values())for(const pub of person.trackPublications.values())if(pub.kind===Track.Kind.Audio&&pub.track&&!pub.isMuted)audioTracks.set(pub.trackSid,pub.track);
         for(const [sid,entry] of attachedAudio)if(audioTracks.get(sid)!==entry.track){entry.track.detach(entry.element);entry.element.remove();attachedAudio.delete(sid);}
         for(const [sid,track] of audioTracks)if(!attachedAudio.has(sid)){const element=track.attach();element.autoplay=true;audioHost.append(element);attachedAudio.set(sid,{track,element});}
         syncButtons();
-        const priority=person=>Array.from(person.trackPublications.values()).some(p=>p.source===Track.Source.ScreenShare&&p.track&&!p.isMuted)?0:person.attributes?.['classroom.hand']==='true'?1:2;
-        people.sort((a,b)=>priority(a)-priority(b));
-        videos.style.setProperty('--video-columns',String(people.length<=1?1:people.length<=4?2:people.length<=9?3:4));
-        for(const person of people){const tile=Array.from(videos.children).find(el=>el.dataset.identity===person.identity);if(tile){tile.style.order=String(people.indexOf(person));const caption=tile.querySelector('p');if(caption)caption.textContent=(person.attributes?.['classroom.hand']==='true'?'✋ ':'')+(person.name||person.identity);let badge=tile.querySelector('[data-hand-badge]');if(person.attributes?.['classroom.hand']==='true'){if(!badge){badge=document.createElement('span');badge.dataset.handBadge='';badge.textContent='✋';badge.style.cssText='position:absolute;top:16px;right:16px;font-size:30px;background:#34383d;border-radius:50%;padding:8px;z-index:3';tile.append(badge);}}else badge?.remove();}}
-        const signature=JSON.stringify([...people].sort((a,b)=>a.identity.localeCompare(b.identity)).map(person=>[person.identity,person.name,...Array.from(person.trackPublications.values()).filter(pub=>pub.kind===Track.Kind.Video).map(pub=>[pub.trackSid,Boolean(pub.track),pub.isMuted])]));
-        if(signature===videoSignature){updateMicBadges(people);return;}videoSignature=signature;
+        const entries=people.flatMap(person=>{
+          const videos=Array.from(person.trackPublications.values()).filter(pub=>pub.kind===Track.Kind.Video);
+          const screen=videos.filter(pub=>pub.source===Track.Source.ScreenShare&&pub.track&&!pub.isMuted);
+          const camera=videos.filter(pub=>pub.source!==Track.Source.ScreenShare);
+          return [...screen.map(pub=>({person,pub,isScreen:true})),{person,pub:camera[0]||null,isScreen:false}];
+        });
+        const entryKey=entry=>`${entry.person.identity}:${entry.isScreen?entry.pub?.trackSid||'screen':'camera'}`;
+        const activeKeys=new Set(entries.map(entryKey));for(const key of pinnedVideo)if(!activeKeys.has(key))pinnedVideo.delete(key);
+        entries.sort((a,b)=>Number(pinnedVideo.has(entryKey(b)))-Number(pinnedVideo.has(entryKey(a)))||Number(b.isScreen)-Number(a.isScreen)||a.person.identity.localeCompare(b.person.identity));
+        videos.classList.toggle('has-pinned',pinnedVideo.size>0);
+        const screens=entries.filter(entry=>entry.isScreen);
+        videos.classList.toggle('has-presentation',screens.length>0);
+        root.querySelector('.classroom-shell').classList.toggle('cr-presenting',screens.length>0);
+        presentationBar.hidden=!screens.length;
+        const presenter=screens.find(entry=>entry.person===meeting.localParticipant)||screens[0];
+        if(presenter){
+          const own=presenter.person===meeting.localParticipant;
+          presentationBar.querySelector('[data-presenter-name]').textContent=`${presenter.person.name||presenter.person.identity}${own?' (Bạn, đang trình bày)':' đang trình bày'}${screens.length>1?` · ${screens.length} màn hình`:''}`;
+          presentationBar.querySelector('[data-stop-presentation]').hidden=!own;
+          const audio=Array.from(presenter.person.trackPublications.values()).some(pub=>pub.source===Track.Source.ScreenShareAudio&&pub.track&&!pub.isMuted);
+          presentationBar.querySelector('[data-presentation-audio]').textContent=audio?'🔊 Có âm thanh trình bày':'';
+        }
+        const shareButton=root.querySelector('[data-cr-feature="Chia sẻ màn hình"]');
+        if(shareButton){const sharing=entries.some(entry=>entry.isScreen&&entry.person===meeting.localParticipant);shareButton.setAttribute('aria-pressed',String(sharing));shareButton.title=sharing?'Dừng trình bày':'Chia sẻ màn hình';shareButton.setAttribute('aria-label',shareButton.title);}
+        videos.style.setProperty('--video-columns',String(pinnedVideo.size?1:entries.length<=1?1:entries.length<=4?2:entries.length<=9?3:4));
+        const signature=JSON.stringify(entries.map(({person,pub,isScreen})=>[person.identity,pub?.trackSid||'camera',isScreen,Boolean(pub?.track),pub?.isMuted]));
+        if(force!==true&&signature===videoSignature){updateMicBadges(people);return;}videoSignature=signature;
         videos.querySelectorAll('video').forEach(el=>{for(const person of people)for(const pub of person.trackPublications.values())pub.track?.detach(el);});
-        videos.replaceChildren();for(const person of people){
-        const tile=document.createElement('div');tile.className='cr-video-tile';tile.dataset.identity=person.identity;tile.style.cssText='flex:1 1 220px;min-width:0';tile.style.order=String(people.indexOf(person));const caption=document.createElement('p');caption.textContent=person.name||person.identity;tile.append(caption);
-        if(!Array.from(person.trackPublications.values()).some(pub=>pub.kind===Track.Kind.Video&&pub.track&&!pub.isMuted)){const avatar=document.createElement('div');avatar.className='cr-avatar';avatar.textContent=(person.name||person.identity||'?').trim().charAt(0).toUpperCase();tile.append(avatar);}
-        for(const pub of person.trackPublications.values()){if(pub.kind!==Track.Kind.Video||!pub.track||pub.isMuted)continue;const el=pub.track.attach();el.style.cssText='width:100%;max-height:350px;border-radius:14px';if(el.tagName==='VIDEO'){el.autoplay=true;el.playsInline=true;el.muted=person===meeting.localParticipant;if(person===meeting.localParticipant&&pub.source!==Track.Source.ScreenShare){el.dataset.localCamera='';el.style.setProperty('transform','scaleX(-1)','important');}}tile.append(el);}videos.append(tile);
-      }updateMicBadges(people);applyMirror();syncButtons();}
+        const presentationMain=document.createElement('div');presentationMain.className='cr-presentation-main';
+        const participantRail=document.createElement('div');participantRail.className='cr-participant-rail';participantRail.setAttribute('aria-label','Người tham gia');
+        videos.replaceChildren(presentationMain,participantRail);entries.forEach(({person,pub,isScreen},index)=>{
+          const key=entryKey({person,pub,isScreen});
+          const tile=document.createElement('div');tile.className=`cr-video-tile${isScreen?' cr-screen-tile':''}${pinnedVideo.has(key)?' is-pinned':''}`;tile.dataset.identity=person.identity;tile.dataset.videoKey=key;tile.style.cssText='flex:1 1 220px;min-width:0';tile.style.order=String(index);
+          const caption=document.createElement('p');caption.textContent=`${isScreen?'🖥️ Màn hình · ':''}${person.attributes?.['classroom.hand']==='true'?'✋ ':''}${person.name||person.identity}`;tile.append(caption);
+          const pin=document.createElement('button');pin.type='button';pin.dataset.pinVideo=key;pin.className='cr-pin-video';pin.textContent=pinnedVideo.has(key)?'📌':'📍';pin.title=pinnedVideo.has(key)?'Bỏ ghim':'Ghim màn hình này';pin.setAttribute('aria-label',pin.title);pin.setAttribute('aria-pressed',String(pinnedVideo.has(key)));tile.append(pin);
+          if(!pub?.track||pub.isMuted){const avatar=document.createElement('div');avatar.className='cr-avatar';avatar.textContent=(person.name||person.identity||'?').trim().charAt(0).toUpperCase();tile.append(avatar);}
+          if(pub?.track&&!pub.isMuted){const el=pub.track.attach();el.style.cssText='width:100%;height:100%;border-radius:14px;object-fit:contain';if(el.tagName==='VIDEO'){el.autoplay=true;el.playsInline=true;el.muted=person===meeting.localParticipant;if(person===meeting.localParticipant&&!isScreen){el.dataset.localCamera='';el.style.setProperty('transform','scaleX(-1)','important');}}tile.append(el);}(isScreen?presentationMain:participantRail).append(tile);
+        });
+        updateMicBadges(people);applyMirror();syncButtons();}
+      refreshVideoTiles=()=>media(true);
       for(const type of [RoomEvent.TrackSubscribed,RoomEvent.TrackUnsubscribed,RoomEvent.LocalTrackPublished,RoomEvent.LocalTrackUnpublished,RoomEvent.TrackMuted,RoomEvent.TrackUnmuted,RoomEvent.ParticipantConnected,RoomEvent.ParticipantDisconnected])meeting.on(type,media);
       meeting.on(RoomEvent.Disconnected,()=>{clearInterval(timer);status('Đã rời phòng trực tuyến.');});
       await meeting.connect(auth.url,auth.token);if(disposed){meeting.disconnect();return;}
@@ -281,8 +354,15 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
     }catch(error){status(error.message);if(meeting){meeting.removeAllListeners();await meeting.disconnect();meeting=null;}}finally{button.disabled=false;}
   };
   const controls=new AbortController();
+  controls.signal.addEventListener('abort',()=>presentationBar.remove(),{once:true});
+  controls.signal.addEventListener('abort',()=>clearTimeout(pinHideTimer),{once:true});
+  for(const type of ['pointerover','pointermove','pointerdown'])root.addEventListener(type,event=>{
+    const tile=event.target.closest('.cr-video-tile');if(tile)showPinControl(tile);
+  },{signal:controls.signal});
   root.querySelector('[data-preview-mic]').onclick=()=>root.querySelector('[data-cr-feature="Mic"]').click();
   root.addEventListener('click',async event=>{
+    const pin=event.target.closest('[data-pin-video]');
+    if(pin){const key=pin.dataset.pinVideo;if(pinnedVideo.has(key))pinnedVideo.delete(key);else{pinnedVideo.clear();pinnedVideo.add(key);}refreshVideoTiles();showPinControl(Array.from(root.querySelectorAll('.cr-video-tile')).find(tile=>tile.dataset.videoKey===key));return;}
     const action=event.target.closest('[data-cr-feature]')?.dataset.crFeature;if(!action)return;
     if(!staff&&['Camera','Chia sẻ màn hình'].includes(action)){
       if(action==='Camera'&&meeting?.localParticipant.isCameraEnabled){await meeting.localParticipant.setCameraEnabled(false);syncButtons();}return;

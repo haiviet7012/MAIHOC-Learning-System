@@ -1,17 +1,41 @@
 import { canAccessSchool } from '../js/platform/school-access.js';
 import crypto from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
+import multer from "multer";
 import { db, publicUser } from "./auth.js";
+// Text chat and retention checks do not require object-storage credentials.
+// Initialize R2 only when an attachment actually needs storage access.
+async function uploadToR2(options) {
+  return (await import('./r2-storage.js')).uploadToR2(options);
+}
+async function readFromR2(key) {
+  return (await import('./r2-storage.js')).readFromR2(key);
+}
+async function deleteFromR2(key) {
+  return (await import('./r2-storage.js')).deleteFromR2(key);
+}
 
 let chatIO;
 export async function purgeExpiredChatMessages(database = db) {
   // All conversations share one rolling 24-hour retention window. created_at
   // is stored as UTC text; cast explicitly to timestamptz for consistent cutoff.
-  return database.query(
+  let attachments = [];
+  try {
+    attachments = await database.prepare(
+      `SELECT attachment_key AS "attachmentKey" FROM chat_messages
+       WHERE attachment_key IS NOT NULL
+         AND COALESCE(NULLIF(created_at, '')::timestamptz, TIMESTAMPTZ 'epoch') <= NOW() - INTERVAL '24 hours'`
+    ).all();
+  } catch {
+    // Older/minimal test schemas may not have attachment columns yet.
+  }
+  const result = await database.query(
     `DELETE FROM chat_messages
      WHERE COALESCE(NULLIF(created_at, '')::timestamptz, TIMESTAMPTZ 'epoch')
        <= NOW() - INTERVAL '24 hours'`
   );
+  await Promise.allSettled(attachments.map(item => deleteFromR2(item.attachmentKey)));
+  return result;
 }
 export function notifyDeletedChatUser(userId) {
   chatIO?.emit("chat:account-deleted", { userId: Number(userId) });
@@ -43,6 +67,15 @@ function parseCookies(header = "") {
 // ----------------------------------------------------
 // Database Migration & Schema Setup
 // ----------------------------------------------------
+export async function ensureChatAttachmentSchema(database = db) {
+  await database.exec(`
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_key TEXT;
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_type TEXT;
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_size BIGINT;
+  `);
+}
+
 export async function initChatDatabase() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS chat_conversations (
@@ -74,6 +107,7 @@ export async function initChatDatabase() {
     CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC);
   `);
 
+  await ensureChatAttachmentSchema();
   await purgeExpiredChatMessages();
 
   // Remove direct threads whose other account was already deleted.
@@ -195,9 +229,102 @@ export function setupChat(server, app) {
   }, 60000);
   retentionTimer.unref();
   server.once('close', () => clearInterval(retentionTimer));
+  let attachmentSchemaReady;
   app.use('/api/chat', async (_req, res, next) => {
-    try { await purgeExpiredChatMessages(); next(); }
+    try {
+      await (attachmentSchemaReady ||= ensureChatAttachmentSchema().catch(error => { attachmentSchemaReady = null; throw error; }));
+      await purgeExpiredChatMessages(); next();
+    }
     catch { res.status(503).json({ error: 'Không thể tải lịch sử chat lúc này.' }); }
+  });
+
+  const chatUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 }
+  });
+
+  app.post('/api/chat/attachments', (req, res, next) => {
+    chatUpload.single('attachment')(req, res, error => {
+      if (!error) return next();
+      const message = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE'
+        ? 'Tệp đính kèm tối đa 10 MB.'
+        : 'Không thể đọc tệp đính kèm.';
+      res.status(400).json({ error: message });
+    });
+  }, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Vui lòng đăng nhập.' });
+    const conversationId = String(req.body?.conversationId || '').trim();
+    const content = String(req.body?.content || '').trim();
+    const file = req.file;
+    if (!conversationId || !file) return res.status(400).json({ error: 'Thiếu cuộc trò chuyện hoặc tệp đính kèm.' });
+    if (!file.size) return res.status(400).json({ error: 'Tệp đính kèm đang trống.' });
+    if (content.length > 2000) return res.status(400).json({ error: 'Tin nhắn không được vượt quá 2.000 ký tự.' });
+    if (!(await isParticipant(conversationId, req.user.id))) return res.status(403).json({ error: 'Bạn không có quyền gửi tệp trong cuộc trò chuyện này.' });
+    if (!checkRateLimit(req.user.id)) return res.status(429).json({ error: 'Bạn đang gửi tin nhắn quá nhanh. Vui lòng thử lại sau.' });
+
+    const attachmentName = String(file.originalname || 'tep-dinh-kem').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 255) || 'tep-dinh-kem';
+    const attachmentType = String(file.mimetype || 'application/octet-stream').slice(0, 120);
+    const attachmentKey = `chat/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
+    let uploaded = false;
+    try {
+      await uploadToR2({ key: attachmentKey, body: file.buffer, contentType: attachmentType });
+      uploaded = true;
+      let insertedMessage;
+      const sendTx = db.transaction(async () => {
+        const insert = await db.prepare(`
+          INSERT INTO chat_messages (conversation_id,sender_id,content,attachment_key,attachment_name,attachment_type,attachment_size,created_at)
+          VALUES (?,?,?,?,?,?,?,datetime('now'))
+        `).run(conversationId, req.user.id, content, attachmentKey, attachmentName, attachmentType, file.size);
+        await db.prepare(`UPDATE chat_conversations SET updated_at=datetime('now') WHERE id=?`).run(conversationId);
+        await db.prepare(`UPDATE chat_participants SET last_read_message_id=? WHERE conversation_id=? AND user_id=?`).run(insert.lastInsertRowid, conversationId, req.user.id);
+        insertedMessage = await db.prepare(`
+          SELECT m.id,m.conversation_id,m.sender_id,m.content,m.attachment_name,m.attachment_type,m.attachment_size,m.created_at,u.name AS sender_name
+          FROM chat_messages m JOIN users u ON u.id=m.sender_id WHERE m.id=?
+        `).get(insert.lastInsertRowid);
+      });
+      await sendTx();
+      const message = {
+        id: Number(insertedMessage.id), conversationId: insertedMessage.conversation_id,
+        senderId: Number(insertedMessage.sender_id), senderName: insertedMessage.sender_name,
+        content: insertedMessage.content, createdAt: insertedMessage.created_at,
+        attachment: { name: insertedMessage.attachment_name, type: insertedMessage.attachment_type, size: Number(insertedMessage.attachment_size || 0) }
+      };
+      io.to(`conv_${conversationId}`).emit('chat:new-message', message);
+      if (conversationId === 'global') io.emit('chat:global-activity', { lastMessage: message });
+      else {
+        const participants = await db.prepare(`SELECT user_id FROM chat_participants WHERE conversation_id=?`).all(conversationId);
+        for (const participant of participants) io.to(`user_${participant.user_id}`).emit('chat:conversation-updated', { conversationId, lastMessage: message });
+      }
+      res.json({ ok: true, message });
+    } catch (error) {
+      if (uploaded) await deleteFromR2(attachmentKey).catch(() => {});
+      console.error('Chat attachment error:', error);
+      res.status(500).json({
+        error: uploaded ? 'Không lưu được tin nhắn đính kèm. Vui lòng thử lại.' : 'Không tải được tệp lên kho lưu trữ. Vui lòng thử lại.',
+        code: uploaded ? 'CHAT_MESSAGE_SAVE_FAILED' : 'CHAT_STORAGE_UPLOAD_FAILED'
+      });
+    }
+  });
+
+  app.get('/api/chat/messages/:id/attachment', async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Vui lòng đăng nhập.' });
+    const message = await db.prepare(`
+      SELECT conversation_id,attachment_key,attachment_name,attachment_type FROM chat_messages WHERE id=?
+    `).get(Number(req.params.id));
+    if (!message?.attachment_key) return res.status(404).json({ error: 'Không tìm thấy tệp đính kèm.' });
+    if (!(await isParticipant(message.conversation_id, req.user.id))) return res.status(403).json({ error: 'Không có quyền xem tệp này.' });
+    try {
+      const object = await readFromR2(message.attachment_key);
+      const bytes = Buffer.from(await object.Body.transformToByteArray());
+      const type = /^[\w.+-]+\/[\w.+-]+$/.test(message.attachment_type || '') ? message.attachment_type : 'application/octet-stream';
+      const inline = type.startsWith('image/');
+      res.set('Content-Type', type);
+      res.set('Cache-Control', 'private, max-age=300');
+      res.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(message.attachment_name || 'tep-dinh-kem')}`);
+      res.send(bytes);
+    } catch {
+      res.status(404).json({ error: 'Tệp đính kèm không còn tồn tại.' });
+    }
   });
 
   // Track online users: userId (number) => Set of socketId (string)
@@ -507,7 +634,7 @@ export function setupChat(server, app) {
         rows.map(async (conv) => {
           const lastMsg = await db
             .prepare(`
-              SELECT m.id, m.content, m.sender_id, m.created_at, u.name AS sender_name
+              SELECT m.id,m.content,m.sender_id,m.attachment_name,m.attachment_type,m.attachment_size,m.created_at,u.name AS sender_name
               FROM chat_messages m
               JOIN users u ON u.id = m.sender_id
               WHERE m.conversation_id = ?
@@ -556,6 +683,7 @@ export function setupChat(server, app) {
               ? {
                   id: Number(lastMsg.id),
                   content: lastMsg.content,
+                  attachment: lastMsg.attachment_name ? { name: lastMsg.attachment_name, type: lastMsg.attachment_type, size: Number(lastMsg.attachment_size || 0) } : null,
                   senderId: Number(lastMsg.sender_id),
                   senderName: lastMsg.sender_name,
                   createdAt: lastMsg.created_at
@@ -655,7 +783,7 @@ export function setupChat(server, app) {
       if (beforeId > 0) {
         messages = await db
           .prepare(`
-            SELECT m.id, m.conversation_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
+            SELECT m.id,m.conversation_id,m.sender_id,m.content,m.attachment_name,m.attachment_type,m.attachment_size,m.created_at,u.name AS sender_name
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ? AND m.id < ?
@@ -666,7 +794,7 @@ export function setupChat(server, app) {
       } else {
         messages = await db
           .prepare(`
-            SELECT m.id, m.conversation_id, m.sender_id, m.content, m.created_at, u.name AS sender_name
+            SELECT m.id,m.conversation_id,m.sender_id,m.content,m.attachment_name,m.attachment_type,m.attachment_size,m.created_at,u.name AS sender_name
             FROM chat_messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ?
@@ -686,6 +814,7 @@ export function setupChat(server, app) {
           senderId: Number(m.sender_id),
           senderName: m.sender_name,
           content: m.content,
+          attachment: m.attachment_name ? { name: m.attachment_name, type: m.attachment_type, size: Number(m.attachment_size || 0) } : null,
           createdAt: m.created_at
         }))
       });

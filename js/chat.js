@@ -14,6 +14,8 @@ import { canAccessSchool } from './platform/school-access.js';
   let typingTimeout = null;
   let isTyping = false;
   let isWindowOpen = false;
+  let pendingGlobalAttachment = null;
+  let pendingGlobalPreviewUrl = "";
 
   // DOM Elements cache
   let dom = {};
@@ -150,7 +152,10 @@ import { canAccessSchool } from './platform/school-access.js';
             <div class="chat-typing-dots"><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span></div>
             <span id="chat-global-typing-text">Đang soạn tin...</span>
           </div>
+          <div class="chat-attachment-preview" id="chat-global-attachment-preview" hidden></div>
           <div class="chat-input-bar">
+            <button type="button" class="chat-attach-btn" id="chat-global-attach" title="Gửi ảnh hoặc tệp" aria-label="Gửi ảnh hoặc tệp">+</button>
+            <input type="file" id="chat-global-file" hidden>
             <textarea class="chat-input-field" id="chat-global-input" placeholder="Nhập tin nhắn... (Enter để gửi)" rows="1" maxlength="2000"></textarea>
             <button type="button" class="chat-send-btn" id="chat-global-send" aria-label="Gửi tin nhắn">➤</button>
           </div>
@@ -182,6 +187,17 @@ import { canAccessSchool } from './platform/school-access.js';
           </div>
         </section>
       </div>
+      <dialog class="chat-media-viewer" id="chat-media-viewer" aria-label="Xem ảnh">
+        <div class="chat-media-viewer-head">
+          <strong id="chat-media-title"></strong>
+          <label>Zoom <input type="range" id="chat-media-zoom" min="25" max="400" value="100" step="5"><output id="chat-media-zoom-output">100%</output></label>
+          <button type="button" id="chat-media-reset">Vừa khung</button>
+          <button type="button" id="chat-media-copy">Sao chép ảnh</button>
+          <a id="chat-media-download" download>Tải ảnh</a>
+          <button type="button" id="chat-media-close" aria-label="Đóng">×</button>
+        </div>
+        <div class="chat-media-viewer-scroll"><img id="chat-media-image" alt=""></div>
+      </dialog>
     `;
 
     document.body.appendChild(launcher);
@@ -214,6 +230,9 @@ import { canAccessSchool } from './platform/school-access.js';
       globalTypingText: document.getElementById("chat-global-typing-text"),
       globalInput: document.getElementById("chat-global-input"),
       globalSend: document.getElementById("chat-global-send"),
+      globalAttach: document.getElementById("chat-global-attach"),
+      globalFile: document.getElementById("chat-global-file"),
+      globalAttachmentPreview: document.getElementById("chat-global-attachment-preview"),
       dmListView: document.getElementById("chat-dm-list-view"),
       dmChatView: document.getElementById("chat-dm-chat-view"),
       userSearch: document.getElementById("chat-user-search"),
@@ -222,7 +241,14 @@ import { canAccessSchool } from './platform/school-access.js';
       directTyping: document.getElementById("chat-direct-typing"),
       directTypingText: document.getElementById("chat-direct-typing-text"),
       directInput: document.getElementById("chat-direct-input"),
-      directSend: document.getElementById("chat-direct-send")
+      directSend: document.getElementById("chat-direct-send"),
+      mediaViewer: document.getElementById("chat-media-viewer"),
+      mediaTitle: document.getElementById("chat-media-title"),
+      mediaZoom: document.getElementById("chat-media-zoom"),
+      mediaZoomOutput: document.getElementById("chat-media-zoom-output"),
+      mediaImage: document.getElementById("chat-media-image"),
+      mediaDownload: document.getElementById("chat-media-download"),
+      mediaCopy: document.getElementById("chat-media-copy")
     };
 
     bindEvents();
@@ -284,6 +310,36 @@ import { canAccessSchool } from './platform/school-access.js';
       }
     });
     dom.globalInput.addEventListener("input", () => handleTyping("global"));
+    dom.globalAttach.addEventListener("click", () => dom.globalFile.click());
+    dom.globalFile.addEventListener("change", () => {
+      const file = dom.globalFile.files?.[0];
+      if (file) setPendingGlobalAttachment(file);
+      dom.globalFile.value = "";
+    });
+    dom.globalInput.addEventListener("paste", event => {
+      const file = Array.from(event.clipboardData?.files || []).find(item => item.type.startsWith("image/"));
+      if (!file) return;
+      event.preventDefault();
+      setPendingGlobalAttachment(file);
+    });
+    dom.globalAttachmentPreview.addEventListener("click", event => {
+      if (event.target.closest("[data-chat-clear-attachment]")) clearPendingGlobalAttachment();
+    });
+
+    dom.window.addEventListener("click", event => {
+      const imageButton = event.target.closest("[data-chat-image]");
+      if (imageButton) openMediaViewer(imageButton.dataset.chatImage, imageButton.dataset.chatImageName || "Ảnh");
+    });
+    document.getElementById("chat-media-close").addEventListener("click", () => dom.mediaViewer.close());
+    document.getElementById("chat-media-reset").addEventListener("click", () => setMediaZoom(100));
+    dom.mediaZoom.addEventListener("input", () => setMediaZoom(Number(dom.mediaZoom.value)));
+    dom.mediaImage.parentElement.title = "Lăn chuột lên để phóng to, xuống để thu nhỏ";
+    dom.mediaImage.parentElement.addEventListener("wheel", event => {
+      if (!event.deltaY) return;
+      event.preventDefault();
+      setMediaZoom(Number(dom.mediaZoom.value) + (event.deltaY < 0 ? 10 : -10), { x: event.clientX, y: event.clientY });
+    }, { passive: false });
+    dom.mediaCopy.addEventListener("click", copyViewedImage);
 
     // Send direct message
     dom.directSend.addEventListener("click", sendDirectMessage);
@@ -308,6 +364,99 @@ import { canAccessSchool } from './platform/school-access.js';
     });
   }
 
+  function formatFileSize(bytes) {
+    const size = Number(bytes || 0);
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function clearPendingGlobalAttachment() {
+    if (pendingGlobalPreviewUrl) URL.revokeObjectURL(pendingGlobalPreviewUrl);
+    pendingGlobalPreviewUrl = "";
+    pendingGlobalAttachment = null;
+    dom.globalAttachmentPreview.replaceChildren();
+    dom.globalAttachmentPreview.hidden = true;
+  }
+
+  function setPendingGlobalAttachment(file) {
+    if (!file || file.size > 10 * 1024 * 1024) {
+      alert("Tệp đính kèm tối đa 10 MB.");
+      return;
+    }
+    clearPendingGlobalAttachment();
+    pendingGlobalAttachment = file;
+    const card = el("div", "chat-attachment-preview-card");
+    if (file.type.startsWith("image/")) {
+      pendingGlobalPreviewUrl = URL.createObjectURL(file);
+      const image = document.createElement("img");
+      image.src = pendingGlobalPreviewUrl;
+      image.alt = "Ảnh chuẩn bị gửi";
+      card.append(image);
+    } else {
+      card.append(el("span", "chat-attachment-file-icon", "📎"));
+    }
+    const info = el("span", "chat-attachment-preview-info");
+    info.append(el("strong", "", file.name || "Tệp đính kèm"), el("small", "", formatFileSize(file.size)));
+    const remove = el("button", "chat-attachment-remove", "×");
+    remove.type = "button";
+    remove.dataset.chatClearAttachment = "";
+    remove.setAttribute("aria-label", "Bỏ tệp đính kèm");
+    card.append(info, remove);
+    dom.globalAttachmentPreview.append(card);
+    dom.globalAttachmentPreview.hidden = false;
+  }
+
+  function setMediaZoom(value, anchor) {
+    const before = anchor && dom.mediaImage.getBoundingClientRect();
+    const zoom = Math.min(400, Math.max(25, Number(value) || 100));
+    dom.mediaZoom.value = String(zoom);
+    dom.mediaZoomOutput.textContent = `${zoom}%`;
+    dom.mediaImage.style.width = `${zoom}%`;
+    dom.mediaZoom.setAttribute("aria-valuetext", `${zoom}%`);
+    if (before?.width && before.height) {
+      const after = dom.mediaImage.getBoundingClientRect();
+      const viewport = dom.mediaImage.parentElement;
+      viewport.scrollLeft += after.left + (anchor.x - before.left) / before.width * after.width - anchor.x;
+      viewport.scrollTop += after.top + (anchor.y - before.top) / before.height * after.height - anchor.y;
+    }
+  }
+
+  function openMediaViewer(src, name) {
+    dom.mediaTitle.textContent = name;
+    dom.mediaImage.src = src;
+    dom.mediaImage.alt = name;
+    dom.mediaDownload.href = src;
+    dom.mediaDownload.download = name;
+    setMediaZoom(100);
+    dom.mediaViewer.showModal();
+  }
+
+  async function copyViewedImage() {
+    try {
+      const response = await fetch(dom.mediaImage.src, { credentials: "same-origin" });
+      if (!response.ok) throw new Error("Image unavailable");
+      const sourceBlob = await response.blob();
+      let copyBlob = sourceBlob;
+      if (sourceBlob.type !== "image/png") {
+        const bitmap = await createImageBitmap(sourceBlob);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0);
+        bitmap.close();
+        copyBlob = await new Promise((resolve, reject) => {
+          canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Image conversion failed")), "image/png");
+        });
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [copyBlob.type]: copyBlob })]);
+      dom.mediaCopy.textContent = "Đã sao chép";
+      setTimeout(() => { dom.mediaCopy.textContent = "Sao chép ảnh"; }, 1400);
+    } catch {
+      alert("Trình duyệt không cho phép sao chép ảnh này.");
+    }
+  }
+
   // ----------------------------------------------------
   // UI Navigation & View State Management
   // ----------------------------------------------------
@@ -319,6 +468,7 @@ import { canAccessSchool } from './platform/school-access.js';
       if (activeTab === "global") {
         dom.headerTitle.textContent = "Phòng học tập chung";
         dom.backBtn.hidden = true;
+        if (!socket?.connected) loadGlobalMessages();
         markConversationRead("global");
         scrollMessagesToBottom(dom.globalMessages);
       } else if (activeDirectConv) {
@@ -429,6 +579,7 @@ import { canAccessSchool } from './platform/school-access.js';
   // Messages Rendering
   // ----------------------------------------------------
   function renderMessageItem(msg, container) {
+    if (Array.from(container.children).some(node => node.dataset.messageId === String(msg.id))) return;
     const created = Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(msg.createdAt) ? msg.createdAt : msg.createdAt.replace(' ', 'T') + 'Z');
     if (created <= Date.now() - 86400000) return;
     const isMine = currentUser && Number(msg.senderId) === Number(currentUser.id);
@@ -442,7 +593,33 @@ import { canAccessSchool } from './platform/school-access.js';
       group.appendChild(senderEl);
     }
 
-    const bubble = el("div", "chat-bubble", msg.content);
+    const bubble = el("div", "chat-bubble");
+    if (msg.content) bubble.append(el("span", "chat-message-text", msg.content));
+    if (msg.attachment) {
+      const source = `/api/chat/messages/${encodeURIComponent(msg.id)}/attachment`;
+      if (String(msg.attachment.type || "").startsWith("image/")) {
+        const button = el("button", "chat-image-attachment");
+        button.type = "button";
+        button.dataset.chatImage = source;
+        button.dataset.chatImageName = msg.attachment.name || "Ảnh";
+        button.title = "Nhấn để xem và zoom ảnh";
+        const image = document.createElement("img");
+        image.src = source;
+        image.alt = msg.attachment.name || "Ảnh được gửi trong phòng học tập chung";
+        image.loading = "lazy";
+        button.append(image);
+        bubble.append(button);
+      } else {
+        const file = el("a", "chat-file-attachment");
+        file.href = source;
+        file.download = msg.attachment.name || "tep-dinh-kem";
+        file.append(el("span", "chat-file-icon", "📎"));
+        const details = el("span", "chat-file-details");
+        details.append(el("strong", "", msg.attachment.name || "Tệp đính kèm"), el("small", "", formatFileSize(msg.attachment.size)));
+        file.append(details);
+        bubble.append(file);
+      }
+    }
     group.appendChild(bubble);
 
     const timeEl = el("div", "chat-message-time", formatChatTime(msg.createdAt));
@@ -462,11 +639,35 @@ import { canAccessSchool } from './platform/school-access.js';
   // ----------------------------------------------------
   // Real-time Chat Operations
   // ----------------------------------------------------
-  function sendGlobalMessage() {
+  async function sendGlobalMessage() {
     const text = dom.globalInput.value.trim();
-    if (!text || !socket || !socket.connected) return;
+    if ((!text && !pendingGlobalAttachment) || dom.globalSend.disabled) return;
+    if (!pendingGlobalAttachment && (!socket || !socket.connected)) return;
 
     dom.globalSend.disabled = true;
+    if (pendingGlobalAttachment) {
+      try {
+        const form = new FormData();
+        form.append("conversationId", "global");
+        form.append("content", text);
+        form.append("attachment", pendingGlobalAttachment, pendingGlobalAttachment.name);
+        const response = await fetch("/api/chat/attachments", { method: "POST", body: form, credentials: "same-origin" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Không thể gửi tệp đính kèm.");
+        if (result.message) {
+          renderMessageItem(result.message, dom.globalMessages);
+          scrollMessagesToBottom(dom.globalMessages, true);
+        }
+        dom.globalInput.value = "";
+        clearPendingGlobalAttachment();
+        dom.globalInput.focus();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        dom.globalSend.disabled = false;
+      }
+      return;
+    }
     socket.emit("chat:send", {
       conversationId: "global",
       content: text
@@ -620,7 +821,7 @@ import { canAccessSchool } from './platform/school-access.js';
 
       const bottom = el("div", "chat-conv-bottom");
       const previewText = lastMsg
-        ? `${Number(lastMsg.senderId) === Number(currentUser.id) ? "Bạn: " : ""}${lastMsg.content}`
+        ? `${Number(lastMsg.senderId) === Number(currentUser.id) ? "Bạn: " : ""}${lastMsg.content || (lastMsg.attachment ? `📎 ${lastMsg.attachment.name}` : "Tin nhắn")}`
         : "Bắt đầu cuộc trò chuyện";
       const previewEl = el("p", "chat-conv-preview", previewText);
       bottom.appendChild(previewEl);
@@ -889,6 +1090,8 @@ import { canAccessSchool } from './platform/school-access.js';
         initSocket();
         dom.launcher.hidden = false;
       } else {
+        clearPendingGlobalAttachment();
+        if (dom.mediaViewer?.open) dom.mediaViewer.close();
         if (socket) {
           socket.disconnect();
           socket = null;
@@ -900,6 +1103,7 @@ import { canAccessSchool } from './platform/school-access.js';
       }
     } catch {
       currentUser = null;
+      clearPendingGlobalAttachment();
     }
   }
 
