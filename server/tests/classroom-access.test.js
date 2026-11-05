@@ -16,7 +16,7 @@ test('empty classroom closes after ten minutes, resets on attendance and ignores
  outage=false;await closeEmptyClassrooms(db,live,1300001);assert.equal(deletions,1);assert.equal(row.closed,true);
 });
 
-test('meeting admission gates tokens and closing invalidates the previous session',async()=>{
+test('classrooms are always available, allow direct entry and report attendance',async()=>{
  const fixture=await testDatabase({memoryOnly:true});
  const env={...process.env};let server;
  try{
@@ -24,8 +24,8 @@ test('meeting admission gates tokens and closing invalidates the previous sessio
   await fixture.db.query("INSERT INTO users(id,name,email,password_hash,role,admin_level) VALUES(901,'Teacher','teacher@fixture.test','x','admin',1),(902,'Student','student@fixture.test','x','user',0),(903,'Other teacher','other@fixture.test','x','admin',1)");
   await fixture.db.prepare("INSERT INTO school_teacher_assignments(id,teacher_id,class_code,subject,assignment_type) VALUES('classroom-teacher',901,'10A1','Toán','subject')").run();
   const app=express();app.use(express.json());
-  const calls=[];
-  installClassroomAccess(app,{db:fixture.db,requireSameOrigin:(req,res,next)=>next(),requireAuth:async(req,res,next)=>{req.user=await fixture.db.prepare('SELECT * FROM users WHERE id=?').get(Number(req.headers['x-user']));next();},notifyAdmins:async()=>{},notifyUser:async()=>{},roomService:{createRoom:async r=>calls.push(['open',r.name]),deleteRoom:async name=>calls.push(['close',name]),listParticipants:async()=>[]}});
+  const calls=[],participantsByRoom=new Map();
+  installClassroomAccess(app,{db:fixture.db,requireSameOrigin:(req,res,next)=>next(),requireAuth:async(req,res,next)=>{req.user=await fixture.db.prepare('SELECT * FROM users WHERE id=?').get(Number(req.headers['x-user']));next();},notifyAdmins:async()=>{},notifyUser:async()=>{},roomService:{createRoom:async r=>{calls.push(['open',r.name]);participantsByRoom.set(r.name,[]);},deleteRoom:async name=>{calls.push(['close',name]);participantsByRoom.delete(name);},listParticipants:async name=>participantsByRoom.get(name)||[]}});
   server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
   const url=`http://127.0.0.1:${server.address().port}/api/classroom-access`;
   const call=(path,user=901,body)=>fetch(url+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-user':String(user)},...(body?{body:JSON.stringify(body)}:{})});
@@ -37,18 +37,16 @@ test('meeting admission gates tokens and closing invalidates the previous sessio
   assert.equal((await call('/admin/rooms',901)).status,403);
   await fixture.db.prepare("INSERT INTO classroom_join_requests(student_id,class_code,status) VALUES(902,'10A1','approved')").run();
   assert.equal((await call('/rooms/10A1/open',902,{})).status,403);
-  const opened=await (await call('/rooms/10A1/open',901,{})).json();
-  assert.equal((await call('/rooms/10A1/connect',902,{})).status,403);
-  await call('/rooms/10A1/wait',902,{});
-  assert.equal((await call('/rooms/10A1/admit',903,{meetingId:opened.meetingId,studentId:902,decision:'approved'})).status,403);
-  assert.equal((await call('/rooms/10A1/admit',901,{meetingId:opened.meetingId,studentId:902,decision:'approved'})).status,200);
+  const opened=await (await call('/rooms/10A1/session',902)).json();
+  assert.equal(opened.open,true);assert.equal(opened.admission,'approved');
   const token=await (await call('/rooms/10A1/connect',902,{})).json();assert.ok(token.token);
   const payload=JSON.parse(Buffer.from(token.token.split('.')[1],'base64url'));assert.equal(payload.video.room,`maihoc-session-${opened.meetingId}`);
+  participantsByRoom.set(payload.video.room,[{identity:'902',permission:{hidden:false}},{identity:'observer',permission:{hidden:true}}]);
+  const lobby=await (await call('',902)).json();assert.equal(lobby.rooms.find(room=>room.class_code==='10A1').participant_count,1);
   assert.equal((await call('/rooms/10A1/close',902,{})).status,403);
   assert.equal((await call('/rooms/10A1/close',901,{})).status,200);
-  assert.equal((await call('/rooms/10A1/connect',902,{})).status,409);
-  const reopened=await (await call('/rooms/10A1/open',901,{})).json();assert.notEqual(reopened.meetingId,opened.meetingId);
-  assert.equal((await call('/rooms/10A1/connect',902,{})).status,403);
+  const reopened=await (await call('/rooms/10A1/connect',902,{})).json();assert.notEqual(reopened.meetingId,opened.meetingId);
+  assert.ok(reopened.token);
   assert.ok(calls.some(c=>c[0]==='close'));
  }finally{if(server)await new Promise(r=>server.close(r));process.env=env;await fixture.close();}
 });

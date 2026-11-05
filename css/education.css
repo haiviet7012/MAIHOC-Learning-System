@@ -2040,6 +2040,9 @@ html { scrollbar-gutter: stable; }
   color: var(--text);
   font: inherit;
 }
+.development-notice:focus {
+  outline: none;
+}
 .development-notice::backdrop {
   background: rgb(15 12 30 / 55%);
 }

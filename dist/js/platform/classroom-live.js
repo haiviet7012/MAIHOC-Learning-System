@@ -2,7 +2,7 @@ import { Room, RoomEvent, Track } from '../vendor/livekit-client.js';
 
 export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}={}){
   let disposed=false,preview=null,meeting=null,timer=null;
-  let session=null,polling=false,lastMediaRequest=null;
+  let session=null,polling=false;
   const stage=root.querySelector('.cr-stage');
   const meetingStyle=document.createElement('style');meetingStyle.textContent=`
   .classroom-shell.cr-in-call{position:fixed;inset:0;z-index:1300;background:#111315;color:#f1f3f4;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;--surface:#202326;--surface-2:#292d31;--text:#f1f3f4;--muted:#b4bac3;--border:#3a3e44}
@@ -20,7 +20,7 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   .classroom-shell.cr-in-call .cr-tools button[aria-pressed=false]{background:#84333c}.classroom-shell.cr-in-call .cr-tools [data-cr-leave]{background:#dc3545!important;color:white}
   .cr-in-call .cr-layout>section>.cr-muted,.cr-in-call .cr-layout>section>.cr-note:not([data-session-panel]){display:none}
   .cr-in-call [data-session-panel]{padding:10px!important;margin-top:10px}.cr-in-call [data-session-panel] h3{font-size:13px!important;margin:0 0 8px}
-  .classroom-shell.cr-in-call aside:has([data-cr-chat]){height:100%;min-height:0;border-radius:22px!important}.cr-in-call .cr-log{flex:1;height:auto;max-height:none}.cr-in-call>.cr-hand-list{position:absolute;top:18px;right:170px;font-size:12px;max-width:40%;padding:8px;border:0;background:transparent}.cr-in-call>.cr-reactions{position:absolute;bottom:108px;left:24px;pointer-events:none}.cr-in-call>[data-cr-status]{position:absolute;top:58px;left:20px;font-size:11px;pointer-events:none;max-width:65%}
+  .classroom-shell.cr-in-call aside:has([data-cr-chat]){height:100%;min-height:0;border-radius:22px!important}.cr-in-call .cr-log{flex:1;height:auto;max-height:none}.cr-in-call>.cr-hand-list{position:absolute;top:18px;right:170px;font-size:12px;max-width:40%;padding:8px;border:0;background:transparent}.cr-in-call>[data-cr-status]{position:absolute;top:58px;left:20px;font-size:11px;pointer-events:none;max-width:65%}
   @media(max-width:800px){.classroom-shell.cr-in-call .cr-layout{grid-template-columns:1fr}.classroom-shell.cr-in-call:not(.cr-chat-hidden) .cr-layout>aside{position:absolute;top:70px;bottom:110px;right:12px;width:min(320px,90vw);height:auto;z-index:3}.classroom-shell.cr-in-call .cr-tools{gap:6px;bottom:8px;padding:8px}.classroom-shell.cr-in-call .cr-tools button{padding:8px 10px!important;font-size:11px;min-height:40px}}
   /* The animated #view creates a containing block for fixed descendants. */
   body:has(.cr-in-call) #view{animation:none!important;transform:none!important;filter:none!important;contain:none!important}
@@ -38,6 +38,7 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   body[data-school-ui] .cr-in-call .cr-tools [data-cr-hand][aria-pressed=false]{background:#34383d!important}
   @media(max-width:800px){body[data-school-ui] .cr-in-call>.cr-layout{padding-bottom:140px!important}body[data-school-ui] .cr-in-call .cr-tools{gap:8px!important}}
   body[data-school-ui] .classroom-shell.cr-in-call aside:has([data-cr-chat]){display:flex!important;flex-direction:column!important;min-height:0!important;overflow:hidden!important}
+  body[data-school-ui] .classroom-shell.cr-in-call.cr-chat-hidden .cr-layout>aside:has([data-cr-chat]){display:none!important}
   body[data-school-ui] .cr-in-call .cr-log{flex:1 1 0!important;min-height:60px!important;overflow-y:auto!important}
   body[data-school-ui] .cr-in-call [data-cr-preview]{flex:0 0 auto;max-height:155px;overflow:auto;padding:10px 14px;box-sizing:border-box}
   body[data-school-ui] .cr-in-call [data-cr-preview] img{max-height:90px!important;max-width:100%;object-fit:contain}
@@ -48,7 +49,6 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   body[data-school-ui] .cr-in-call .cr-reaction-menu button{flex:0 0 40px!important;width:40px!important;min-width:40px!important;height:44px!important;min-height:44px!important;padding:0!important;font-size:25px!important;line-height:1!important;border-radius:14px!important}
   body[data-school-ui] .cr-in-call .cr-reaction-menu{display:none;flex-wrap:nowrap!important;width:max-content!important;max-width:calc(100vw - 32px)!important;overflow:visible!important;scrollbar-width:none;gap:6px!important;left:50%;transform:translateX(-50%)}
   .cr-reaction-menu::-webkit-scrollbar{display:none}
-  body[data-school-ui] .cr-in-call .cr-reactions,body[data-school-ui] .cr-in-call .cr-reactions>span{background:transparent!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important;overflow:visible!important}
   @media(max-width:480px){body[data-school-ui] .cr-in-call .cr-reaction-menu{gap:2px!important;padding:8px!important}body[data-school-ui] .cr-in-call .cr-reaction-menu button{flex:0 0 30px!important;min-width:30px!important;width:30px!important;font-size:22px!important}}
   body[data-school-ui] .cr-in-call .cr-reaction-picker:hover .cr-reaction-menu,body[data-school-ui] .cr-in-call .cr-reaction-picker:focus-within .cr-reaction-menu{display:flex!important;flex-direction:row!important}
   body[data-school-ui] .cr-in-call .cr-layout{grid-template-columns:minmax(0,1fr) 340px!important;align-items:stretch}
@@ -87,32 +87,38 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
     if(item.parts.size===item.total){incomingImages.delete(key);const src=Array.from({length:item.total},(_,i)=>item.parts.get(i)).join('');if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src))return;onChat({text:'',image:src,name:participant.name||participant.identity,mine:participant===meeting.localParticipant});}
   }
   const hands=document.createElement('div');hands.className='cr-hand-list';hands.setAttribute('aria-live','polite');
-  const reactions=document.createElement('div');reactions.className='cr-reactions';reactions.setAttribute('aria-live','polite');
   function updateHands(){if(!meeting)return;const names=[meeting.localParticipant,...meeting.remoteParticipants.values()].filter(p=>p.attributes?.['classroom.hand']==='true').map(p=>p.name||p.identity);hands.textContent=names.length?'✋ '+names.join(', '):'';}
   function receiveChat(data,participant){if(!participant||typeof data.id!=='string'||data.id.length>80||typeof data.text!=='string'||!data.text.trim()||data.text.length>4000||seenMessages.has(data.id))return;seenMessages.add(data.id);if(seenMessages.size>1000)seenMessages.delete(seenMessages.values().next().value);onChat({text:data.text,name:participant.name||participant.identity,mine:participant===meeting.localParticipant});}
   async function sendEvent(type,payload){if(meeting?.state!=='connected')throw Error('Hãy tham gia phòng học trước khi gửi.');const data={id:crypto.randomUUID(),type,...payload};await meeting.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(data)),{reliable:true,topic:'classroom.events.v1'});return data;}
   const emojis=['👍','👏','❤️','😂','🎉','😮','🤔','🙌'];
   function showReaction(emoji,participant){
-    const el=document.createElement('span');el.textContent=emoji;el.title=participant.name||participant.identity;
-    el.style.cssText=`position:absolute;bottom:0;left:${Math.round(Math.random()*160)}px;display:grid;place-items:center;width:62px;height:62px;background:transparent;border:0;box-shadow:none;font-size:38px;pointer-events:none`;
-    reactions.append(el);while(reactions.childElementCount>16)reactions.firstElementChild.remove();
+    const tile=Array.from(root.querySelectorAll('[data-live-videos] .cr-video-tile')).find(item=>item.dataset.identity===participant.identity);
+    if(!tile)return;
+    const group=document.createElement('span');group.dataset.reactionOverlay='';group.title=participant.name||participant.identity;group.setAttribute('role','status');group.setAttribute('aria-label',`${participant.name||participant.identity} thả cảm xúc ${emoji}`);group.style.cssText='position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden';
+    tile.append(group);const active=tile.querySelectorAll('[data-reaction-overlay]');if(active.length>4)active[0].remove();
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const animation=el.animate(reduced?[{opacity:1},{opacity:0}]:[{transform:'translateY(0) scale(.7)',opacity:0},{offset:.15,transform:'translateY(-35px) scale(1)',opacity:1},{transform:`translate(${Math.round(Math.random()*80-40)}px,-280px) scale(1.15)`,opacity:0}],{duration:reduced?1500:3500,easing:'ease-out'});
-    animation.onfinish=()=>el.remove();
+    let remaining=5;
+    for(let i=0;i<5;i++){
+      const particle=document.createElement('i');particle.textContent=emoji;particle.style.cssText=`position:absolute;left:50%;top:55%;font-style:normal;font-size:${22+Math.round(Math.random()*8)}px;line-height:1;filter:drop-shadow(0 3px 7px #0008)`;group.append(particle);
+      const drift=Math.round(Math.random()*110-55),rise=110+Math.round(Math.random()*80),delay=i*130+Math.round(Math.random()*100);
+      const animation=particle.animate(reduced?[{opacity:1},{opacity:0}]:[{transform:'translate(-50%,-50%) translateY(18px) scale(.65)',opacity:0},{offset:.18,transform:`translate(-50%,-50%) translate(${Math.round(drift*.2)}px,0) scale(1)`,opacity:1},{offset:.72,opacity:.9},{transform:`translate(-50%,-50%) translate(${drift}px,-${rise}px) scale(1.08)`,opacity:0}],{duration:reduced?1200:3000+Math.round(Math.random()*700),delay,easing:'ease-out',fill:'both'});
+      animation.onfinish=()=>{particle.remove();if(!--remaining)group.remove();};
+    }
   }
-  const reactionCss=document.createElement('style');reactionCss.textContent='.classroom-shell .cr-reaction-picker{position:relative;display:inline-flex}.cr-reaction-menu{display:none;position:absolute;bottom:100%;padding:12px 8px 18px;left:50%;transform:translateX(-50%);gap:6px;background:#292d31;border-radius:22px;z-index:20;box-shadow:0 8px 30px #0006}.cr-reaction-picker:hover .cr-reaction-menu,.cr-reaction-picker:focus-within .cr-reaction-menu{display:flex}.classroom-shell .cr-reaction-menu button{min-width:38px!important;width:38px!important;padding:4px!important;font-size:24px!important}.classroom-shell.cr-in-call>.cr-reactions{position:fixed!important;left:35px!important;bottom:115px!important;width:240px;height:320px;pointer-events:none;z-index:10}';document.head.append(reactionCss);
+  const reactionCss=document.createElement('style');reactionCss.textContent='.classroom-shell .cr-reaction-picker{position:relative;display:inline-flex}.cr-reaction-menu{display:none;position:absolute;bottom:100%;padding:12px 8px 18px;left:50%;transform:translateX(-50%);gap:6px;background:#292d31;border-radius:22px;z-index:20;box-shadow:0 8px 30px #0006}.cr-reaction-picker:hover .cr-reaction-menu,.cr-reaction-picker:focus-within .cr-reaction-menu{display:flex}.classroom-shell .cr-reaction-menu button{min-width:38px!important;width:38px!important;padding:4px!important;font-size:24px!important}';document.head.append(reactionCss);
   stage.classList.add('cr-prejoin');
   stage.innerHTML=`<style>
   .classroom-shell .cr-stage.cr-prejoin{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(220px,1fr);gap:28px;background:transparent;padding:0;text-align:left;align-items:center}.cr-prejoin .pj-preview{position:relative;aspect-ratio:16/10;background:#202124;border-radius:24px;overflow:hidden;color:white}.cr-prejoin video[data-camera-preview]{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;max-width:none!important}.pj-name{position:absolute;top:18px;left:20px;z-index:1;font-size:14px;font-weight:700;text-shadow:0 1px 5px #000}.pj-off{position:absolute;inset:0;display:grid;place-items:center;font-size:22px}.pj-controls{position:absolute;bottom:18px;left:0;right:0;display:flex;justify-content:center;gap:12px;z-index:1}.classroom-shell .pj-controls button{border-radius:50%!important;width:54px;height:54px;min-width:54px;padding:0!important;background:#e7e9ed;color:#202124;border:0;font-size:22px}.classroom-shell .pj-controls button[aria-pressed=false]{background:#f9dedd;color:#a22422}.pj-devices{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.pj-devices label{flex:1;min-width:120px;font-size:11px;color:var(--muted)}.classroom-shell .pj-devices select{width:100%;border-radius:24px!important;font-size:12px;min-height:40px}.pj-join{text-align:center}.pj-join h2{font-size:26px!important;margin:0 0 16px}.pj-join p{font-size:13px;line-height:1.7}.classroom-shell .pj-join [data-live-connect]{border-radius:32px!important;padding:16px 30px;min-width:200px;margin:16px 0}.pj-join details{margin-top:12px;font-size:12px}.pj-join summary{cursor:pointer;color:var(--primary)}.classroom-shell .cr-layout:has(.cr-prejoin){grid-template-columns:1fr}.classroom-shell .cr-layout:has(.cr-prejoin)>aside{display:none}.classroom-shell section:has(>.cr-prejoin)>.cr-tools{display:none}.classroom-shell section:has(>.cr-prejoin)>.cr-muted{display:none}@media(max-width:900px){.classroom-shell .cr-stage.cr-prejoin{grid-template-columns:1fr;gap:24px}.pj-preview{min-height:220px}}
-  </style><div><div class="pj-preview"><span class="pj-name">Bạn · Phòng ${code}</span><div class="pj-off" data-camera-off>Camera đang tắt</div><video data-camera-preview autoplay muted playsinline hidden></video><div class="pj-controls"><button type="button" data-preview-mic aria-label="Bật mic" aria-pressed="false">🎤</button><button type="button" data-preview-camera aria-label="Bật camera" aria-pressed="false">📷</button></div></div><div class="pj-devices"><label>🎤 Microphone<select data-device-mic aria-label="Chọn microphone"><option value="">Mặc định</option></select></label><label>📷 Camera<select data-device-camera aria-label="Chọn camera"><option value="">Mặc định</option></select></label><button type="button" class="button secondary" data-test-speaker>🔊 Thử loa</button></div></div><div class="pj-join"><h2>Sẵn sàng tham gia?</h2><p data-live-status>Kiểm tra camera và mic trước khi vào phòng.</p><button class="button primary" data-live-connect>Đang kiểm tra phòng…</button><details><summary>Thông tin tham gia</summary><p>Camera và mic xem trước chỉ dùng trên máy bạn. Học sinh cần được giáo viên duyệt trước khi vào buổi học.</p></details></div>`;
+  </style><div><div class="pj-preview"><span class="pj-name">Bạn · Phòng ${code}</span><div class="pj-off" data-camera-off>Camera đang tắt</div><video data-camera-preview autoplay muted playsinline hidden></video><div class="pj-controls"><button type="button" data-preview-mic aria-label="Bật mic" aria-pressed="false">🎤</button><button type="button" data-preview-camera aria-label="Bật camera" aria-pressed="false">📷</button></div></div><div class="pj-devices"><label>🎤 Microphone<select data-device-mic aria-label="Chọn microphone"><option value="">Mặc định</option></select></label><label>📷 Camera<select data-device-camera aria-label="Chọn camera"><option value="">Mặc định</option></select></label><button type="button" class="button secondary" data-test-speaker>🔊 Thử loa</button></div></div><div class="pj-join"><h2>Sẵn sàng tham gia?</h2><p data-live-status>Kiểm tra camera và mic trước khi vào phòng.</p><button class="button primary" data-live-connect>Đang kiểm tra phòng…</button><details><summary>Thông tin tham gia</summary><p>Phòng luôn mở. Camera và mic xem trước chỉ dùng trên máy bạn cho đến khi bạn bấm vào phòng.</p></details></div>`;
   const status=message=>{report(message);const el=root.querySelector('[data-live-status]');if(el)el.textContent=message;};
   async function readJson(response){if(!response.headers.get('content-type')?.includes('application/json'))throw Error('API phòng học chưa được cập nhật trên server đang chạy. Hãy khởi động lại server Node rồi tải lại trang.');return response.json();}
   const api=async(path,body)=>{const r=await fetch(`/api/classroom-access/rooms/${encodeURIComponent(code)}/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const data=await readJson(r);if(!r.ok)throw Object.assign(Error(data.error||'Không kết nối được phòng.'),{takeover:data.takeover});return data;};
   let cameraBusy=false,micStream=null,cameraWanted=false,recoveryCount=0,lastVideoTime=-1,stalledChecks=0;
   let meterContext=null,meterSource=null,meterTrack=null,analyser=null;
-  const meter=document.createElement('span');meter.setAttribute('role','meter');meter.setAttribute('aria-label','Mức âm thanh microphone');meter.setAttribute('aria-valuemin','0');meter.setAttribute('aria-valuemax','100');meter.style.cssText='display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 10px';
+  const meter=document.createElement('span');meter.setAttribute('role','meter');meter.setAttribute('aria-label','Mức âm thanh microphone');meter.setAttribute('aria-valuemin','0');meter.setAttribute('aria-valuemax','100');meter.style.cssText='display:inline-flex;align-items:center;justify-content:center;gap:3px;height:28px;min-width:27px;pointer-events:none';
   for(let i=0;i<5;i++){const bar=document.createElement('i');bar.style.cssText='display:block;width:3px;height:4px;background:#7c8792;border-radius:3px';meter.append(bar);}
-  root.querySelector('.cr-tools').append(meter);
+  const toolbarMicButton=root.querySelector('[data-cr-feature="Mic"]');
+  if(toolbarMicButton){toolbarMicButton.append(meter);toolbarMicButton.style.gap='8px';toolbarMicButton.style.minWidth='88px';}
   const meterTimer=setInterval(()=>{
     const track=meeting?.state==='connected'?meeting.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack:micStream?.getAudioTracks()[0];
     const enabled=track&&track.readyState==='live'&&track.enabled;
@@ -150,23 +156,9 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
       const response=await fetch(`/api/classroom-access/rooms/${encodeURIComponent(code)}/session`,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(12000)});
       const data=await readJson(response);if(!response.ok)throw Error(data.error||'Không tải được phiên học.');if(disposed)return;
       session=data;
-      if(!staff&&meeting?.state==='connected'&&data.mediaRequest&&lastMediaRequest!==data.mediaRequest.id){
-        lastMediaRequest=data.mediaRequest.id;
-        const kind=data.mediaRequest.kind;
-        if(confirm(`Giáo viên yêu cầu bật ${kind==='mic'?'mic':'camera'}. Bạn có đồng ý không?`)){
-          await api('media-accept',{requestId:data.mediaRequest.id});
-          if(kind==='mic')await meeting.localParticipant.setMicrophoneEnabled(true);
-          else{await meeting.localParticipant.setCameraEnabled(true);const b=root.querySelector('[data-cr-feature="Camera"]');if(b){b.hidden=false;} }
-          syncButtons();
-        }
-      }
-      if(meeting&&(!data.open||meeting.sessionId!==data.meetingId)){await meeting.disconnect();meeting=null;status('Buổi học đã kết thúc.');}
-      sessionPanel.replaceChildren();const title=document.createElement('h3');title.textContent=data.open?'Phòng đang mở':'Giáo viên chưa mở buổi học';sessionPanel.append(title);
-      const connect=root.querySelector('[data-live-connect]');if(connect){connect.textContent=staff&&!data.open?'Mở buổi học':data.host||data.admission==='approved'?'Vào phòng học':'Xin vào phòng';connect.disabled=data.admission==='pending'||data.admission==='rejected'||(!staff&&!data.open);}
-      if(data.admission==='pending'||data.admission==='rejected'){const p=document.createElement('p');p.textContent=data.admission==='pending'?'Đang chờ giáo viên duyệt vào phòng.':'Giáo viên đã từ chối yêu cầu trong buổi học này.';sessionPanel.append(p);}
-      if(data.host){const close=document.createElement('button');close.className='button secondary';close.textContent='Kết thúc buổi học';close.onclick=async()=>{if(!confirm('Kết thúc buổi học và ngắt kết nối tất cả người tham gia?'))return;close.disabled=true;try{await api('close',{});await refreshSession();}catch(error){status(error.message);close.disabled=false;}};sessionPanel.append(close);
-        for(const student of data.waiting){const row=document.createElement('div');row.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px';const name=document.createElement('span');name.textContent=student.name;row.append(name);for(const [decision,label] of [['approved','Cho vào'],['rejected','Từ chối']]){const b=document.createElement('button');b.className='button secondary';b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await api('admit',{meetingId:data.meetingId,studentId:student.student_id,decision});await refreshSession();}catch(error){status(error.message);b.disabled=false;}};row.append(b);}sessionPanel.append(row);}
-      }
+      if(meeting&&meeting.sessionId!==data.meetingId){await meeting.disconnect();meeting=null;status('Phòng đã được làm mới, vui lòng vào lại.');}
+      sessionPanel.replaceChildren();const title=document.createElement('h3');title.textContent='Phòng luôn mở';sessionPanel.append(title);
+      const connect=root.querySelector('[data-live-connect]');if(connect){connect.textContent='Vào phòng học';connect.disabled=false;}
     }catch(error){if(!disposed)status(error.message);}finally{polling=false;}
   }
   const sessionTimer=setInterval(refreshSession,3000);refreshSession();
@@ -197,7 +189,14 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
     const connected=meeting?.state==='connected';
     const cam=connected?meeting.localParticipant.isCameraEnabled:Boolean(preview?.getVideoTracks().some(t=>t.readyState==='live'));
     const mic=connected?meeting.localParticipant.isMicrophoneEnabled:Boolean(micStream?.getAudioTracks().some(t=>t.enabled&&t.readyState==='live'));
-    for(const [key,enabled] of [['Camera',cam],['Mic',mic]]){const b=root.querySelector(`[data-cr-feature="${key}"]`);if(b){b.innerHTML=deviceIcon(key==='Mic'?'mic':'camera',enabled);b.title=`${enabled?'Tắt':'Bật'} ${key.toLowerCase()}`;b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(enabled));}}
+    for(const [key,enabled] of [['Camera',cam],['Mic',mic]]){const b=root.querySelector(`[data-cr-feature="${key}"]`);if(b){
+      if(key==='Mic'){
+        let icon=b.querySelector('[data-device-icon]');
+        if(!icon){icon=document.createElement('span');icon.dataset.deviceIcon='';b.replaceChildren(icon,meter);}
+        icon.innerHTML=deviceIcon('mic',enabled);b.style.gap='8px';b.style.minWidth='88px';
+      }else b.innerHTML=deviceIcon('camera',enabled);
+      b.title=`${enabled?'Tắt':'Bật'} ${key.toLowerCase()}`;b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(enabled));
+    }}
     const b=root.querySelector('[data-preview-camera]');if(b){b.innerHTML=deviceIcon('camera',cam);b.setAttribute('aria-pressed',String(cam));b.setAttribute('aria-label',cam?'Tắt camera':'Bật camera');b.title=cam?'Tắt camera':'Bật camera';}
     const off=root.querySelector('[data-camera-off]');if(off)off.hidden=cam;
     const micButton=root.querySelector('[data-preview-mic]');if(micButton){micButton.innerHTML=deviceIcon('mic',mic);micButton.setAttribute('aria-pressed',String(mic));micButton.setAttribute('aria-label',mic?'Tắt mic':'Bật mic');micButton.title=mic?'Tắt mic':'Bật mic';}
@@ -207,8 +206,6 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
     const button=event.currentTarget;button.disabled=true;
     try{
       if(!session){status('Đang kiểm tra phiên học, vui lòng thử lại.');return;}
-      if(!session.open){if(!staff)throw Error('Giáo viên chưa mở phòng.');await api('open',{});await refreshSession();}
-      if(!session?.host&&session?.admission!=='approved'){await api('wait',{});await refreshSession();return;}
       let auth;try{auth=await api('connect',{});}catch(error){if(!error.takeover||!confirm('Chuyển phòng sang thiết bị này? Thiết bị cũ sẽ rời phòng.'))throw error;auth=await api('connect',{takeover:true});}
       if(disposed)return;
       const cameraTrack=preview?.getVideoTracks().find(t=>t.readyState==='live'&&t.enabled);
@@ -259,8 +256,8 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
       preview=null;micStream=null;
       meeting.once(RoomEvent.Disconnected,()=>{for(const entry of attachedAudio.values()){entry.track.detach(entry.element);entry.element.remove();}attachedAudio.clear();audioHost.remove();});
       stage.classList.remove('cr-prejoin');stage.replaceChildren(videos);
-      const shell=root.querySelector('.classroom-shell');shell.classList.add('cr-in-call');shell.append(hands,reactions);
-      const chatToggle=document.createElement('button');chatToggle.className='button secondary';chatToggle.type='button';chatToggle.textContent='💬 Chat';chatToggle.setAttribute('aria-expanded','true');chatToggle.onclick=()=>{shell.classList.toggle('cr-chat-hidden');chatToggle.setAttribute('aria-expanded',String(!shell.classList.contains('cr-chat-hidden')));};root.querySelector('.cr-tools').append(chatToggle);
+      const shell=root.querySelector('.classroom-shell');shell.classList.add('cr-in-call','cr-chat-hidden');shell.append(hands);
+      const chatToggle=document.createElement('button');chatToggle.className='button secondary';chatToggle.type='button';chatToggle.textContent='💬 Chat';chatToggle.setAttribute('aria-expanded','false');chatToggle.onclick=()=>{shell.classList.toggle('cr-chat-hidden');chatToggle.setAttribute('aria-expanded',String(!shell.classList.contains('cr-chat-hidden')));};root.querySelector('.cr-tools').append(chatToggle);
       const full=document.createElement('button');full.className='button secondary';full.type='button';full.textContent='⛶ Toàn màn hình';full.onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await shell.requestFullscreen();}catch{status('Không bật được toàn màn hình.');}};root.querySelector('.cr-tools').append(full);
       const toolbar=root.querySelector('.cr-tools');
       const hand=toolbar.querySelector('[data-cr-hand]');if(hand){hand.textContent='✋';hand.title='Giơ tay';hand.setAttribute('aria-label','Giơ tay');hand.style.cssText='width:52px;min-width:52px;padding:0;font-size:24px';}
@@ -281,16 +278,15 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
       media();updateHands();status('');
       const hint=root.querySelector('aside > .cr-muted');if(hint)hint.textContent='Tin nhắn được gửi trực tiếp tới mọi người đang ở trong phòng. Chưa lưu lịch sử trên server.';
       timer=setInterval(()=>api('heartbeat',{}).catch(error=>status(error.message)),20000);
-    }catch(error){status(error.message);if(meeting){meeting.removeAllListeners();await meeting.disconnect();meeting=null;}}finally{button.disabled=session?.admission==='pending'||session?.admission==='rejected';}
+    }catch(error){status(error.message);if(meeting){meeting.removeAllListeners();await meeting.disconnect();meeting=null;}}finally{button.disabled=false;}
   };
   const controls=new AbortController();
   root.querySelector('[data-preview-mic]').onclick=()=>root.querySelector('[data-cr-feature="Mic"]').click();
   root.addEventListener('click',async event=>{
     const action=event.target.closest('[data-cr-feature]')?.dataset.crFeature;if(!action)return;
-    if(!staff&&['Camera','Chia sẻ màn hình','Yêu cầu bật mic','Yêu cầu bật camera'].includes(action)){
+    if(!staff&&['Camera','Chia sẻ màn hình'].includes(action)){
       if(action==='Camera'&&meeting?.localParticipant.isCameraEnabled){await meeting.localParticipant.setCameraEnabled(false);syncButtons();}return;
     }
-    if(staff&&['Yêu cầu bật mic','Yêu cầu bật camera'].includes(action)){try{await api('media-request',{kind:action==='Yêu cầu bật mic'?'mic':'camera'});status('Đã gửi yêu cầu tới học sinh trong phòng.');}catch(error){status(error.message);}return;}
     if(meeting?.state!=='connected'){
       try{if(action==='Camera')await toggleCamera();else if(action==='Mic'){if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}else{micStream=await navigator.mediaDevices.getUserMedia({audio:micDevice?{deviceId:{exact:micDevice}}:true,video:false});if(disposed){micStream.getTracks().forEach(t=>t.stop());return;}}status(micStream?'Mic đã bật để chuẩn bị; chưa phát vào phòng.':'Đã tắt mic.');syncButtons();listDevices();}}catch{status('Không mở được mic. Kiểm tra quyền thiết bị.');}return;
     }
@@ -299,7 +295,7 @@ export function mountClassroomLive(root,code,report,{staff=false,onChat=()=>{}}=
   // Display the camera frame immediately; capture still requires user permission.
   if(staff&&navigator.permissions)navigator.permissions.query({name:'camera'}).then(p=>{if(!disposed&&p.state==='granted')camera();}).catch(()=>{});
   syncButtons();
-  const dispose=()=>{disposed=true;reactionCss.remove();clearInterval(meterTimer);meterSource?.disconnect();meterContext?.close().catch(()=>{});meter.remove();cameraWanted=false;controls.abort();clearInterval(cameraMonitor);clearInterval(timer);clearInterval(sessionTimer);micStream?.getTracks().forEach(t=>t.stop());preview?.getTracks().forEach(t=>t.stop());meeting?.localParticipant.trackPublications.forEach(p=>p.track?.stop());meeting?.disconnect();sessionPanel.remove();hands.remove();reactions.remove();meetingStyle.remove();};
+  const dispose=()=>{disposed=true;reactionCss.remove();clearInterval(meterTimer);meterSource?.disconnect();meterContext?.close().catch(()=>{});meter.remove();cameraWanted=false;controls.abort();clearInterval(cameraMonitor);clearInterval(timer);clearInterval(sessionTimer);micStream?.getTracks().forEach(t=>t.stop());preview?.getTracks().forEach(t=>t.stop());meeting?.localParticipant.trackPublications.forEach(p=>p.track?.stop());meeting?.disconnect();sessionPanel.remove();hands.remove();meetingStyle.remove();};
   dispose.sendChat=async text=>{const data=await sendEvent('chat',{text});receiveChat(data,meeting.localParticipant);};
   dispose.sendImage=async src=>{
     if(meeting?.state!=='connected')throw Error('Hãy tham gia phòng trước khi gửi ảnh.');
