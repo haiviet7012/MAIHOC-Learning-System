@@ -653,7 +653,7 @@ import { canAccessSchool } from './platform/school-access.js';
         form.append("attachment", pendingGlobalAttachment, pendingGlobalAttachment.name);
         const response = await fetch("/api/chat/attachments", { method: "POST", body: form, credentials: "same-origin" });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "Không thể gửi tệp đính kèm.");
+        if (!response.ok) throw new Error(result.error || `Không thể gửi tệp đính kèm (HTTP ${response.status}).`);
         if (result.message) {
           renderMessageItem(result.message, dom.globalMessages);
           scrollMessagesToBottom(dom.globalMessages, true);
