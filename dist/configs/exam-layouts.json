@@ -269,6 +269,129 @@
           }
         ]
       }
+    },
+    "Ngữ văn": {
+      "grading": {
+        "engine": "literature-rubric-v1",
+        "scale": 10,
+        "scoreStep": 0.25,
+        "aiScoreStatus": "provisional",
+        "minimumConfidence": 0.75,
+        "defaultAnswerVariant": null
+      },
+      "assessment": {
+        "totalQuestions": 7,
+        "totalScore": 10,
+        "sections": [
+          {
+            "order": 1,
+            "sectionId": "I",
+            "type": "essay",
+            "title": "Phần I. Đọc hiểu",
+            "count": 5,
+            "grading": {
+              "pointsByQuestion": {
+                "1": 0.5,
+                "2": 0.5,
+                "3": 1,
+                "4": 1,
+                "5": 1
+              },
+              "criteriaByQuestion": {
+                "1": [
+                  {
+                    "id": "content",
+                    "label": "Trả lời đúng trọng tâm, chấp nhận diễn đạt tương đương và gạch đầu dòng",
+                    "maxPoints": 0.5
+                  }
+                ],
+                "2": [
+                  {
+                    "id": "content",
+                    "label": "Trả lời đúng trọng tâm, chấp nhận diễn đạt tương đương và gạch đầu dòng",
+                    "maxPoints": 0.5
+                  }
+                ],
+                "3": [
+                  {
+                    "id": "content",
+                    "label": "Trả lời đúng trọng tâm, chấp nhận diễn đạt tương đương và gạch đầu dòng",
+                    "maxPoints": 1
+                  }
+                ],
+                "4": [
+                  {
+                    "id": "content",
+                    "label": "Trả lời đúng trọng tâm, chấp nhận diễn đạt tương đương và gạch đầu dòng",
+                    "maxPoints": 1
+                  }
+                ],
+                "5": [
+                  {
+                    "id": "content",
+                    "label": "Trả lời đúng trọng tâm, chấp nhận diễn đạt tương đương và gạch đầu dòng",
+                    "maxPoints": 1
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "order": 2,
+            "sectionId": "II",
+            "type": "essay",
+            "title": "Phần II. Viết",
+            "count": 2,
+            "grading": {
+              "pointsByQuestion": {
+                "1": 2,
+                "2": 4
+              },
+              "criteriaByQuestion": {
+                "1": [
+                  {
+                    "id": "issue",
+                    "label": "Xác định đúng vấn đề nghị luận",
+                    "maxPoints": 0.25
+                  },
+                  {
+                    "id": "argument",
+                    "label": "Triển khai lập luận, giải thích, bàn luận",
+                    "maxPoints": 1
+                  },
+                  {
+                    "id": "expression",
+                    "label": "Diễn đạt, dùng từ, chính tả",
+                    "maxPoints": 0.5
+                  },
+                  {
+                    "id": "creativity",
+                    "label": "Góc nhìn mới mẻ, thuyết phục",
+                    "maxPoints": 0.25
+                  }
+                ],
+                "2": [
+                  {
+                    "id": "structure",
+                    "label": "Xác định vấn đề, cấu trúc, dẫn chứng và luận điểm rõ ràng",
+                    "maxPoints": 1
+                  },
+                  {
+                    "id": "analysis",
+                    "label": "Triển khai nội dung và phân tích sâu các luận điểm",
+                    "maxPoints": 2.5
+                  },
+                  {
+                    "id": "creativity",
+                    "label": "Cá tính tư duy, diễn đạt độc đáo, phản biện hợp lý",
+                    "maxPoints": 0.5
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
     }
   }
 }

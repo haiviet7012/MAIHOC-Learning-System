@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { literatureTargets } from "../server/grading/literature-engine.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,15 @@ function sectionMaxPoints(section) {
     const correctStatements = (section.statements || ["a", "b", "c", "d"]).length;
     return count * (Number(section.grading?.pointsByCorrectStatements?.[String(correctStatements)]) || 0);
   }
+  if (section.grading?.pointsByQuestion) {
+    const points = section.grading.pointsByQuestion;
+    if (Object.keys(points).length !== count) throw new Error("pointsByQuestion phải đủ số câu.");
+    return Array.from({ length: count }, (_, i) => {
+      const value = points[String(i + 1)];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error("Điểm câu không hợp lệ.");
+      return value;
+    }).reduce((sum, value) => sum + value, 0);
+  }
   return count * (Number(section.grading?.pointsPerCorrect) || 0);
 }
 
@@ -20,6 +30,8 @@ function validateProfile(profile, filePath) {
   if (!profile.subject || !profile.grading || !Array.isArray(profile.assessment?.sections)) {
     throw new Error(`${filePath}: thiếu subject, grading hoặc assessment.sections.`);
   }
+
+  if (profile.grading.engine === "literature-rubric-v1") literatureTargets(profile);
 
   for (const section of profile.assessment.sections) {
     if (!(Number(section.count) >= 0) || !section.grading) {
