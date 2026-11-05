@@ -164,3 +164,24 @@ npm run check:dist
 ```
 
 Các test dùng provider giả, không gửi bài làm ra dịch vụ thật, không tốn quota. Trước khi tự động công bố điểm AI trong tương lai, cần tập bài giáo viên đã chấm và đối chiếu sai lệch theo từng tiêu chí, dạng đề và mức điểm.
+
+## Gia sư trên trang môn Văn
+
+Môn Ngữ văn được bật với bốn ô: đọc hiểu, làm văn, tổng hợp và gia sư.
+Kho đề dùng tài liệu Ngữ văn sẵn có, phân nhóm bằng `literatureSection`
+(`reading`, `writing`, `combined`) hoặc từ khóa trong tiêu đề/mô tả. Không tạo đề mẫu giả.
+
+Gia sư hỗ trợ đoạn nghị luận xã hội (2 điểm) và bài nghị luận văn học (4 điểm).
+`POST /api/literature/tutor` yêu cầu đăng nhập, cùng origin, tối đa 6 lượt/phút/người,
+body `{prompt, answer, kind:"II-1"|"II-2", confirmed:true}`. Rubric lấy từ server;
+đề cá nhân là draft và kết quả chỉ là điểm luyện tập, không lưu điểm chính thức.
+Đề tối đa 12000 ký tự, bài làm tối đa 30000 ký tự.
+
+`POST /api/literature/transcribe` nhận `{image:"data:image/jpeg;base64,..."}`
+(JPG/PNG/WebP, tối đa 6 MB), đọc chữ in/viết tay bằng adapter AI tài liệu hiện có.
+Cấu hình `SCHOOL_DOCUMENT_AI_API_KEY` và `SCHOOL_DOCUMENT_AI_MODEL` với model Gemini
+có khả năng đọc ảnh. Đây là bước đọc ảnh riêng; chấm bài dùng NVIDIA với
+`LITERATURE_AI_PROVIDER`, `LITERATURE_AI_API_KEY`, `LITERATURE_AI_MODEL` như trên.
+Không cần bật School beta để dùng API này. Ảnh không được lưu trên server.
+Người học có thể tải/dán từng trang, xem ảnh gốc, sửa bản chép và xác nhận trước khi chấm.
+Không đảm bảo đọc chính xác mọi nét chữ; vùng mờ phải được người học bổ sung.

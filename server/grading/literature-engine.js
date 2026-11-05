@@ -146,12 +146,12 @@ function evaluateRows(exam, answers, generated, profile) {
       confidence: blank ? 1 : row.confidence, wordCount: countVietnameseWords(userAnswer) };
   });
 }
-export async function gradeLiteratureSubmission({ exam, answers = {}, generate, profile = literatureBlueprint }) {
+export async function gradeLiteratureSubmission({ exam, answers = {}, generate, profile = literatureBlueprint, requireReviewed = true }) {
   // Invalid blueprint/input is a caller error; unavailable context/provider is a pending grade, never zero.
   const targets = literatureTargets(profile);
   const submitted = normalizeAnswers(answers, targets);
   let validated;
-  try { validated = validateLiteratureExam(exam, { profile }); }
+  try { validated = validateLiteratureExam(exam, { profile, requireReviewed }); }
   catch { return pendingLiteratureGrade("Thiếu đề, ngữ liệu hoặc hướng dẫn chấm đã được duyệt."); }
   const active = validated.questions.filter(q => submitted[q.targetId].trim());
   if (active.length && typeof generate !== "function") return pendingLiteratureGrade("Chưa cấu hình trợ lý chấm Ngữ văn; cần giáo viên chấm.");
