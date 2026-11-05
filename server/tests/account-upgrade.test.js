@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import node
 import { testDatabase } from '../platform/test-db.js';import { setTestPool } from '../postgres.js';
 import { isEducationEmail, ensureAccountUpgrade } from '../account-upgrade.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
-test('account upgrade: preserves old users, student gate, edu teacher with mailbox link proof and manager restrictions',async()=>{
+test('account upgrade: preserves old users, student gate, edu teacher with mailbox link proof and delegated manager permissions',async()=>{
   delete process.env.DATABASE_URL;delete process.env.MAIHOC_TEST_DATABASE_URL;
   process.env.MAIHOC_SKIP_AUTO_LISTEN='1';process.env.NODE_ENV='test';process.env.MAIHOC_PLATFORM_ENABLED='0';
   for(const key of ['R2_ACCOUNT_ID','R2_BUCKET_NAME','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'])process.env[key]='test';
@@ -53,9 +53,9 @@ test('account upgrade: preserves old users, student gate, edu teacher with mailb
     await fixture.db.query("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=$1",[studentUser.id]);
     const manager=(await (await get('/api/auth/me',cookie)).json()).user;assert.equal(manager.isManager,true);
     assert.equal((await get('/api/admin/users',cookie)).status,200);
-    assert.equal((await post('/api/admin/admins',{email:'other@gmail.com'},cookie)).status,403);
+    assert.equal((await post('/api/admin/admins',{email:'old@test.local'},cookie)).status,400);
     assert.equal((await fetch(origin+'/api/admin/users/50',{method:'DELETE',headers:{Origin:origin,Cookie:cookie}})).status,403);
-    assert.equal((await (await get('/api/study-rooms',cookie)).json()).isAdmin,false);
+    assert.equal((await (await get('/api/study-rooms',cookie)).json()).isAdmin,true);
     await fixture.db.query('UPDATE users SET is_manager=false WHERE id=$1',[studentUser.id]);
     process.env.APP_PUBLIC_URL=origin;
     const invite=await post('/api/admin/admins',{email:'new-manager@gmail.com'},cookie);

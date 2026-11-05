@@ -271,12 +271,31 @@
       const oldStatus = currentOrder?.status;
       if (order.status !== oldStatus) {
         renderCheckout(order);
-        if (order.status === "paid") { await refreshCurrentUser(); if (order.buyerType === "student") { const subscription = await api("/api/billing/subscription").catch(() => null); if (subscription) renderCurrent(subscription); } }
+        if (order.status === "paid") {
+          await refreshCurrentUser();
+          if (order.buyerType === "student") {
+            const subscription = await api("/api/billing/subscription").catch(() => null);
+            if (subscription) renderCurrent(subscription);
+          }
+        }
         const historyData = await api("/api/billing/history");
         renderHistory(historyData.orders || []);
         if (order.status === "paid") {
           const subData = await api("/api/billing/subscription");
           renderCurrent(subData);
+          // Ask once when the student's payment is confirmed. The next page load
+          // will navigate directly to the School AI tutor after auth is refreshed.
+          if (oldStatus !== "paid" && order.buyerType === "student" &&
+              currentUser()?.schoolPlan === "standard") {
+            const reloadToTutor = window.confirm(
+              "MAIHOC đã nhận được thanh toán và kích hoạt School Standard thành công. Tải lại trang để vào Gia sư AI của School ngay bây giờ?"
+            );
+            if (reloadToTutor) {
+              sessionStorage.setItem("maihoc-school-paid-go-tutor", "1");
+              window.location.reload();
+              return;
+            }
+          }
         }
       }
     } catch {}

@@ -1,4 +1,5 @@
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
+import { installClassroomAccess } from './classroom-access.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
 import { installBillingRoutes, createBillingReminderWorker } from './billing.js';
 import { installSchoolAnnouncementRoutes, createSchoolMailWorker, publicAppOrigin } from './school-notifications.js';
@@ -54,6 +55,8 @@ import {
   requireAuth,
   requireAdmin,
   requireSuperAdmin,
+  requireOwnerAdmin,
+  isOwnerAdminUser,
   requireSameOrigin,
   createInitialAdmin,
   hashPassword,
@@ -68,7 +71,8 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const staticRoot = fs.existsSync(path.join(root,"dist","build-manifest.json")) ? path.join(root,"dist") : root;
+const devMode = process.env.MAIHOC_DEV_MODE === "1";
+const staticRoot = !devMode && fs.existsSync(path.join(root,"dist","build-manifest.json")) ? path.join(root,"dist") : root;
 
 function createR2Key(folder, fileId, originalName) {
   const extension = path.extname(originalName).toLowerCase();
@@ -528,11 +532,6 @@ app.use(async(req,res,next)=>{
     next();
   } catch(error){next(error);}
 });
-app.use((req,res,next)=>{
-  if(req.user?.isManager && ((req.method==='DELETE' && req.path.startsWith('/api/admin/users/')) || req.path.startsWith('/api/admin/account-deletion-requests') || req.path==='/api/admin/admins'))
-    return res.status(403).json({error:'Quản lý không có quyền xóa tài khoản hoặc cấp quyền quản lý.'});
-  next();
-});
 app.use(["/api/ai/solve","/api/chemistry/solve","/api/ai/evaluate"], (req,res,next)=>req.method === "POST" ? requireSameOrigin(req,res,next) : next(), aiExamGuard(db));
 
 setupChat(server, app);
@@ -563,7 +562,9 @@ app.use(
 
 app.use((req, res, next) => {
   const reqPath = req.path.toLowerCase();
-  if (reqPath === "/" || reqPath.endsWith(".html")) {
+  if (devMode) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  } else if (reqPath === "/" || reqPath.endsWith(".html")) {
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
   } else if (/\.(js|css|json)$/i.test(reqPath)) {
     res.setHeader("Cache-Control", "public, max-age=3600, must-revalidate");
@@ -573,6 +574,24 @@ app.use((req, res, next) => {
   next();
 });
 
+if (devMode) {
+  app.use('/vendor/exceljs', express.static(path.join(root, 'node_modules', 'exceljs', 'dist')));
+  app.get('/js/app.js', async (req, res, next) => {
+    try {
+      const { build } = await import('esbuild');
+      const result = await build({
+        absWorkingDir: root,
+        entryPoints: ['js/app.js'],
+        bundle: true,
+        format: 'esm',
+        target: 'es2022',
+        external: ['/vendor/*'],
+        write: false,
+      });
+      res.type('application/javascript').send(result.outputFiles[0].text);
+    } catch (error) { next(error); }
+  });
+}
 app.use(express.static(path.join(root, "public"), { etag: true, lastModified: true, maxAge: "1h" }));
 app.use(
   express.static(staticRoot, { extensions: ["html"], index: "index.html", etag: true, lastModified: true, maxAge: "1h" })
@@ -1131,7 +1150,7 @@ async function deleteAccountPermanently(id) {
       [id],
     );
     return db.prepare("DELETE FROM users WHERE id=?").run(id);
-  });
+  })();
   if (!result.changes) return false;
   notifyDeletedChatUser(id);
   try {
@@ -1187,11 +1206,8 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     const createdAt = user.created_at ?? user.createdAt ?? null;
     return {
       ...publicAccount,
-      homeroomClass,
-      classCode: studentClass,
-      teacherKind: publicAccount.teacherKind || teacherKind,
-      teachingClasses: teacherEntry?.teachingClasses || [],
-      subjects: teacherEntry?.subjects || [],
+      teachingClasses: publicAccount.isTeacher ? teacherEntry?.teachingClasses || [] : [],
+      subjects: publicAccount.isTeacher ? teacherEntry?.subjects || [] : [],
       createdAt: createdAt == null || String(createdAt).trim() === "" ? null : createdAt
     };
   });
@@ -1200,13 +1216,13 @@ app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
     users: formattedUsers,
     total,
     currentUserId: req.user.id,
-    isSuperAdmin: Number(req.user.adminLevel) >= 2 && !req.user.isManager
+    isSuperAdmin: Number(req.user.adminLevel) >= 2,
+    isOwnerAdmin: isOwnerAdminUser(req.user)
   });
 });
 
-// Only the owner may promote an existing account to manager.
+// Administrators may delegate management; deletion remains owner-only.
 app.post('/api/admin/admins',requireSameOrigin,requireSuperAdmin,async(req,res)=>{
-  if(req.user.isManager)return res.status(403).json({error:'Quản lý không được cấp quyền quản lý.'});
   const email=String(req.body.email||'').trim().toLowerCase();
   if(!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(email))return res.status(400).json({error:'Nhập địa chỉ Gmail hợp lệ.'});
   const target=await db.prepare('SELECT * FROM users WHERE email=? COLLATE NOCASE').get(email);
@@ -1223,72 +1239,49 @@ app.post('/api/admin/admins',requireSameOrigin,requireSuperAdmin,async(req,res)=
     }catch{return res.status(503).json({error:'Chưa gửi được lời mời; chưa tạo tài khoản quản lý. Vui lòng thử lại.'});}
   }
   if(Number(target.admin_level)>=2)return res.status(409).json({error:'Tài khoản đã có quyền quản trị.'});
-  await db.prepare("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=?").run(target.id);
+  await db.transaction(async () => {
+    await db.prepare("SELECT id FROM users WHERE id=? FOR UPDATE").get(target.id);
+    await db.prepare("UPDATE users SET role='admin',admin_level=2,is_manager=true WHERE id=?").run(target.id);
+    await db.prepare("DELETE FROM school_class_members WHERE user_id=?").run(target.id);
+    await db.prepare("DELETE FROM school_class_leave_requests WHERE student_id=?").run(target.id);
+    await db.prepare("DELETE FROM school_teacher_assignments WHERE teacher_id=?").run(target.id);
+    await db.query("UPDATE student_enrollments SET status='ended',ended_at=now() WHERE student_id=$1 AND status='active'", [target.id]);
+    await db.query("DELETE FROM teacher_course_assignments WHERE teacher_id=$1", [target.id]);
+    await db.query("UPDATE school_memberships SET role='school_admin' WHERE user_id=$1", [target.id]);
+  })();
   res.json({ok:true,message:'Đã cấp quyền quản lý; giữ nguyên mật khẩu và dữ liệu.'});
 });
 
-app.delete("/api/admin/users/:id", requireSameOrigin, requireAdmin, async (req, res) => {
+app.delete("/api/admin/users/:id", requireSameOrigin, requireOwnerAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "ID tài khoản không hợp lệ." });
   if (id === req.user.id) {
-    return res.status(400).json({ error: "Bạn không thể gửi yêu cầu xóa chính tài khoản của mình." });
+    return res.status(400).json({ error: "Bạn không thể xóa chính tài khoản của mình." });
   }
-  const target = await db.prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?").get(id);
+  const target = await db.prepare("SELECT id,name,email,role,admin_level,is_manager FROM users WHERE id=?").get(id);
   if (!target) return res.status(404).json({ error: "Không tìm thấy tài khoản." });
-  if (Number(target.admin_level) >= 2) {
+  if (isOwnerAdminUser(target)) {
     return res.status(403).json({ error: "Không thể xóa tài khoản Admin cao nhất." });
   }
-  if (Number(req.user.adminLevel) >= 2) {
-    await deleteAiSolutionHistoryForUser(id);
-    if (!(await deleteAccountPermanently(id))) {
-      return res.status(404).json({ error: "Tài khoản không còn tồn tại." });
-    }
-    await db
-      .prepare(
-        "UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'"
-      )
-      .run(req.user.id, id);
-    const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
-    return res.json({
-      ok: true,
-      deletedId: id,
-      deleted: true,
-      total: Number(totalRow?.count || 0)
-    });
+  await deleteAiSolutionHistoryForUser(id);
+  if (!(await deleteAccountPermanently(id))) {
+    return res.status(404).json({ error: "Tài khoản không còn tồn tại." });
   }
-  const pending = await db
-    .prepare("SELECT id FROM account_deletion_requests WHERE target_user_id=? AND status='pending'")
-    .get(id);
-  if (pending) {
-    return res.status(409).json({ error: "Đã có yêu cầu xóa tài khoản này đang chờ Admin cao nhất duyệt." });
-  }
-  const request = await db
-    .prepare(`
-      INSERT INTO account_deletion_requests(target_user_id,target_name,target_email,target_role,requested_by,requested_by_name)
-      VALUES(?,?,?,?,?,?)
-    `)
-    .run(target.id, target.name, target.email, target.role, req.user.id, req.user.name);
-  const superAdmins = await db
-    .prepare("SELECT id FROM users WHERE role='admin' AND admin_level>=2")
-    .all();
-  for (const admin of superAdmins) {
-    await notifyUser(
-      admin.id,
-      "account_deletion_request",
-      "Yêu cầu xóa tài khoản",
-      `${req.user.name} đề nghị xóa ${target.role === "admin" ? "Admin cấp dưới" : "User"}: ${target.name} (${target.email}). Cần bạn chấp thuận.`,
-      "admin"
-    );
-  }
-  res.status(202).json({
+  await db
+    .prepare(
+      "UPDATE account_deletion_requests SET status='approved',reviewed_by=?,reviewed_at=datetime('now') WHERE target_user_id=? AND status='pending'"
+    )
+    .run(req.user.id, id);
+  const totalRow = await db.prepare("SELECT COUNT(*) AS count FROM users").get();
+  return res.json({
     ok: true,
-    deleted: false,
-    requestId: request.lastInsertRowid,
-    message: "Yêu cầu đã gửi Admin cao nhất. Tài khoản chưa bị xóa."
+    deletedId: id,
+    deleted: true,
+    total: Number(totalRow?.count || 0)
   });
 });
 
-app.get("/api/admin/account-deletion-requests", requireSuperAdmin, async (req, res) => {
+app.get("/api/admin/account-deletion-requests", requireOwnerAdmin, async (req, res) => {
   const requests = await db
     .prepare(`
       SELECT id,target_user_id AS targetUserId,target_name AS targetName,target_email AS targetEmail,
@@ -1303,7 +1296,7 @@ app.get("/api/admin/account-deletion-requests", requireSuperAdmin, async (req, r
 app.post(
   "/api/admin/account-deletion-requests/:id/review",
   requireSameOrigin,
-  requireSuperAdmin,
+  requireOwnerAdmin,
   async (req, res) => {
     const requestId = Number(req.params.id),
       decision = String(req.body?.decision || "");
@@ -1314,10 +1307,10 @@ app.post(
     if (!review) return res.status(404).json({ error: "Không tìm thấy yêu cầu." });
     if (review.status !== "pending") return res.status(409).json({ error: "Yêu cầu này đã được xử lý." });
     const target = await db
-      .prepare("SELECT id,name,email,role,admin_level FROM users WHERE id=?")
+      .prepare("SELECT id,name,email,role,admin_level,is_manager FROM users WHERE id=?")
       .get(review.target_user_id);
     if (decision === "approve") {
-      if (target && Number(target.admin_level) >= 2) {
+      if (target && (Number(target.id) === Number(req.user.id) || isOwnerAdminUser(target))) {
         return res.status(403).json({ error: "Không thể xóa Admin cao nhất." });
       }
       if (target) {
@@ -2998,6 +2991,7 @@ installBillingRoutes(app, { db, requireAuth, requireSameOrigin });
 installSchoolAnnouncementRoutes(app, { db, requireAuth, requireSameOrigin });
 installStudyRooms({ app, db, requireAuth, requireSameOrigin });
 installSchoolSystemRoutes(app, { db, requireAuth, requireSameOrigin, requireSuperAdmin, notifyUser, notifyAdmins });
+installClassroomAccess(app, { db, requireAuth, requireSameOrigin, notifyUser, notifyAdmins });
 
 app.get(['/learning','/learning/*','/school','/school/*','/account'], (_req,res) => {
   res.setHeader('Cache-Control','no-cache'); res.sendFile(path.join(staticRoot,'index.html'));

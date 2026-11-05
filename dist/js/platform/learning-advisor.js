@@ -29,13 +29,13 @@ function mountAdvisorContent(
     '<section class="portal-panel advisor"><h2>Cố vấn học tập AI</h2><p role="status">Đang kết nối dữ liệu học tập…</p></section>';
   function roadmapMarkup(roadmap) {
     const { plan } = roadmap;
-    return `<article class="advisor-plan"><h3>${roadmap.applied_at ? "Lộ trình đã áp dụng" : "Lộ trình đề xuất"}</h3><p>${e(plan.goal || "Mục tiêu học tập cá nhân")} · ${plan.minutesPerDay} phút/ngày</p>${roadmap.applied_at ? `<p class="muted">Ngày 1: ${e(new Date(roadmap.applied_at).toLocaleDateString("vi-VN"))}. Đánh dấu dưới đây là học sinh tự xác nhận.</p>` : `<button type="button" class="button primary" data-advisor-apply="${e(roadmap.id)}">Áp dụng lộ trình</button>`}<ol>${plan.tasks.map((t, i) => `<li><label><input type="checkbox" data-advisor-task="${i}" data-plan="${e(roadmap.id)}" ${t.done ? "checked" : ""} ${roadmap.applied_at ? "" : "disabled"}> <strong>Ngày ${t.day} · ${e(t.subject)}</strong> — ${e(t.title)} (${t.minutes} phút)</label></li>`).join("")}</ol></article>`;
+    return `<article class="advisor-plan"><h3>${roadmap.applied_at && !roadmap.revoked_at ? "Lộ trình đã áp dụng" : "Lộ trình đề xuất"}</h3><p>${e(plan.goal || "Mục tiêu học tập cá nhân")} · ${plan.minutesPerDay} phút/ngày</p>${roadmap.applied_at && !roadmap.revoked_at ? `<p class="muted">Ngày áp dụng: ${e(new Date(roadmap.applied_at).toLocaleDateString("vi-VN"))}. Đánh dấu dưới đây là học sinh tự xác nhận.</p><button type="button" class="button secondary" data-advisor-unapply="${e(roadmap.id)}">Hủy áp dụng lộ trình</button>` : `<button type="button" class="button primary" data-advisor-apply="${e(roadmap.id)}">Áp dụng lộ trình</button>`}<a class="button secondary" href="/api/learning-advisor/roadmaps/${e(roadmap.id)}/pdf?scope=${scope}${schoolId ? `&schoolId=${encodeURIComponent(schoolId)}` : ""}&days=${days}" download>Tải lộ trình PDF</a><ol>${plan.tasks.map((t, i) => `<li><label><input type="checkbox" data-advisor-task="${i}" data-plan="${e(roadmap.id)}" ${t.done ? "checked" : ""} ${roadmap.applied_at && !roadmap.revoked_at ? "" : "disabled"}> <strong>Ngày ${t.day} · ${e(t.subject)}</strong> — ${e(t.title)} (${t.minutes} phút)</label></li>`).join("")}</ol></article>`;
   }
   function render() {
     if (controller.signal.aborted) return;
-    const draft = state.roadmaps.find((p) => !p.applied_at),
+    const draft = state.roadmaps.find((p) => !p.applied_at || p.revoked_at),
       applied = state.roadmaps
-        .filter((p) => p.applied_at)
+        .filter((p) => p.applied_at && !p.revoked_at)
         .sort((a, b) => new Date(b.applied_at) - new Date(a.applied_at))[0];
     container.innerHTML = `<section class="portal-panel advisor"><div class="advisor-heading"><div><p class="eyebrow">MAIHOC · ${scope.toUpperCase()}</p><h2>Cố vấn học tập AI</h2><p>Lộ trình của bạn, dựa trên việc học thực tế.</p></div><label>Khoảng thời gian<select data-advisor-days>${[7, 30, 90].map((n) => `<option value="${n}" ${days === n ? "selected" : ""}>${n} ngày</option>`).join("")}</select></label></div><div class="advisor-options">${Object.entries(
       modes,
@@ -46,7 +46,7 @@ function mountAdvisorContent(
       )
       .join(
         "",
-      )}</div><div class="advisor-workspace"><div><div class="advisor-chat" ${state.messages.length ? "" : "hidden"} role="log" aria-label="Hội thoại Cố vấn học tập">${state.messages.length ? state.messages.map((m) => `<article class="advisor-message ${m.role === "user" ? "advisor-user" : ""}"><strong>${m.role === "user" ? "Bạn" : "Cố vấn học tập"}</strong><p>${e(m.content)}</p></article>`).join("") : ""}</div><form data-advisor-form><label>Mục tiêu học tập<input name="goal" maxlength="500" placeholder="Ví dụ: đạt 8 điểm Toán trong 4 tuần"></label><label>Thời gian học mỗi ngày (phút)<input name="minutes" type="number" min="10" max="240" value="45" required></label><label>Trao đổi với cố vấn<textarea name="message" maxlength="4000" rows="3" required>${e(prompts[mode])}</textarea></label><div class="inline-actions"><button class="button primary" type="submit">${e(modes[mode])}</button><button class="button secondary" type="button" data-advisor-chat>Gửi câu hỏi học tập</button></div></form>${!state.aiConfigured ? "<p>Chưa cấu hình API key/model cho Cố vấn. Bạn vẫn xem được biểu đồ và lộ trình đã lưu.</p>" : ""}<p data-advisor-status role="status" aria-live="polite"></p></div><aside>${draft ? roadmapMarkup(draft) : ""}${applied ? roadmapMarkup(applied) : "<p>Chưa có lộ trình đang áp dụng.</p>"}</aside></div></section>`;
+      )}</div><div class="advisor-workspace"><div class="advisor-composer"><form data-advisor-form><label>Mục tiêu học tập<input name="goal" maxlength="500" placeholder="Ví dụ: đạt 8 điểm Toán trong 4 tuần"></label><label>Thời gian học mỗi ngày (phút)<input name="minutes" type="number" min="10" max="240" value="45" required></label><label>Trao đổi với cố vấn<textarea name="message" maxlength="4000" rows="3" required>${e(prompts[mode])}</textarea></label><div class="inline-actions"><button class="button primary" type="submit">${e(modes[mode])}</button><button class="button secondary" type="button" data-advisor-chat>Gửi câu hỏi học tập</button></div></form>${!state.aiConfigured ? "<p>Chưa cấu hình API key/model cho Cố vấn. Bạn vẫn xem được biểu đồ và lộ trình đã lưu.</p>" : ""}<p data-advisor-status role="status" aria-live="polite"></p></div><div class="advisor-results" aria-live="polite"><div class="advisor-chat" ${state.messages.length ? "" : "hidden"} role="log" aria-label="Hội thoại Cố vấn học tập">${state.messages.length ? state.messages.map((m) => `<article class="advisor-message ${m.role === "user" ? "advisor-user" : ""}"><strong>${m.role === "user" ? "Bạn" : "Cố vấn học tập"}</strong><p>${e(m.content)}</p></article>`).join("") : ""}</div><aside>${draft ? roadmapMarkup(draft) : ""}${applied ? roadmapMarkup(applied) : "<p>Chưa có lộ trình đang áp dụng.</p>"}</aside></div></div></section>`;
   }
   async function load() {
     state = await request("/");
@@ -85,8 +85,15 @@ function mountAdvisorContent(
       const nextForm = container.querySelector("form");
       nextForm.elements.goal.value = fields.goal;
       nextForm.elements.minutes.value = fields.minutes;
-      container.querySelector(".advisor-chat").scrollTop =
-        container.querySelector(".advisor-chat").scrollHeight;
+      const results = container.querySelector(".advisor-results");
+      results?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      const chatLog = container.querySelector(".advisor-chat");
+      if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
     } catch (error) {
       if (!controller.signal.aborted) status(error.message);
     } finally {
@@ -133,18 +140,21 @@ function mountAdvisorContent(
         return;
       }
       const apply = event.target.closest("[data-advisor-apply]");
-      if (apply) {
+      const unapply = event.target.closest("[data-advisor-unapply]");
+      const roadmapAction = apply || unapply;
+      if (roadmapAction) {
         busy = true;
-        apply.disabled = true;
+        roadmapAction.disabled = true;
         try {
-          await request(`/roadmaps/${apply.dataset.advisorApply}`, {
+          const roadmapId = roadmapAction.dataset.advisorApply || roadmapAction.dataset.advisorUnapply;
+          await request(`/roadmaps/${roadmapId}`, {
             method: "POST",
-            body: { action: "apply" },
+            body: { action: apply ? "apply" : "delete" },
           });
           await load();
         } catch (error) {
           status(error.message);
-          apply.disabled = false;
+          roadmapAction.disabled = false;
         } finally {
           busy = false;
         }

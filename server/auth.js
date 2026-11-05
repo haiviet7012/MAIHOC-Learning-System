@@ -69,8 +69,9 @@ export function publicUser(user) {
   const adminLevel = Number(user.admin_level ?? user.adminLevel ?? 0);
   const rawRole = String(user.role || "user").trim().toLowerCase();
   const isSuperAdmin = rawRole === "admin" && adminLevel >= 2;
+  const isManager = isSuperAdmin && Boolean(user.is_manager ?? user.isManager);
   const isTeacher = rawRole === "teacher" || (rawRole === "admin" && adminLevel >= 1 && adminLevel < 2);
-  const homeroomClass = (user.homeroom_class ?? user.homeroomClass) || null;
+  const homeroomClass = isTeacher ? (user.homeroom_class ?? user.homeroomClass) || null : null;
   const classCode = !isSuperAdmin && !isTeacher
     ? ((user.student_class ?? user.class_code ?? user.classCode) || null)
     : null;
@@ -105,14 +106,14 @@ export function publicUser(user) {
     isSuperAdmin,
     isTeacher,
     adminLevel,
-    isManager: Boolean(user.is_manager ?? user.isManager),
+    isManager,
     schoolPlan,
     schoolExpiresAt,
     accountType,
     ...(teacherKind ? { teacherKind } : {}),
     ...(homeroomClass ? { homeroomClass } : {}),
     ...(classCode ? { classCode } : {}),
-    roleLabel: (user.is_manager ?? user.isManager) ? "Quản lý" : roleLabel,
+    roleLabel: isManager ? "Quản lý" : roleLabel,
     createdAt
   };
 }
@@ -345,6 +346,25 @@ export function requireSuperAdmin(req, res, next) {
   next();
 }
 
+export function isOwnerAdminUser(user) {
+  const ownerEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  const userEmail = String(user?.email || "").trim().toLowerCase();
+  return Boolean(
+    ownerEmail &&
+    userEmail === ownerEmail &&
+    isSuperAdminUser(user) &&
+    !Boolean(user.is_manager ?? user.isManager)
+  );
+}
+
+export function requireOwnerAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "Vui lòng đăng nhập." });
+  if (!isOwnerAdminUser(req.user)) {
+    return res.status(403).json({ error: "Chỉ chủ sở hữu MAI HỌC mới có quyền xóa hoặc duyệt xóa tài khoản." });
+  }
+  next();
+}
+
 export async function createInitialAdmin() {
   const email = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const password = String(process.env.ADMIN_PASSWORD || "");
@@ -354,7 +374,7 @@ export async function createInitialAdmin() {
   if (password.length < 8) throw new Error("ADMIN_PASSWORD cần có ít nhất 8 ký tự.");
   const existing = await db.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE").get(email);
   if (existing) {
-    await db.prepare("UPDATE users SET role='admin', admin_level=2 WHERE id=?").run(existing.id);
+    await db.prepare("UPDATE users SET role='admin', admin_level=2, is_manager=false WHERE id=?").run(existing.id);
     return;
   }
   const passwordHash = await hashPassword(password);

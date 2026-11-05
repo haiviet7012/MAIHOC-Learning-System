@@ -1,5 +1,12 @@
 export const superAdmin = (user) =>
   user?.role === "admin" && Number(user.adminLevel ?? user.admin_level) >= 2;
+export const schoolAccountRole = (user) => superAdmin(user) ? "school_admin"
+  : user?.role === "teacher" || (user?.role === "admin" && Number(user.adminLevel ?? user.admin_level) >= 1) ? "teacher" : "student";
+export function assertSchoolAccountRole(user, role) {
+  const accountRole = schoolAccountRole(user);
+  // A school administrator is a scoped staff permission, never a student role.
+  if (accountRole !== role && !(role === "school_admin" && accountRole === "teacher")) fail("Vai trò không phù hợp với tài khoản; mỗi tài khoản chỉ có một vai trò.", 409);
+}
 export function fail(message, status = 400) {
   const error = new Error(message);
   error.status = status;
