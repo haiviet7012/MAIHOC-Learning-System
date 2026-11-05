@@ -306,10 +306,6 @@ function subjectPage() {
         ? "Khám phá công cụ Vật lý, tài liệu lý thuyết và phòng thi mô phỏng."
         : "Chọn một khu vực học tập để tiếp tục.";
 
-    const librarySection = state.subject === "IELTS"
-      ? ""
-      : `<section class="section-head"><div><h2>Thư viện tài liệu</h2><p>${docs().filter(d => d.subject === state.subject).length} tài liệu mẫu và tài liệu đã tải lên trong phiên này.</p></div></section><div class="grid three">${["10", "11", "12"].map(g => `<article class="card clickable class-card" data-action="choose-grade" data-grade="${g}"><div><div class="grade">${gradeLabel(g)}</div><p>${docs().filter(d => d.subject === state.subject && String(d.grade) === String(g)).length} tài liệu</p></div><span class="arrow">↗</span></article>`).join("")}</div>`;
-
     const learningAreas = state.subject === "IELTS"
       ? [
           { r: "ielts-skill", skill: "speaking", i: "🎙️", t: "Speaking", d: "Luyện phát âm, phản xạ và trả lời tự nhiên." },
@@ -331,7 +327,7 @@ function subjectPage() {
     return `${pageHeading(`Môn ${state.subject}`, pageSubtitle)}
 ${naturalScienceTools}
 <div class="grid four">
-${learningAreas.map(x => `<article class="card clickable resource-card" data-route="${x.r}" ${x.skill ? `data-ielts-skill="${x.skill}"` : ""}><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div>${fullTestSection}${librarySection}`;
+${learningAreas.map(x => `<article class="card clickable resource-card" data-route="${x.r}" ${x.skill ? `data-ielts-skill="${x.skill}"` : ""}><div class="card-icon">${x.i}</div><h3>${x.t}</h3><p>${x.d}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join("")}</div>${fullTestSection}`;
 }
 function ieltsSkillPage(skill) {
     const config = {
