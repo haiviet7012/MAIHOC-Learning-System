@@ -9,11 +9,11 @@ test("enabled subjects have an explicit assessment profile", () => {
     assert.ok(assessments.subjects[subject.assessmentProfile].grading, `Missing grading rules for ${subject.name}`);
   }
 });
-test("Literature and IELTS remain disabled until their learning flows are ready", () => {
+test("Literature learning is enabled while IELTS remains disabled", () => {
   for (const name of ["Ngữ văn", "IELTS"]) {
     const subject = catalog.subjects.find(item => item.name === name);
     assert.ok(subject, `Missing subject registry entry: ${name}`);
-    assert.equal(subject.enabled, false);
+    assert.equal(subject.enabled, name === "Ngữ văn");
     if (name === "IELTS") assert.equal(assessments.subjects[subject.assessmentProfile], undefined);
     else assert.equal(assessments.subjects[subject.assessmentProfile].grading.engine, "literature-rubric-v1");
   }
