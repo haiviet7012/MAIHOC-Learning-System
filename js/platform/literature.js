@@ -1,4 +1,4 @@
-import { escapeHTML as e } from '../ui.js';
+import { escapeHTML as e, pageHeading } from '../ui.js';
 import { api } from './api.js';
 
 const groups = [
@@ -9,16 +9,23 @@ const groups = [
 ];
 export function mountLiterature(container, { documents, user }) {
   const controller = new AbortController();
-  container.innerHTML = `<div class="portal-heading"><div><p class="eyebrow">MAIHOC · NGỮ VĂN</p><h1>Đọc sâu. Viết rõ. Nghĩ độc lập.</h1><p class="muted">Chọn một hướng ôn tập, hoặc cùng gia sư nhìn lại bài viết của bạn.</p></div></div><div class="grid two">${groups.map(([key,title,desc,icon],i) => `<button type="button" class="card portal-subject tone-${i%3}" data-literature-tab="${key}" aria-expanded="false"><span aria-hidden="true">${icon}</span><h2>${title}</h2><p>${desc}</p><span>Khám phá →</span></button>`).join('')}</div><section class="portal-panel" data-literature-content style="margin-top:24px" aria-live="polite"><p>Chọn một ô phía trên để bắt đầu.</p></section>`;
+  container.innerHTML = `${pageHeading('Môn Ngữ văn', 'Chọn một khu vực học tập để tiếp tục.')}<div class="grid four">${groups.map(([key,title,desc,icon]) => `<article class="card clickable resource-card" role="button" tabindex="0" data-literature-tab="${key}" aria-expanded="false" aria-controls="literature-content"><div class="card-icon" aria-hidden="true">${icon}</div><h3>${title}</h3><p>${desc}</p><p style="margin-top:18px;color:var(--primary);font-weight:600">Mở mục →</p></article>`).join('')}</div><section id="literature-content" class="portal-panel" data-literature-content style="margin-top:24px" aria-live="polite" hidden></section>`;
   const content = container.querySelector('[data-literature-content]');
   let operation = 0;
   function tutor() {
     content.innerHTML = `<h2>Gia sư chấm Văn</h2><p>Đưa cả yêu cầu và ngữ liệu liên quan vào phần đề. Ảnh viết tay được chép thành chữ để bạn đối chiếu trước khi chấm.</p>${!user ? '<p>Đăng nhập để sử dụng gia sư.</p>' : ''}<form class="upgrade-form" data-literature-form><label>Loại bài<select name="kind"><option value="II-1">Đoạn nghị luận xã hội · 2 điểm</option><option value="II-2">Bài nghị luận văn học · 4 điểm</option></select></label><div class="grid two">${[['prompt','Đề bài và ngữ liệu'],['answer','Bài làm của bạn']].map(([key,title]) => `<section><h3>${title}</h3><label>${title}<textarea name="${key}" rows="12" maxlength="${key === 'prompt' ? 12000 : 30000}" placeholder="Nhập chữ hoặc dán ảnh vào đây…" required></textarea></label><label>Thêm ảnh (JPG, PNG, WebP · tối đa 6 MB/ảnh)<input type="file" data-literature-image="${key}" accept="image/jpeg,image/png,image/webp" ${!user ? 'disabled' : ''}></label><div data-preview="${key}"></div><p class="muted">Có thể thêm lần lượt nhiều trang theo đúng thứ tự. Nội dung đọc được sẽ nối vào cuối bản chép.</p></section>`).join('')}</div><label><input type="checkbox" name="confirmed" required> Tôi đã kiểm tra đề và bài làm, sửa các chỗ đọc sai hoặc [không đọc rõ].</label><button class="button primary" type="submit" ${!user ? 'disabled' : ''}>Chấm và nhận góp ý</button><p role="status" data-literature-status></p><div data-literature-result></div></form>`;
   }
+  container.addEventListener('keydown', ev => {
+    const tab = ev.target.closest('[data-literature-tab]');
+    if (tab && (ev.key === 'Enter' || ev.key === ' ')) {
+      ev.preventDefault(); ev.stopPropagation(); tab.click();
+    }
+  }, { signal: controller.signal });
   container.addEventListener('click', ev => {
     const tab = ev.target.closest('[data-literature-tab]');
     if (!tab) return;
     operation++;
+    content.hidden = false;
     container.querySelectorAll('[data-literature-tab]').forEach(b => b.setAttribute('aria-expanded', String(b === tab)));
     const group = tab.dataset.literatureTab;
     if (group === 'tutor') return tutor();
