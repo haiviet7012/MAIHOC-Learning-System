@@ -147,6 +147,23 @@ try {
   await click('import'); await click('import-sample');
   assert.match(await page.locator('[data-qb-status]').innerText(), /Đã nhập 1 câu hỏi mẫu/);
   assert.ok(await page.locator('[data-qb-tab="personal"]').getAttribute('aria-selected') === 'true');
+  await page.locator('[data-qb-tab="school"]').click();
+  await page.locator('[data-qb-select="MATH12-124"]').check();
+  const toDelete = page.locator('[data-qb-card="MATH12-124"]');
+  await toDelete.locator('[data-qb-action="delete"]').click();
+  await click('close');
+  assert.equal(await toDelete.count(), 1, 'Cancel keeps the question');
+  await toDelete.locator('[data-qb-action="delete"]').click();
+  await click('confirm-delete');
+  await toDelete.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('[data-qb-basket]').isVisible(), false);
+  await page.reload(); await dismissDevelopmentNotice(page);
+  await page.locator('[data-qb-results] > .qb-card').first().waitFor();
+  assert.equal(await toDelete.count(), 0, 'Deletion survives reload');
+  await page.locator('[data-qb-card="MATH12-089"] [data-qb-action="clone"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-qb-status]')?.textContent.includes('đã có trong kho'));
+  assert.equal(await page.locator('.qb-variant-card').count(), 0);
+  console.log('Delete confirmation/cancel, basket cleanup, persistence and duplicate generation guards pass.');
   assert.deepEqual(errors, []);
   console.log('Mobile layout, floating basket, matrix dialog, import sample and zero browser errors pass.');
 } finally {

@@ -606,6 +606,16 @@ test("School upgrade persistence, isolation, worker and approvals", async (t) =>
         );
         assert.equal(published.status, 200);
         assert.equal(published.data.questionIds.length, 1);
+        // A second document with repeated content reuses the bank question.
+        const repeated = await manual("exam", { items: [
+          { label: "1", stem: "Tính 1 + 1", answer: "2" },
+          { label: "2", stem: "  Tính 1 + 1  ", answer: "2" },
+        ] }, 1);
+        const repeatedJob = (await call(`/documents/${repeated.data.id}`, "GET", undefined, 1)).data;
+        assert.equal((await call(`/documents/${repeated.data.id}`, "PATCH", { result: repeatedJob.result, revision: repeatedJob.revision, confirmed: true }, 1)).status, 200);
+        const repeatedPublication = await call(`/documents/${repeated.data.id}/publish`, "POST", { topicId: topic }, 1);
+        assert.equal(repeatedPublication.status, 200);
+        assert.deepEqual(repeatedPublication.data.questionIds, published.data.questionIds);
         assert.deepEqual(
           (
             await call(

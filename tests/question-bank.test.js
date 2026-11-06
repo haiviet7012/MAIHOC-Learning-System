@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seedQuestions, filterQuestions, createLocalRepository, validateQuestion, generateVariants, extractMatrix, buildExam, needsReview } from '../js/platform/question-bank-model.js';
+import { seedQuestions, filterQuestions, createLocalRepository, validateQuestion, generateVariants, extractMatrix, buildExam, needsReview, questionFingerprint, uniqueQuestions } from '../js/platform/question-bank-model.js';
 
 const rows = seedQuestions(17);
 test('all seeded questions and all generated variants have valid type-specific answer keys', () => {
@@ -55,7 +55,7 @@ test('each shuffled exam keeps answer content, source integrity and exactly ten 
 });
 test('repository persists per account, returns detached copies and survives blocked/corrupt storage', () => {
   const data = new Map(), storage = { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value) };
-  const repo = createLocalRepository(17, storage), q = { ...rows[0], id: 'NEW', status: 'draft' };
+  const repo = createLocalRepository(17, storage), q = { ...rows[0], id: 'NEW', stem: 'Câu hỏi mới để kiểm tra lưu trữ', status: 'draft' };
   assert.equal(repo.save(q), true);
   assert.equal(repo.approve('NEW'), true);
   assert.equal(createLocalRepository(17, storage).list().find(q => q.id === 'NEW').status, 'approved');
@@ -66,4 +66,35 @@ test('repository persists per account, returns detached copies and survives bloc
   assert.equal(volatile.save(q), false);
   assert.ok(volatile.list().some(x => x.id === 'NEW'));
   assert.equal(createLocalRepository(17, { getItem: () => '[{"invalid":true}]' }).list().length, rows.length);
+});
+
+test('content identity ignores ids, answer order, metadata and Unicode/whitespace differences', () => {
+  const q = rows[1];
+  const duplicate = { ...q, id: 'OTHER', stem: `  ${q.stem.normalize('NFD')}  `, choices: [...q.choices].reverse(), answer: 3, level: 'vdc' };
+  assert.equal(questionFingerprint(q), questionFingerprint(duplicate));
+  assert.equal(uniqueQuestions([q, duplicate]).length, 1);
+  for (const changed of [{ stem: q.stem + ' khác' }, { grade: '11' }, { choices: ['a','b','c','d'] }, { stem: q.stem.replace('2x', '3x') }]) {
+    assert.notEqual(questionFingerprint(q), questionFingerprint({ ...q, ...changed }));
+  }
+  assert.notEqual(questionFingerprint({ ...q, stem: '$x$' }), questionFingerprint({ ...q, stem: '$X$' }));
+  assert.equal(filterQuestions([q, duplicate], { tab: 'school' }, 17).length, 1);
+});
+test('matrix and shuffled exams use unique content even under different ids and levels', () => {
+  const q = rows[1], duplicate = { ...q, id: 'DUPLICATE', level: 'vd' };
+  assert.throws(() => extractMatrix([q, duplicate], { subject: q.subject, grade: q.grade, counts: { nb: 1, th: 0, vd: 1, vdc: 0 } }), /hiện có 0/);
+  const exam = buildExam([q, duplicate]);
+  assert.ok(exam.variants.every(v => v.questions.length === 1 && v.questions[0].points === 10));
+  const generated = generateVariants(q);
+  assert.equal(generateVariants(q, generated).length, 0);
+});
+test('repository rejects duplicate inserts/edits and removal survives reload without changing an exported exam', () => {
+  const data = new Map(), storage = { getItem: k => data.get(k), setItem: (k,v) => data.set(k,v) };
+  const repo = createLocalRepository(17, storage), q = rows[1];
+  assert.throws(() => repo.save({ ...q, id: 'DUPLICATE' }), /đã có/);
+  assert.throws(() => repo.save({ ...q, id: rows[2].id }), /đã có/);
+  const exam = buildExam([q]);
+  assert.equal(repo.remove(q.id), true);
+  assert.ok(!createLocalRepository(17, storage).list().some(x => x.id === q.id));
+  assert.equal(exam.variants[0].questions[0].id, q.id);
+  assert.throws(() => repo.remove('missing'), /Không tìm thấy/);
 });

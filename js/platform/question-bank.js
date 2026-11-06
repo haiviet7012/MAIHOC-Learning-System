@@ -1,6 +1,6 @@
 import { escapeHTML as e } from '../ui.js';
 import { renderQuestionMath } from './question-bank-math.js';
-import { LEVELS, TYPES, SUBJECTS, GRADES, createLocalRepository, filterQuestions, needsReview, validateQuestion, extractMatrix, buildExam, generateVariants } from './question-bank-model.js';
+import { LEVELS, TYPES, SUBJECTS, GRADES, createLocalRepository, filterQuestions, needsReview, validateQuestion, extractMatrix, buildExam, generateVariants, uniqueQuestions } from './question-bank-model.js';
 
 const icons = {
   book: '<path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4z"/><path d="M20 4h-4a3 3 0 0 0-3 3v14a4 4 0 0 1 4-2h3z"/>',
@@ -13,6 +13,7 @@ const icons = {
   crown: '<path d="m3 6 4 4 5-7 5 7 4-4-3 13H6zM6 22h12"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
   edit: '<path d="m4 16-1 5 5-1L21 7l-5-5zM13 5l6 6"/>',
   basket: '<path d="m8 3-5 8m13-8 5 8M2 11h20l-3 10H5zM9 14v4m6-4v4"/>',
 };
@@ -68,26 +69,26 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
       <div class="qb-card-header"><div class="qb-card-tags">${!preview && q.status === 'approved' ? `<input type="checkbox" class="qb-checkbox" data-qb-select="${id}" aria-label="Chọn câu ${id}" ${checked ? 'checked' : ''}>` : ''}<span class="qb-code">#${id}</span><span class="qb-subject-tag">${e(q.subject)} ${e(q.grade)} <span>· ${e(q.topic)}</span></span><span class="qb-type-tag">${q.type === 'true_false' ? 'Đúng/Sai 4 ý' : q.type === 'multiple_choice' ? '4 lựa chọn' : e(TYPES[q.type])}</span>${levelBadge(q.level)}</div><span class="qb-analytics">${q.attempts ? `<span class="qb-analytics-dot"></span>Tỷ lệ đúng: <strong>${q.rate}%</strong> <span>(${q.attempts} lượt làm)</span>` : 'Chưa có lượt làm'}</span></div>
       ${needsReview(q) ? `<div class="qb-warning">${icon('alert')} Cần rà soát độ khó <span>· Tỷ lệ làm đúng thấp hơn kỳ vọng ở mức Nhận biết</span></div>` : ''}
       <div class="qb-card-body"><p class="qb-stem">${e(q.stem)}</p>${answers(q)}<details class="qb-solution"><summary>Xem lời giải chi tiết & Hướng dẫn chấm <span>⌄</span></summary><div>${e(q.solution || 'Chưa có lời giải chi tiết. Giáo viên có thể bổ sung trong Chỉnh sửa.')}</div></details></div>
-      <footer class="qb-card-footer"><div class="qb-author"><span class="qb-avatar">${e(q.author?.split(' ').slice(-2).map(x => x[0]).join('') || 'MH')}</span><span>${e(q.author)}<small>${q.status === 'approved' ? `${icon('check')} Đã duyệt bởi ${e(q.reviewer)}` : 'Bản nháp · Chờ kiểm duyệt'}${q.uses ? ` <span>· Đã dùng trong ${q.uses} đề</span>` : ''}</small></span></div><div class="qb-actions">${preview ? btn('save-variant', 'Duyệt & lưu vào kho', 'check', 'qb-primary', `data-id="${id}"`) + btn('dismiss-variant', 'Bỏ qua', '', '', `data-id="${id}"`) : `${q.status === 'approved' ? btn('clone', busy.has(q.id) ? 'Đang tạo biến thể…' : 'Nhân bản AI', 'spark', 'qb-ai', `data-id="${id}" ${busy.has(q.id) ? 'disabled' : ''}`) : canReview ? btn('approve', 'Duyệt câu hỏi', 'check', '', `data-id="${id}"`) : ''}${btn('edit', 'Chỉnh sửa', 'edit', '', `data-id="${id}"`)}${q.status === 'approved' ? btn('select', checked ? 'Đã thêm vào đề' : 'Đưa vào bài kiểm tra', checked ? 'check' : 'basket', checked ? 'qb-added' : '', `data-id="${id}" aria-pressed="${checked}"`) : ''}`}</div></footer>
+      <footer class="qb-card-footer"><div class="qb-author"><span class="qb-avatar">${e(q.author?.split(' ').slice(-2).map(x => x[0]).join('') || 'MH')}</span><span>${e(q.author)}<small>${q.status === 'approved' ? `${icon('check')} Đã duyệt bởi ${e(q.reviewer)}` : 'Bản nháp · Chờ kiểm duyệt'}${q.uses ? ` <span>· Đã dùng trong ${q.uses} đề</span>` : ''}</small></span></div><div class="qb-actions">${preview ? btn('save-variant', 'Duyệt & lưu vào kho', 'check', 'qb-primary', `data-id="${id}"`) + btn('dismiss-variant', 'Bỏ qua', '', '', `data-id="${id}"`) : `${q.status === 'approved' ? btn('clone', busy.has(q.id) ? 'Đang tạo biến thể…' : 'Nhân bản AI', 'spark', 'qb-ai', `data-id="${id}" ${busy.has(q.id) ? 'disabled' : ''}`) : canReview ? btn('approve', 'Duyệt câu hỏi', 'check', '', `data-id="${id}"`) : ''}${btn('edit', 'Chỉnh sửa', 'edit', '', `data-id="${id}"`)}${canReview && repository.remove ? btn('delete', 'Xóa câu hỏi', 'trash', '', `data-id="${id}"`) : ''}${q.status === 'approved' ? btn('select', checked ? 'Đã thêm vào đề' : 'Đưa vào bài kiểm tra', checked ? 'check' : 'basket', checked ? 'qb-added' : '', `data-id="${id}" aria-pressed="${checked}"`) : ''}`}</div></footer>
       ${generated?.length ? `<section class="qb-variants"><div class="qb-section-heading"><div><span class="qb-overline">AI STUDIO · BẢN NHÁP MÔ PHỎNG</span><h3>Hai ý tưởng mới, cùng một nền tảng.</h3><p>Biến thể minh họa theo dạng câu hỏi. Hãy kiểm tra chuyên đề, mức độ và lời giải trước khi lưu.</p></div></div>${generated.map(v => card(v, true)).join('')}</section>` : ''}
     </article>`;
   }
   function renderList() {
     const rows = filterQuestions(questions, filters, user.id), locked = !pro && ['school', 'pro', 'pending'].includes(filters.tab);
     find('[data-qb-results]').innerHTML = locked ? paywall(true) : rows.length ? rows.map(q => card(q)).join('') : `<div class="qb-empty">${icon('search')}<h3>Chưa tìm thấy câu hỏi phù hợp</h3><p>Thử thay đổi từ khóa, bộ lọc hoặc thêm một câu hỏi mới.</p>${btn('reset', 'Xóa bộ lọc')}${btn('add', 'Thêm câu hỏi', '', 'qb-primary')}</div>`;
-    find('[data-qb-count]').textContent = locked ? 'Kho dùng chung · School Pro' : `${rows.length} câu hỏi`;
+    find('[data-qb-count]').textContent = locked ? 'Kho dùng chung · School Pro' : `${rows.length} câu hỏi · Đã lọc trùng`;
     const pendingTab = find('[data-qb-tab="pending"]'); if (pendingTab) pendingTab.innerHTML = `Chờ kiểm duyệt <b>${questions.filter(q => q.status === 'draft' && q.bank === 'school').length}</b>`;
-    const schoolCount = questions.filter(q => q.status === 'approved' && q.bank === 'school').length;
-    const approved = questions.filter(q => q.status === 'approved');
+    const schoolCount = uniqueQuestions(questions.filter(q => q.status === 'approved' && q.bank === 'school')).length;
+    const approved = uniqueQuestions(questions.filter(q => q.status === 'approved'));
     find('[data-qb-kpi="total"]').textContent = approved.length;
     find('[data-qb-kpi="school"]').textContent = schoolCount;
-    find('[data-qb-kpi="ai"]').textContent = questions.filter(q => q.ai && q.status === 'approved').length;
+    find('[data-qb-kpi="ai"]').textContent = uniqueQuestions(questions.filter(q => q.ai && q.status === 'approved')).length;
     find('[data-qb-kpi="warn"]').textContent = approved.filter(needsReview).length;
-    find('[data-qb-solution-rate]').textContent = `${schoolCount ? Math.round(questions.filter(q => q.status === 'approved' && q.bank === 'school' && q.solution).length / schoolCount * 100) : 0}% đã có lời giải chi tiết`;
+    find('[data-qb-solution-rate]').textContent = `${schoolCount ? Math.round(uniqueQuestions(questions.filter(q => q.status === 'approved' && q.bank === 'school' && q.solution)).length / schoolCount * 100) : 0}% đã có lời giải chi tiết`;
     renderBasket(); math(find('[data-qb-results]'));
   }
   function renderBasket() {
-    const rows = questions.filter(q => selected.has(q.id)), target = find('[data-qb-basket]');
+    const rows = uniqueQuestions(questions.filter(q => selected.has(q.id))), target = find('[data-qb-basket]');
     target.hidden = !rows.length;
     target.innerHTML = `<div class="qb-basket-count">${icon('basket')}<div><strong>Đã chọn: ${rows.length} câu hỏi</strong><small>${Object.keys(LEVELS).map(k => `${k.toUpperCase()}: ${rows.filter(q => q.level === k).length}`).join(' <span>│</span> ')}</small></div></div><div class="qb-actions">${btn('clear', 'Bỏ chọn tất cả', '', 'qb-text')}${btn('shuffle', 'Trộn mã đề tự động', 'grid')}${btn('export', 'Xuất sang Kiểm tra & Luyện thi', 'arrow', 'qb-primary')}</div>`;
     container.classList.toggle('qb-has-basket', !!rows.length);
@@ -157,7 +158,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
   }
   function matrixSummary() {
     const f = find('[data-qb-matrix]');
-    const rows = questions.filter(q => q.status === 'approved' && q.subject === f.elements.subject.value && q.grade === f.elements.grade.value && (!f.elements.topic.value || q.topic === f.elements.topic.value));
+    const rows = uniqueQuestions(questions.filter(q => q.status === 'approved' && q.subject === f.elements.subject.value && q.grade === f.elements.grade.value && (!f.elements.topic.value || q.topic === f.elements.topic.value)));
     let total = 0;
     Object.keys(LEVELS).forEach(k => { total += Number(f.elements[k].value || 0); find(`[data-qb-available="${k}"]`).textContent = `${rows.filter(q => q.level === k).length} câu khả dụng`; });
     find('[data-qb-matrix-total]').innerHTML = `<div><span>Tổng số câu</span><strong>${total}</strong></div><div><span>Tổng điểm</span><strong>${total ? '10' : '0'}<small> / 10</small></strong></div><p>${total ? `Chia đều khoảng ${(10 / total).toFixed(2)} điểm/câu. Điểm được làm tròn để tổng đúng 10.` : 'Nhập số câu ở từng mức độ để bắt đầu.'}</p>`;
@@ -194,7 +195,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
   }
   async function updateQuestions() { questions = await repository.list(); if (!disposed) renderList(); }
   function createSelectedExam() {
-    const rows = questions.filter(q => selected.has(q.id));
+    const rows = uniqueQuestions(questions.filter(q => selected.has(q.id)));
     exam = buildExam(rows); showExam();
   }
   function saveExam() {
@@ -206,6 +207,20 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     if (name === 'close') return close();
     if (name === 'add') return openEditor();
     if (name === 'edit' && q) { if (!pro && q.bank !== 'personal' && String(q.owner) !== String(user.id) && !gate()) return; return openEditor(q); }
+    if (name === 'delete' && q && canReview && repository.remove) {
+      activeModal = 'delete';
+      modal('Xóa câu hỏi?', 'Câu hỏi sẽ được bỏ khỏi kho và giỏ đề. Đề đã xuất hoặc bài làm cũ được giữ nguyên.', `<div class="qb-modal-body"><p>${e(q.stem)}</p><p data-qb-form-error role="alert"></p></div><footer class="qb-modal-footer">${btn('close', 'Hủy')}${btn('confirm-delete', 'Xóa câu hỏi', 'trash', '', `data-id="${e(q.id)}"`)}</footer>`);
+      return;
+    }
+    if (name === 'confirm-delete' && q && canReview && repository.remove && activeModal === 'delete') {
+      button.disabled = true;
+      try {
+        const ok = await repository.remove(q.id);
+        selected.delete(q.id); variants.delete(q.id);
+        close(); await updateQuestions(); announce(`Đã xóa câu hỏi. ${persisted(ok)}`);
+      } finally { button.disabled = false; }
+      return;
+    }
     if (name === 'matrix') return openMatrix();
     if (name === 'import') return openImport();
     if (name === 'select') return toggleSelection(id);
@@ -217,7 +232,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     if (name === 'clone' && q && gate()) {
       if (busy.has(id)) return;
       busy.add(id); button.disabled = true; button.innerHTML = `${icon('spark')} Đang tạo 2 biến thể…`;
-      later(() => { busy.delete(id); try { variants.set(id, generateVariants(q).map(v => ({ ...v, owner: user.id, author: user.name || 'Giáo viên' }))); renderList(); announce('Đã tạo 2 biến thể mô phỏng. Hãy rà soát trước khi duyệt lưu.'); } catch (error) { renderList(); announce(error.message); } });
+      later(() => { busy.delete(id); try { variants.set(id, generateVariants(q, questions).map(v => ({ ...v, owner: user.id, author: user.name || 'Giáo viên' }))); renderList(); announce(variants.get(id).length ? `Đã tạo ${variants.get(id).length} biến thể mới. Hãy rà soát trước khi duyệt lưu.` : 'Các biến thể mô phỏng đã có trong kho. Hãy biên soạn câu hỏi mới.'); } catch (error) { renderList(); announce(error.message); } });
     }
     if (name === 'save-variant' && gate()) {
       if (!canReview) { announce('Chỉ giáo viên hoặc quản trị viên được duyệt câu hỏi.'); return; }
@@ -234,7 +249,9 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     if (name === 'download' && exam) downloadExam(exam);
     if (name === 'send' && exam && saveExam()) { close(); onNavigate('tests'); }
     if (name === 'import-sample') {
-      const sample = { ...generateVariants(questions.find(q => q.subject === 'Toán'))[0], id: `IMPORT-${Date.now().toString(36)}`, owner: user.id, author: user.name || 'Giáo viên', ai: false };
+      const available = generateVariants(questions.find(q => q.subject === 'Toán'), questions);
+      if (!available.length) throw new Error('Câu hỏi mẫu đã có trong kho.');
+      const sample = { ...available[0], id: `IMPORT-${Date.now().toString(36)}`, owner: user.id, author: user.name || 'Giáo viên', ai: false };
       const ok = await repository.save(sample); close(); await updateQuestions(); selectTab('personal'); announce(`Đã nhập 1 câu hỏi mẫu, đang chờ duyệt. ${persisted(ok)}`);
     }
   }

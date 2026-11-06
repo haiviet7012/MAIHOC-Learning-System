@@ -35,7 +35,8 @@ JSON chứa `version`, `title`, `subject`, `grade`, `source`, `createdAt`, `tota
 {
   list: () => Question[] | Promise<Question[]>,
   save: question => boolean | Promise<boolean>,
-  approve: id => boolean | Promise<boolean>
+  approve: id => boolean | Promise<boolean>,
+  remove: id => boolean | Promise<boolean>
 }
 ```
 
@@ -67,3 +68,13 @@ node scripts/question-bank-check.mjs
 Browser check dùng dữ liệu PostgreSQL cô lập của preview, tắt platform flag, đăng nhập giáo viên thử nghiệm và Edge headless đã cài trên Windows. Có thể đổi kênh trình duyệt bằng `PLAYWRIGHT_CHANNEL`. Kiểm tra lọc kết hợp, tab, duyệt, các editor, persistence, biến thể, trộn đề, báo thiếu câu, tải JSON, chuyển trang, Free/Pro, theme, overflow mobile và lỗi JavaScript. Ảnh QA nằm trong thư mục `test-results` được Git bỏ qua.
 
 Sau `npm install`, chạy `node scripts/vendor-question-math.mjs` nếu cần phục vụ source trực tiếp. Quy trình build hiện có tự tạo và kiểm tra bundle KaTeX cùng giấy phép trong thư mục vendor.
+
+## Xóa và lọc trùng
+
+Admin/giáo viên có nút **Xóa câu hỏi**, kèm xác nhận. Local repository xóa câu khỏi kho của tài khoản và giỏ đang chọn; đề đã xuất/bản nháp đã tạo vẫn giữ snapshot. Adapter tùy chỉnh cần cung cấp `remove(id)` để hiển thị nút xóa. Giao diện mặc định vẫn dùng local repository, chưa tự chuyển sang API PostgreSQL.
+
+Danh sách, KPI, tồn kho ma trận và đề được lọc tự động theo môn + khối + dạng + nội dung + tập phương án (không phụ thuộc mã, thứ tự phương án, đáp án hoặc metadata). Chuẩn hóa Unicode và khoảng trắng; giữ phân biệt chữ hoa, dấu, số và toán tử để tránh gộp nhầm biến/công thức. Bộ lọc này phát hiện nội dung trùng theo quy tắc trên, chưa so sánh tương đồng ngữ nghĩa/paraphrase. Bản trùng cũ chỉ ẩn khi hiển thị/rút câu, không tự xóa dữ liệu. Các mã đề vẫn dùng chung tập câu và trộn thứ tự như trước.
+
+Biến thể mô phỏng bỏ qua câu đã có; lưu câu mới/sửa trùng báo lỗi. Thiếu câu duy nhất theo ma trận thì báo thiếu, không lặp câu để bù số lượng.
+
+API School bổ sung `DELETE /api/platform/schools/:schoolId/questions/:questionId`: kiểm tra đăng nhập, same-origin, membership giáo viên/admin; archive mọi phiên bản của câu, ghi audit và giữ lịch sử bài làm. API danh sách bỏ câu archive/phiên bản cũ, lọc trùng; POST câu hỏi chặn trùng với HTTP 409 và khóa theo trường để tránh ghi trùng đồng thời. Số hóa đề tái sử dụng câu đã có và loại mã trùng trong kết quả publish. API giao bài chặn nội dung trùng khác ID; luyện chuyên đề rút tối đa 10 câu duy nhất. Không cần migration mới vì schema đã hỗ trợ `archived`.

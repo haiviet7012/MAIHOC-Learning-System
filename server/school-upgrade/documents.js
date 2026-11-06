@@ -1,3 +1,4 @@
+import { lockQuestionBank, findDuplicateQuestion } from '../platform/question-bank-policy.js';
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import PDFDocument from "pdfkit";
@@ -404,6 +405,7 @@ export function installDocuments(router, { db, store = storage }) {
           )
         ).rows[0];
         if (!node) fail("Chuyên đề không khớp trường/môn.");
+        await lockQuestionBank(db, j.school_id);
         const ids = [];
         for (const q of current.result.items) {
           let answer = q.answer.trim(),
@@ -421,6 +423,11 @@ export function installDocuments(router, { db, store = storage }) {
                 422,
               );
             answer = String(n);
+          }
+          const duplicate = await findDuplicateQuestion(db, j.school_id, { subject: j.subject, grade: node.grade, type, stem: q.stem, choices: q.choices });
+          if (duplicate) {
+            if (!ids.some(id => String(id) === String(duplicate.id))) ids.push(duplicate.id);
+            continue;
           }
           const item = (
             await db.query(
