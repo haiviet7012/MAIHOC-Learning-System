@@ -22,3 +22,14 @@ Trong School → Quản lý nhà trường, chọn trường và lớp để m�
 ## Kiểm thử
 
 `node --test server/platform/management.test.js` dùng PostgreSQL PGlite thật, kiểm tra phạm vi, danh sách học sinh, điểm/hệ số, cập nhật chuyên cần, tính trung bình và hàng đợi email. Không gửi email thật.
+
+## Biểu đồ, báo cáo và nhận xét riêng
+
+- Giáo viên mở Lớp của bạn → thẻ lớp để xem biểu đồ lớp và xuất PDF/Excel. Trên từng thẻ học sinh, nút Tiến độ học chi tiết mở tab mới với dữ liệu cá nhân, biểu đồ và hộp feedback.
+- Quản lý nhà trường cũng có biểu đồ/báo cáo cho lớp đã chọn. Dữ liệu điểm/chuyên cần lấy từ sổ điểm mới; lớp cũ dùng legacy_class_mappings để xác định đúng trường/lớp. Nếu chưa có ánh xạ thì không bịa số liệu và vẫn hiển thị hoạt động học tập tài khoản.
+- Chuyên cần tính (có mặt + muộn) / lượt đã ghi nhận, không tự coi ngày chưa điểm danh là vắng. Không có lượt ghi nhận sẽ hiển thị chưa có dữ liệu.
+- Điểm trung bình theo ngày ghi/cập nhật được tách môn/học kỳ, tính trung bình có hệ số của từng học sinh rồi lấy trung bình các học sinh có điểm ngày đó. Hiển thị số học sinh để tránh nhầm khi số mẫu thay đổi. Đây chưa phải chuỗi snapshot của tất cả lần sửa điểm; dữ liệu cột điểm hiện tại là nguồn báo cáo.
+- Hoạt động user_progress là trạng thái hiện tại, điểm gốc chưa có thang điểm được giữ nguyên, không trộn với điểm /10 trong biểu đồ.
+- Excel gồm tổng hợp, điểm/chuyên cần, dữ liệu biểu đồ, hoạt động và ghi chú. PDF dùng font Unicode DejaVuSans có sẵn, hỗ trợ tiếng Việt, tổng hợp và chi tiết. Xuất báo cáo chỉ lấy dữ liệu đã qua kiểm tra quyền trên backend.
+- Feedback được lưu bằng notifyUser vào notifications đúng một học sinh thuộc lớp; không đăng lên bảng tin hay gửi toàn lớp, không tự gửi email phụ huynh.
+- Không cần migration mới cho báo cáo/feedback ngoài migration 011 đã dùng cho sổ điểm/chuyên cần. Cần deploy cả backend và frontend.

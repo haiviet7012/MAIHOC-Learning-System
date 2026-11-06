@@ -1,3 +1,4 @@
+import { mountSchoolReports } from './platform/school-reports.js';
 const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
 
 const DEFAULT_SCHOOL_CLASSES = [
@@ -68,7 +69,7 @@ function renderStudentCards(students = [], classCode = "", { canViewProgress = f
       '<span class="school-person-info"><strong>' + esc(student.name) + '</strong><small>Học sinh lớp ' + esc(classCode) + emailText + '</small></span>' +
       '<div class="school-person-actions">' +
       (canViewProgress
-        ? '<a href="#" class="school-progress-link" data-school-progress="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '">Tiến trình học tập ↗</a>'
+        ? '<a href="#" class="school-progress-link" data-school-progress="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '">Tiến độ học chi tiết ↗</a>'
         : '') +
       (canRemoveStudent
         ? '<button type="button" class="button secondary small" data-homeroom-remove-student="' + Number(student.id) + '" data-school-class="' + esc(classCode) + '" data-student-name="' + esc(student.name) + '">Xóa khỏi lớp</button>'
@@ -277,6 +278,7 @@ async function renderClass(view, user, classCode) {
     '<div id="school-student-progress-panel"></div>' +
     studentLeaveSection +
     '</section>';
+  if(canViewProgress){const host=document.createElement('div');view.querySelector('.school-page').append(host);mountSchoolReports(host,{url:'/api/school/classes/'+encodeURIComponent(classCode)+'/reports'});}
 }
 
 async function renderStudentProgressPage(view, classCode, studentId) {
@@ -303,6 +305,8 @@ async function renderStudentProgressPage(view, classCode, studentId) {
           '</tbody></table></div>'
         : '<div class="empty-state"><h3>Chưa có dữ liệu tiến trình</h3><p>Hoạt động học tập của học sinh sẽ xuất hiện tại đây khi hệ thống ghi nhận dữ liệu.</p></div>') +
       '</section></section>';
+    const reportRoot=document.createElement('div');view.querySelector('.school-progress-page').append(reportRoot);
+    mountSchoolReports(reportRoot,{url:'/api/school/classes/'+encodeURIComponent(classCode)+'/reports?studentId='+encodeURIComponent(studentId),feedbackUrl:'/api/school/classes/'+encodeURIComponent(classCode)+'/students/'+encodeURIComponent(studentId)+'/feedback'});
   } catch (error) {
     view.innerHTML = '<section class="school-page"><div class="empty-state"><h3>Không thể tải tiến trình</h3><p>' + esc(error.message) + '</p><button class="button secondary" type="button" data-progress-close>Đóng tab</button></div></section>';
   }

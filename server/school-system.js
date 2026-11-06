@@ -1,3 +1,4 @@
+import { installLegacyReports } from './school-reports.js';
 import { ensureSchoolNotifications } from './school-notifications.js';
 import crypto from "node:crypto";
 import { publicUser, isSuperAdminUser, isTeacherUser } from "./auth.js";
@@ -649,6 +650,8 @@ export function installSchoolSystemRoutes(app, deps) {
     );
     return res.json({ ok: true, decision, classCode, studentId: Number(leaveRequest.studentId) });
   });
+
+  installLegacyReports(app, { db, requireAuth, requireSameOrigin, canAccessClass, isSuperAdminUser, notifyUser });
 
   app.get("/api/school/classes/:classCode/students/:studentId/progress", requireAuth, async (req, res) => {
     const classCode = String(req.params.classCode || "").toUpperCase();
