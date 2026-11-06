@@ -1,3 +1,4 @@
+import { installManagement } from './management.js';
 import { enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
 import express from "express";
@@ -1163,6 +1164,7 @@ export function createPlatformRouter({
       res.json(job);
     }),
   );
+  installManagement(router, { db });
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const status =
