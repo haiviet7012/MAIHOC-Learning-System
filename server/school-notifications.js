@@ -53,7 +53,7 @@ export async function schoolRecipients(db, classes) {
     AND m.class_code=ANY($1::text[])`, [classes])).rows.map(u => u.id);
 }
 export async function enqueueSchoolNotice(db, { eventKey, userIds, title, message, link }) {
-  if (!/^\/school\/(?:tests|announcements|assignments)\/[\w%-]+(?:\?schoolId=\d+)?$/i.test(link)) fail('Liên kết thông báo không hợp lệ.');
+  if (!(eventKey.startsWith('management:') && link === '/school') && !/^\/school\/(?:tests|announcements|assignments)\/[\w%-]+(?:\?schoolId=\d+)?$/i.test(link)) fail('Liên kết thông báo không hợp lệ.');
   let count = 0;
   for (const userId of new Set(userIds.map(String))) {
     const added = await db.prepare(`INSERT INTO school_mail_outbox(id,event_key,user_id,title,message,link)
@@ -81,10 +81,11 @@ export function createSchoolMailWorker(db, { env = process.env, send = deliverMa
           FROM candidate c WHERE o.id=c.id RETURNING o.*`, [time, token, time + 120000])).rows[0];
         if (!job) break;
         try {
-          const user = await db.prepare("SELECT email FROM users WHERE id=? AND role='user' AND account_type='school' AND COALESCE(admin_level,0)=0").get(job.user_id);
+          const management = job.event_key.startsWith('management:');
+          const user = management ? await db.prepare("SELECT email FROM users WHERE id=?").get(job.user_id) : await db.prepare("SELECT email FROM users WHERE id=? AND role='user' AND account_type='school' AND COALESCE(admin_level,0)=0").get(job.user_id);
           // Deleted tests/announcements must never produce stale email.
           const [kind, id] = job.event_key.split(':');
-          const exists = kind === 'test' ? await db.prepare('SELECT id FROM tests WHERE id=?').get(id)
+          const exists = management ? await db.prepare('SELECT r.id FROM school_management_records r JOIN school_guardians g ON g.school_id=r.school_id AND g.student_id=r.student_id WHERE r.id=? AND g.guardian_id=?').get(id,job.user_id) : kind === 'test' ? await db.prepare('SELECT id FROM tests WHERE id=?').get(id)
             : kind === 'announcement' ? await db.prepare('SELECT id FROM school_announcements WHERE id=?').get(id)
             : await db.prepare('SELECT id FROM assessment_assignments WHERE id=?').get(id);
           if (!user?.email || !exists) {
