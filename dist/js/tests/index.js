@@ -1,4 +1,5 @@
 import { canAccessSchool } from '../platform/school-access.js';
+import { readExamDraft, downloadExam, examDraftKey } from '../platform/question-bank.js';
 import { escapeHTML, toast, openDialog, closeDialog } from "../ui.js";
 
 let cachedTests = [];
@@ -173,6 +174,7 @@ function renderTestAnswerActionButtons(t, compact = false) {
 
 export function renderTestsQueuePage(currentUser) {
   const isAdmin = currentUser?.role === "admin";
+  const bankDraft = currentUser && readExamDraft(currentUser.id);
   const filtered = cachedTests.filter(t => {
     if (queueFilterStatus === "incomplete" && t.completed) return false;
     if (queueFilterStatus === "completed" && !t.completed) return false;
@@ -314,6 +316,7 @@ export function renderTestsQueuePage(currentUser) {
 
   return `
     <section class="tests-page">
+      ${bankDraft ? `<aside class="qb-test-draft"><div><p class="eyebrow">BẢN NHÁP TỪ NGÂN HÀNG CÂU HỎI</p><h2>${escapeHTML(bankDraft.title)}</h2><p>${escapeHTML(bankDraft.subject)} · ${escapeHTML(bankDraft.grade)} · ${bankDraft.variants[0].questions.length} câu · ${bankDraft.variants.length} mã đề · 10 điểm</p><p>Đã lưu trên trình duyệt. Bản nháp chưa phát hành cho học sinh.</p></div><div class="qb-draft-actions"><button type="button" class="button secondary small" data-route="question-bank">Xem & chỉnh sửa bản nháp</button><button type="button" class="button primary small" data-qb-draft-download>Tải đề & đáp án JSON</button><button type="button" class="button secondary small" data-qb-draft-remove>Xóa bản nháp</button></div></aside>` : ''}
       <header class="tests-page-header">
         <div>
           <p class="eyebrow">HỆ THỐNG ĐÁNH GIÁ & KIỂM TRA ĐỊNH KỲ</p>
@@ -856,6 +859,17 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
   });
 
   document.addEventListener("click", async event => {
+    if (event.target.closest('[data-qb-draft-download]')) {
+      const draft = readExamDraft(window.maihocCurrentUser?.id);
+      if (draft) downloadExam(draft);
+      return;
+    }
+    if (event.target.closest('[data-qb-draft-remove]')) {
+      try { localStorage.removeItem(examDraftKey(window.maihocCurrentUser?.id)); }
+      catch { toast('Không thể xóa bản nháp trên trình duyệt.', 'error'); return; }
+      window.dispatchEvent(new Event('maihoc-tests-rerender'));
+      return;
+    }
     if (event.target.closest("[data-open-create-test]")) {
       event.preventDefault();
       openCreateTestDialog();

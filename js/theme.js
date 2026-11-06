@@ -1,6 +1,6 @@
 export function initTheme(){
   const saved=localStorage.getItem("maihoc-theme");
-  const dark=saved ? saved==="dark" : window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const dark=saved ? saved==="dark" : location.pathname.startsWith('/school/question-bank') || window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   setTheme(!!dark);
   window.addEventListener('storage', event => {
     if (event.key === 'maihoc-theme' && ['light','dark'].includes(event.newValue)) setTheme(event.newValue === 'dark');

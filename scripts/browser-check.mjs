@@ -1,5 +1,6 @@
 import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from 'node:url';
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import assert from "node:assert/strict";
 const previewPassword = randomUUID();
 const preview = spawn(
   process.execPath,
-  [new URL("./dev-preview.mjs", import.meta.url).pathname],
+  [fileURLToPath(new URL("./dev-preview.mjs", import.meta.url))],
   { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, MAIHOC_PREVIEW_PASSWORD: previewPassword } },
 );
 await new Promise((resolve, reject) => {
@@ -20,6 +21,7 @@ await new Promise((resolve, reject) => {
   preview.once("exit", (code) => reject(new Error(`Preview exited ${code}`)));
 });
 const browser = await chromium.launch({
+  channel: process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),
   headless: true,
   args: ["--no-sandbox"],
 });
@@ -62,7 +64,7 @@ try {
     .getByRole("heading", { name: "Mỗi ngày, tiến bộ một chút." })
     .waitFor();
   await page.screenshot({
-    path: new URL("dashboard-guest.png", directory).pathname,
+    path: fileURLToPath(new URL("dashboard-guest.png", directory)),
     fullPage: true,
   });
   await page.locator("#login-open").click();
@@ -80,7 +82,7 @@ try {
     .waitFor();
   await page.getByRole("heading", { name: /Chào Anh/ }).waitFor();
   await page.screenshot({
-    path: new URL("dashboard-desktop.png", directory).pathname,
+    path: fileURLToPath(new URL("dashboard-desktop.png", directory)),
     fullPage: true,
   });
   const links = [
@@ -165,7 +167,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(origin + "/learning", { waitUntil: "networkidle" }); await dismissDevelopmentNotice(page);
   await page.screenshot({
-    path: new URL("dashboard-mobile.png", directory).pathname,
+    path: fileURLToPath(new URL("dashboard-mobile.png", directory)),
     fullPage: true,
   });
   assert.ok(
@@ -189,7 +191,7 @@ try {
   await page.locator("#login-open").waitFor();
   await page.locator("#login-open").click();
   await page.screenshot({
-    path: new URL("login-desktop.png", directory).pathname,
+    path: fileURLToPath(new URL("login-desktop.png", directory)),
     fullPage: true,
   });
   await page.locator("#login-form [name=email]").fill("teacher@maihoc.test");
@@ -200,30 +202,29 @@ try {
     .filter({ hasText: "Thầy Hải Việt" })
     .waitFor();
   await clickSidebar("question-bank");
-  await page.getByRole("heading", { name: "Soạn câu hỏi" }).waitFor();
+  await page.getByRole("heading", { name: "Ngân hàng câu hỏi & Ma trận đề" }).waitFor();
+  await page.locator('[data-qb-results] > .qb-card').first().waitFor();
   await page.screenshot({
-    path: new URL("question-bank-desktop.png", directory).pathname,
+    path: fileURLToPath(new URL("question-bank-desktop.png", directory)),
     fullPage: true,
   });
-  // Teacher creates reviewed content and assigns it; student resumes and submits through the UI.
-  const topicForm=page.locator('[data-platform-form="topic"]');
-  await topicForm.locator('[name="subject"]').fill('Toán');
-  await topicForm.locator('[name="grade"]').fill('12');
-  await topicForm.locator('[name="name"]').fill('Hàm số pilot');
-  await topicForm.locator('[name="version"]').fill('Pilot v1');
-  await topicForm.locator('button[type="submit"]').click();
-  await page.locator('[data-platform-status]').filter({hasText:'Đã lưu thành công.'}).waitFor();
-  const questionForm=page.locator('[data-platform-form="question"]');
-  await questionForm.locator('[name="subject"]').fill('Toán');
-  await questionForm.locator('[name="grade"]').fill('12');
-  await questionForm.locator('[name="type"]').selectOption('short_answer');
-  await questionForm.locator('[name="stem"]').fill('Tính giá trị 1/2');
-  await questionForm.locator('[name="answer"]').fill('0.5');
-  await questionForm.locator('[name="curriculumNodeId"]').selectOption({label:'Hàm số pilot'});
-  await questionForm.locator('[name="source"]').fill('Giáo viên tự soạn trong kiểm thử');
-  await questionForm.locator('button[type="submit"]').click();
-  await page.getByRole('button',{name:'Duyệt',exact:true}).click();
-  await page.locator('[data-platform-content]').filter({hasText:'approved'}).waitFor();
+  // Local authoring is covered by question-bank-check. Seed the real assessment
+  // through authenticated, permission-checked APIs; delivery/grading stay UI journeys.
+  const platformContext = await page.request.get(origin + '/api/platform/context').then(response => response.json());
+  const questionSchoolId = platformContext.schools[0].id;
+  const bankApi = `${origin}/api/platform/schools/${questionSchoolId}`;
+  const topicResponse = await page.request.post(bankApi + '/curriculum', {
+    headers: { Origin: origin }, data: { subject: 'Toán', grade: '12', name: 'Hàm số pilot', version: 'Pilot v1' },
+  });
+  assert.ok(topicResponse.ok(), await topicResponse.text());
+  const topic = await topicResponse.json();
+  const questionResponse = await page.request.post(bankApi + '/questions', {
+    headers: { Origin: origin }, data: { subject: 'Toán', grade: '12', type: 'short_answer', stem: 'Tính giá trị 1/2', choices: [], answer: '0.5', curriculumNodeId: topic.id, source: 'Giáo viên tự soạn trong kiểm thử' },
+  });
+  assert.ok(questionResponse.ok(), await questionResponse.text());
+  const question = await questionResponse.json();
+  const approval = await page.request.post(bankApi + `/questions/${question.id}/approve`, { headers: { Origin: origin }, data: {} });
+  assert.ok(approval.ok(), await approval.text());
   await clickSidebar("assignment-management");
   const assignmentForm=page.locator('[data-platform-form="assignment"]');
   await assignmentForm.locator('[name="title"]').fill('Bài kiểm tra pilot');
@@ -252,7 +253,7 @@ try {
   assert.equal(await page.locator('[data-attempt-form] textarea').inputValue(),'1/2','Unsynced local draft recovers after reload');
   await page.locator('[data-attempt-form] button[type="submit"]').click();
   await page.getByRole('heading',{name:'Kết quả 10 / 10'}).waitFor();
-  await page.screenshot({path:new URL('native-assessment.png',directory).pathname,fullPage:true});
+  await page.screenshot({path:fileURLToPath(new URL('native-assessment.png', directory)),fullPage:true});
   await page.getByRole('button',{name:'Xem kết quả theo chuyên đề',exact:true}).click();
   await page.getByRole('button',{name:'Luyện chuyên đề',exact:true}).click();
   await page.locator('[data-attempt-form] textarea').fill('0,5');

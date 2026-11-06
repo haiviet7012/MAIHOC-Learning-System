@@ -34,6 +34,7 @@ try {
     });
   });
   browser = await chromium.launch({
+    channel: process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),
     headless: true,
     args: ["--no-sandbox", "--enable-unsafe-swiftshader"],
   });
@@ -277,7 +278,7 @@ try {
   ]) {
     await page.goto(origin + path); await dismissDevelopmentNotice(page);
     await page.locator("body[data-school-ui]").waitFor();
-    await page.locator(".portal-panel").first().waitFor();
+    await page.locator(path === '/school/question-bank' ? '.qb-card' : '.portal-panel').first().waitFor();
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth + 1,
