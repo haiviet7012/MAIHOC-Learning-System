@@ -10,7 +10,7 @@ test('Weighted grade averages keep subjects and terms separate',()=>{
  assert.deepEqual(gradeSummary([row(8,1),row(6,2),row(10,1,'HK2')]).map(x=>x.average),[6.67,10]);
 });
 test('Management enforces school/class/subject scope, roster, and duplicate attendance updates',async t=>{
- const f=await testDatabase(),db=f.db;t.after(()=>f.close());
+ const f=await testDatabase({ memoryOnly: true }),db=f.db;t.after(()=>f.close());
  await ensureSchoolNotifications(db);
  for(const [id,role,level] of [[1,'admin',2],[2,'admin',1],[3,'user',0],[4,'user',0],[5,'admin',1]])await db.query('INSERT INTO users(id,name,email,password_hash,role,admin_level) VALUES($1,$2,$3,$4,$5,$6)',[id,`U${id}`,`u${id}@test.local`,'hash',role,level]);
  await db.query("INSERT INTO schools(id,code,name) VALUES(1,'S','School')");
