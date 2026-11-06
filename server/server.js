@@ -34,6 +34,8 @@ import { normalizeAnswerKey, normalizeAnswerKeyDocument, gradeAnswers } from "./
 import { solveExamDocument, isAIQuotaError } from "./grading/exam-solution-engine.js";
 import { installLiteratureTutor } from "./grading/literature-tutor.js";
 import { installLiteratureRoutes } from "./grading/literature-routes.js";
+import { installNationalExamRoutes } from "./national-exams.js";
+import { ensureNationalExamBank, installNationalExamBank } from './national-exam-bank.js';
 import { installStudyRooms } from "./study-rooms/server.js";
 import { installTestsModule } from "./tests-module/index.js";
 import {
@@ -1364,7 +1366,7 @@ app.get("/api/learning/recent-activity", requireAuth, async (req, res) => {
   const now = Date.now();
   const cutoff = new Date(now - 86400000).toISOString().slice(0, 19).replace('T', ' ');
   const items = await db.prepare(
-    "SELECT id,type,title,message,created_at AS createdAt FROM notifications WHERE user_id=? AND created_at>? ORDER BY created_at DESC,id DESC"
+    "SELECT id,type,title,message,link,created_at AS createdAt FROM notifications WHERE user_id=? AND created_at>? ORDER BY created_at DESC,id DESC"
   ).all(req.user.id, cutoff);
   res.json({ items: items.map(item => ({ ...item,
     expiresAt: new Date(item.createdAt.replace(' ', 'T') + 'Z').getTime() + 86400000
@@ -1636,6 +1638,7 @@ app.post("/api/exams/:id/submit", requireSameOrigin, async (req, res) => {
     };
   }
 
+  resultPayload.timeSpentSeconds = Math.max(0, Math.min(5400, Math.round(Number(req.body?.timeSpentSeconds) || 0)));
   if (req.user) {
     const saveAttempt = db.transaction(async () => {
       const previous = await db
@@ -2309,6 +2312,9 @@ app.post(
 );
 
 // -------------------- DOCUMENT LIBRARY API --------------------
+
+installNationalExamBank(app, { db, requireAuth, requireSameOrigin, notifyUser, upsertLearningResult });
+installNationalExamRoutes(app, { db, requireAuth, documentResponse, assessmentConfigFor });
 
 app.get("/api/documents", async (req, res) => {
   const isSubordinateAdmin = req.user?.role === "admin" && Number(req.user.adminLevel) < 2;
@@ -3016,6 +3022,7 @@ export function stopPresenceCleanup() {
 export async function initializeApplicationRuntime() {
   await initAuthDatabase();
   await ensureLearningSchema(db);
+  await ensureNationalExamBank(db);
   await initSchoolSystemDatabase(db);
   await ensureAccountUpgrade(db);
   await initChatDatabase();

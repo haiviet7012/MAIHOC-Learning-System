@@ -50,7 +50,7 @@ export function hydrateActivity(container, user) {
     const now = Date.now() + clockOffset;
     items = items.filter(item => item.expiresAt > now);
     target.innerHTML = items.length ? items.map(n =>
-      `<article><span aria-hidden="true">↗</span><div><p>${e(n.title || n.message)}</p><small>${dt(new Date(n.expiresAt - 86400000).toISOString())}</small></div></article>`
+      `<article><span aria-hidden="true">↗</span><div><p>${e(n.title || n.message)}</p><small>${dt(new Date(n.expiresAt - 86400000).toISOString())}</small>${/^\/learning\/national-exams\/results\/\d+$/.test(n.link || '') ? `<button class="button secondary small" type="button" data-action="view-exam-result" data-id="${e(n.link.split('/').at(-1))}">Xem kết quả</button>` : ''}</div></article>`
     ).join('') : '<p>Chưa có hoạt động trong 24 giờ qua.</p>';
     sizeList();
     if (items.length) timer = setTimeout(render, Math.max(1, Math.min(...items.map(n => n.expiresAt)) - now));

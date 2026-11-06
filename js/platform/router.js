@@ -20,6 +20,7 @@ const paths = {
   theory: "/learning/library",
   practice: "/learning/practice",
   "exam-select": "/learning/exams",
+  "national-exam-hub": "/learning/national-exams",
   tests: "/school/tests",
   "ai-solver": "/learning/tutor",
   "study-rooms": "/learning/study-rooms",
@@ -28,6 +29,9 @@ const paths = {
   admin: "/school/admin",
 };
 export function routeUrl(state) {
+  if (state.route === 'exam-result-view') return `/learning/national-exams/results/${encodeURIComponent(state.resultId || 'guest')}`;
+  if (state.route === 'exam-room-view' && state.examDocId)
+    return `/learning/national-exams/${encodeURIComponent(state.examDocId)}/room`;
   if (state.route === 'school-rooms' && state.classroomCode)
     return `/school/rooms/${encodeURIComponent(state.classroomCode)}`;
   if (state.route === 'ielts-skill')
@@ -56,6 +60,10 @@ export function routeUrl(state) {
 }
 export function parseRoute(url) {
   const path = url.pathname.replace(/\/$/, "") || "/";
+  const nationalResult = path.match(/^\/learning\/national-exams\/results\/([^/]+)$/);
+  if (nationalResult) return { route: 'exam-result-view', resultId: decodeURIComponent(nationalResult[1]) };
+  const examRoom = path.match(/^\/learning\/national-exams\/([^/]+)\/room$/);
+  if (examRoom) return { route: 'exam-room-view', examDocId: decodeURIComponent(examRoom[1]), examOrigin: 'national-exam-hub' };
   if (path.startsWith('/school/rooms/')) return {route:'school-rooms', classroomCode:decodeURIComponent(path.slice('/school/rooms/'.length))};
   if (url.searchParams.has("route"))
     return {

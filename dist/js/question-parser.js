@@ -121,7 +121,8 @@ export function parseQuestionText(source) {
         const sourceId = String(Number(heading[1]));
         const section = sectionAt(heading.index);
         const start = heading.index + heading[0].length;
-        const end = headings[index + 1]?.index ?? text.length;
+        const nextSection = sections.find(item => item.index > heading.index)?.index ?? text.length;
+        const end = Math.min(headings[index + 1]?.index ?? text.length, nextSection);
         const body = text.slice(start, end).trim();
         const options = findLabeledItems(body, /(?:^|\s)([A-D])\s*[).]\s*/gu);
         const statements = findLabeledItems(body, /(?:^|\s)([a-d])\s*[).]\s*/gu)
@@ -144,9 +145,8 @@ export function parseQuestionText(source) {
             type = "essay";
         }
 
-        const questionOptions = type === "multiple_choice" && section?.kind === "multiple_choice"
-            ? ["A", "B", "C", "D"].map(id => ({ id, text: "" }))
-            : options;
+        const questionOptions = type === "multiple_choice" && !options.length
+            ? ["A", "B", "C", "D"].map(id => ({ id, text: "" })) : options;
         const questionStatements = type === "true_false"
             ? (statements.length ? statements : ["a", "b", "c", "d"].map(id => ({ id, text: "" })))
             : [];
@@ -155,7 +155,8 @@ export function parseQuestionText(source) {
             section,
             type,
             body,
-            text: type === "multiple_choice" && options.length ? body.slice(0, options[0].start).trim() : body,
+            text: type === "multiple_choice" && options.length ? body.slice(0, options[0].start).trim()
+                : type === "true_false" && statements.length ? body.slice(0, statements[0].start).trim() : body,
             options: questionOptions,
             statements: questionStatements,
             documentOrder: index,
@@ -303,11 +304,11 @@ function questionWithConfiguredSection(question, section, localQuestionNumber) {
     };
     if (section.type === "multiple_choice") {
         normalized.options = (section.options || question.options?.map(option => option.id) || ["A", "B", "C", "D"])
-            .map(id => ({ id: String(id), text: "" }));
+            .map(id => ({ id: String(id), text: question.options?.find(option => String(option.id) === String(id))?.text || "" }));
     }
     if (section.type === "true_false") {
         normalized.statements = (section.statements || question.statements?.map(statement => statement.id) || ["a", "b", "c", "d"])
-            .map(id => ({ id: String(id), text: "" }));
+            .map(id => ({ id: String(id), text: question.statements?.find(statement => String(statement.id) === String(id))?.text || "" }));
     }
     return normalized;
 }
