@@ -15,7 +15,7 @@ test('Management enforces school/class/subject scope, roster, and duplicate atte
  for(const [id,role,level] of [[1,'admin',2],[2,'admin',1],[3,'user',0],[4,'user',0],[5,'admin',1]])await db.query('INSERT INTO users(id,name,email,password_hash,role,admin_level) VALUES($1,$2,$3,$4,$5,$6)',[id,`U${id}`,`u${id}@test.local`,'hash',role,level]);
  await db.query("INSERT INTO schools(id,code,name) VALUES(1,'S','School')");
  await db.query("INSERT INTO school_memberships(school_id,user_id,role) VALUES(1,2,'teacher'),(1,3,'student'),(1,5,'teacher')");
- await db.query("INSERT INTO academic_years(id,school_id,code,start_date,end_date) VALUES(1,1,'2026','2026-01-01','2026-12-31')");
+ await db.query("INSERT INTO academic_years(school_id,code,start_date,end_date) VALUES(1,'2026','2026-01-01','2026-12-31')");
  await db.query("INSERT INTO classes(id,school_id,academic_year_id,class_code,name,grade_level) VALUES(1,1,1,'10A','10A',10),(2,1,1,'10B','10B',10)");
  await db.query("INSERT INTO teacher_course_assignments(school_id,class_id,teacher_id,subject,kind) VALUES(1,1,2,'Toán','subject')");
  await db.query("INSERT INTO student_enrollments(school_id,academic_year_id,class_id,student_id,reason,approved_by) VALUES(1,1,1,3,'New',1)");
@@ -23,6 +23,10 @@ test('Management enforces school/class/subject scope, roster, and duplicate atte
  app.use('/api/platform',createPlatformRouter({db,requireAuth:(_req,_res,next)=>next(),requireSameOrigin:(req,res,next)=>req.headers.origin==='https://test'?next():res.sendStatus(403),enabled:()=>true}));
  const server=app.listen(0);await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close();});
  const call=(path,user=1,body)=>fetch(`http://localhost:${server.address().port}/api/platform/schools/1/management${path}`,{method:body?'POST':'GET',headers:{'content-type':'application/json','x-user':String(user),origin:'https://test'},...(body?{body:JSON.stringify(body)}:{})});
+ const createYear=body=>fetch(`http://localhost:${server.address().port}/api/platform/schools/1/years`,{method:'POST',headers:{'content-type':'application/json','x-user':'1',origin:'https://test'},body:JSON.stringify(body)});
+ const explicit=await createYear({code:'2026 - 2027',startDate:'2026-09-05',endDate:'2027-06-30'});assert.equal(explicit.status,201);const savedYear=await explicit.json();assert.equal(String(savedYear.start_date).slice(0,10),'2026-09-05');assert.equal(String(savedYear.end_date).slice(0,10),'2027-06-30');
+ const automatic=await createYear({code:'2027 - 2028'});assert.equal(automatic.status,201);const automaticYear=await automatic.json();assert.equal(String(automaticYear.start_date).slice(0,10),'2027-09-05');assert.equal(String(automaticYear.end_date).slice(0,10),'2028-06-30');
+ assert.equal((await createYear({code:'bad-year'})).status,400);
  assert.equal((await call('?classId=2',2)).status,403);
  assert.equal((await call('/board',3,{classId:1,title:'No',body:'No'})).status,403);
  assert.equal((await call('/grade',2,{classId:1,title:'TX1',studentId:3,subject:'Văn',term:'2026.1',score:8,weight:1})).status,403);

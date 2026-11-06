@@ -1,6 +1,6 @@
 import { mountQuestionBank } from './question-bank.js';
 import { mountSchoolManagement } from './school-management.js';
-import { schoolYearOptions } from './school-years.js';
+import { schoolYearOptions, schoolYearPayload } from './school-years.js';
 import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
@@ -199,7 +199,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       const homeroomIds=data.homeroomClassIds||[];
       const transferClasses=admin?classes:classes.filter(c=>homeroomIds.some(id=>String(id)===String(c.id)));
       content.className='school-management-stack';
-      content.innerHTML=`<section class="portal-panel"><h2>Năm học</h2><label>Năm học<select data-management-year>${yearOptions.map(y=>`<option value="${e(y.code)}" ${selectedYear===y.code?'selected':''}>${e(y.code)}</option>`).join('')}</select></label>${!year?`<p class="muted">Năm học này chưa được tạo trong trường.</p>${admin?`<form data-platform-form="year"><input type="hidden" name="code" value="${e(selectedYear)}"><button class="button primary">Tạo năm học đã chọn</button></form><p class="muted">Mặc định từ 01/08 đến 31/07 năm sau.</p>`:''}`:''}</section><div data-management-modules></div>`;
+      content.innerHTML=`<section class="portal-panel"><h2>Năm học</h2><label>Năm học<select data-management-year>${yearOptions.map(y=>`<option value="${e(y.code)}" ${selectedYear===y.code?'selected':''}>${e(y.code)}</option>`).join('')}</select></label>${!year?`<p class="muted">Năm học này chưa được tạo trong trường.</p>${admin?`<form data-platform-form="year"><input type="hidden" name="code" value="${e(selectedYear)}"><button class="button primary">Tạo năm học đã chọn</button></form><p class="muted">Năm học bắt đầu từ 05/09 và kết thúc vào 30/06 năm sau.</p>`:''}`:''}</section><div data-management-modules></div>`;
       disposeManagement=mountSchoolManagement(content.querySelector('[data-management-modules]'),{schoolId,classes,admin,homeroomClassIds:homeroomIds});
       if(year&&admin)content.insertAdjacentHTML('beforeend',form('term','Thêm học kỳ',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+`<label>Học kỳ (năm.kỳ)<input name="name" required pattern="${yearOptions.find(y=>y.code===selectedYear).start}\\.[12]" placeholder="${yearOptions.find(y=>y.code===selectedYear).start}.1"></label>`+input('startDate','Bắt đầu','date')+input('endDate','Kết thúc','date')));
       if(admin&&!year)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Thêm học kỳ</h2><p>Tạo năm học đã chọn trước khi thêm học kỳ.</p></section>');
@@ -465,6 +465,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
         }
         const body = Object.fromEntries(new FormData(target));
         const kind = target.dataset.platformForm;
+        if(kind==='year')Object.assign(body,schoolYearPayload(body.code));
         if (target.dataset.platformGrade) {
           await request(
             schoolUrl(`/attempts/${target.dataset.platformGrade}/grade`),
