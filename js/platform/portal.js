@@ -133,6 +133,11 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       return;
     }
     context = await request("/api/platform/context");
+    if (!context.enabled && route === 'organization' && (user.isTeacher || user.isSuperAdmin || user.role === 'teacher' || user.role === 'admin')) {
+      container.innerHTML = header('Quản lý nhà trường', 'Backend chưa bật nền tảng quản lý School.') +
+        `<section class="portal-panel"><h2>Cần quản trị viên kích hoạt</h2><p>PR đã bổ sung chức năng, nhưng môi trường backend hiện trả về enabled=false. Các mục bên dưới sẽ dùng được khi nền tảng được bật và tài khoản được phân công vào trường.</p><div class="grid three">${['Sổ liên lạc điện tử / Nhắn tin','Bảng tin lớp học','Thời khóa biểu & Lịch sự kiện','Sổ điểm điện tử','Theo dõi chuyên cần'].map(title => `<article class="card"><h3>${title}</h3><p class="muted">Chờ kích hoạt nền tảng</p></article>`).join('')}</div><details><summary>Hướng dẫn cho quản trị viên triển khai</summary><ol><li>Chạy migration School trên backend theo quy trình sao lưu hiện có: <code>npm run db:migrate</code>.</li><li>Nếu lớp hiện tại chưa ánh xạ vào trường/năm học, cấu hình LEGACY_SCHOOL_* / LEGACY_YEAR_* / LEGACY_ADMIN_ID và chạy <code>npm run db:bootstrap</code> để xem trước; kiểm tra rồi mới dùng <code>npm run db:bootstrap -- --apply</code>. Không chạy lại nếu đã ánh xạ.</li><li>Trong Environment của backend Render, đặt <code>MAIHOC_PLATFORM_ENABLED=1</code>, lưu và deploy lại backend.</li><li>Đảm bảo tài khoản giáo viên có phân công trong trường. Cấu hình email và mail worker để gửi thông báo phụ huynh.</li></ol><p>Merge code hoặc deploy frontend không tự thay đổi biến môi trường backend.</p></details><button class="button secondary" data-route="school">Lớp của bạn</button></section>`;
+      return;
+    }
     if (!context.enabled) {
       container.innerHTML =
         header(
