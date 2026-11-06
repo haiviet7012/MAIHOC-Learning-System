@@ -1,6 +1,6 @@
 {
   "files": {
-    "assets/app-5V7QDCL3.js": "9f903b28e64b09413a8bff7786af5fadf2d98c430e25637f1ba19eb0069bd851",
+    "assets/app-4DMMJBJ7.js": "721cbfacbee04c6ed83dc66352e4500be63eaf982d1b111414f95552e563d215",
     "assets/chat-OVV55JQU.js": "ffc88ab9689868361cbe29c5169258051871259c846cdb733f3ef402156555e0",
     "assets/chunk-3CRNBVE7.js": "1b09be9161b13b5b893516e3fd718f0c21eb174571269f40621e462cd7d2d146",
     "assets/chunk-CMHF5C5H.js": "f0afa9db7737d83232dfe378bac2f698702fc5788337d17fb448410e49dc53be",
@@ -55,7 +55,7 @@
     "images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
     "images/poster.jpg": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
-    "index.html": "91a4d8a545d2a4479911552ca8d99a7ba78ed4f770403f0174e65d0686a5f52f",
+    "index.html": "12176f5e9e8c952a7c81f0f798ff1497e56fa0531b89b94835e69602ff549338",
     "js/account-features.js": "f81a85558de3dce090004fcf79fc208f062b5712e312c2f4546dfc77a3fe17fc",
     "js/account-upgrade.js": "00352b4fb78cf2afa46657924d929f1a55fc4aae471e36c0b663190010ba0af1",
     "js/ai-solver/index.js": "c2b24d2cd3e330addaf02d07d15acb72ce6845f87c7ff29b22deff11aa3bc1b7",
@@ -95,7 +95,7 @@
     "js/platform/portal.js": "7c5de0efa5daf81a0f511da9b6408c661269caaa144f26f38ec7bf1feb060010",
     "js/platform/question-bank-math.js": "fb717dfbc2d507acd3be774aa8d1cae2a9109db54a9d65a4a843a54f27222a68",
     "js/platform/question-bank-model.js": "22faf7c0e08009ab95afb47bee6278f26b55ccfc3be3c94ea035099448b4e721",
-    "js/platform/question-bank.js": "8a308ab9434bf19cef8ec4e36475439d38973d3ced437542523dd30a42cec920",
+    "js/platform/question-bank.js": "f31d0ca49e7b6bdacfc4cd9fd6f4d965cbce51d85efcc92a1e016efe9ad9bf3d",
     "js/platform/router.js": "d492da4fd64247879cc38c7000bd168fbf7c18ecc2d882531e55e9f285529f76",
     "js/platform/school-access.js": "0021d03cbf2a2faa75bc46346f885f1b1195cbdb138e90840b2557b53aba0120",
     "js/platform/school-documents.js": "96ea07d9a71684db56a7db63e70361d7b7dfea4425cd14536a24ab8199003722",

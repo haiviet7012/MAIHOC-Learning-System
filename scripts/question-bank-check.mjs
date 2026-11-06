@@ -53,12 +53,13 @@ try {
   await page.locator('[data-qb-filters] [name="type"]').selectOption('short_answer');
   assert.equal(await resultCount(), 1);
   await click('reset');
-  await page.locator('[data-qb-tab="pro"]').click(); assert.equal(await resultCount(), 2);
+  assert.equal(await page.locator('[data-qb-tab="pro"]').count(), 0);
+  assert.equal(await page.locator('[data-qb-account]').count(), 0);
   await page.locator('[data-qb-tab="pending"]').click(); assert.equal(await resultCount(), 8);
   await click('approve');
   await page.waitForFunction(() => document.querySelector('[data-qb-results]')?.children.length === 7);
   await page.locator('[data-qb-tab="personal"]').click(); assert.equal(await resultCount(), 2);
-  console.log('Intersecting filters, all four repositories and review approval pass.');
+  console.log('Intersecting filters, remaining repositories and review approval pass.');
 
   await click('add');
   await dialog.locator('[name="topic"]').fill('Hàm số');
@@ -124,19 +125,13 @@ try {
   await page.locator('[data-qb-action="last-exam"]').waitFor();
   console.log('Matrix inventory errors, three generated exam codes, JSON download and Tests handoff pass.');
 
-  await page.locator('[data-qb-account]').selectOption('free');
-  assert.equal(await page.locator('[data-qb-results] .qb-paywall').count(), 1);
-  await click('matrix'); await dialog.locator('.qb-paywall').waitFor();
-  await page.keyboard.press('Escape');
-  await page.locator('[data-qb-tab="personal"]').click();
-  assert.equal(await page.locator('[data-qb-results] .qb-paywall').count(), 0);
-  await click('clone'); await dialog.locator('.qb-paywall').waitFor(); await click('close');
-  await page.locator('[data-qb-account]').selectOption('pro');
+  assert.equal(await page.locator('[data-qb-account]').count(), 0);
+  assert.equal(await page.locator('[data-qb-tab="pro"]').count(), 0);
   await page.locator('[data-qb-tab="school"]').click();
   await page.locator('#theme-toggle').click();
   assert.ok(await page.locator('html').evaluate(el => !el.classList.contains('dark')));
   await page.screenshot({ path: 'test-results/question-bank-desktop-light.png', fullPage: true });
-  console.log('Free/Pro gates, personal repository access and theme switching pass.');
+  console.log('Removed demo account switch/Pro tab and theme switching pass.');
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#theme-toggle').click();
