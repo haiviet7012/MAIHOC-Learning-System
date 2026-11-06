@@ -1,6 +1,17 @@
 import { aiError, geminiClient } from "../ai-provider.js";
 import { literatureConfig } from "./literature-provider.js";
 
+function parseJsonContent(content) {
+  if (typeof content !== "string" || !content.trim()) throw new Error("Missing content");
+  // Some chat models wrap an otherwise complete JSON object in a Markdown fence.
+  // Accept only that complete wrapper, never extract partial objects from prose.
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  const parsed = JSON.parse(fenced ? fenced[1] : trimmed);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid object");
+  return parsed;
+}
+
 async function nvidiaGenerate(config, { instruction, data }, fetcher) {
   let response;
   try {
@@ -21,15 +32,16 @@ async function nvidiaGenerate(config, { instruction, data }, fetcher) {
     if (response.status >= 500) throw aiError("AI_PROVIDER_UNAVAILABLE", "Dịch vụ NVIDIA tạm thời chưa sẵn sàng.", 503, true);
     throw aiError("AI_REQUEST_INVALID", "NVIDIA không chấp nhận model hoặc tham số của yêu cầu.", 502);
   }
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw aiError("AI_RESPONSE_INVALID", "NVIDIA trả phản hồi không phải JSON hợp lệ.", 502); }
+  const choice = payload?.choices?.[0];
+  if (choice?.finish_reason === "length") {
+    throw aiError("AI_RESPONSE_TRUNCATED", "Kết quả NVIDIA bị cắt do hết giới hạn token. Quản trị viên cần tăng LITERATURE_AI_MAX_TOKENS hoặc dùng model chat có phản hồi ngắn hơn.", 502);
+  }
   try {
-    const payload = await response.json();
-    const choice = payload.choices?.[0];
     if (choice?.finish_reason !== "stop") throw new Error("Incomplete response");
-    const content = choice.message?.content;
-    if (typeof content !== "string" || !content.trim()) throw new Error("Missing content");
-    const parsed = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid object");
-    return parsed;
+    return parseJsonContent(choice.message?.content);
   } catch {
     throw aiError("AI_RESPONSE_INVALID", "NVIDIA chưa trả JSON hoàn chỉnh để chấm Văn. Cần chấm lại.", 502);
   }
@@ -57,6 +69,6 @@ export function createLiteratureGenerator({ apiKey, modelName, provider, baseUrl
       generationConfig: { temperature: 0, responseMimeType: "application/json" }
     });
     const result = await model.generateContent({ contents: [{ role: "user", parts: [{ text: JSON.stringify(data) }] }] });
-    return JSON.parse(result.response.text());
+    return parseJsonContent(result.response.text());
   };
 }

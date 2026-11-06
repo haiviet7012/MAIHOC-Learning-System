@@ -1,6 +1,6 @@
 {
   "files": {
-    "assets/app-7YENTHUL.js": "1d91ac7a0bdf36378500e7b90e9564d9cb8b0983c0c5fb9c0320859c00adf0cf",
+    "assets/app-RSQ75UCK.js": "7b777a4f34d800b6eb6a89bd460951101c09c31e14d492f1ab15b13958b49037",
     "assets/chat-OVV55JQU.js": "ffc88ab9689868361cbe29c5169258051871259c846cdb733f3ef402156555e0",
     "assets/chunk-3CRNBVE7.js": "1b09be9161b13b5b893516e3fd718f0c21eb174571269f40621e462cd7d2d146",
     "assets/chunk-CMHF5C5H.js": "f0afa9db7737d83232dfe378bac2f698702fc5788337d17fb448410e49dc53be",
@@ -47,7 +47,7 @@
     "images/mai-hoc-hero-logo.png": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
     "images/mai-hoc-logo.jpg": "762727bfaa3d6d2c3c4fe285aeee198baa21a2778d7caf1b5d565cc55d9bba52",
     "images/poster.jpg": "5b805594a0dcf51b42677074b260dc705f1669065f6322e89130f2702fca3fe7",
-    "index.html": "a8c1bc269bbb8812fe9602b7448c18a690ab7ec7af8b64d6e6c9a17a01544472",
+    "index.html": "dd09fc5a1189d62328d3d670afd12763f999dd5464699f3cfe3e95342f761f1c",
     "js/account-features.js": "f81a85558de3dce090004fcf79fc208f062b5712e312c2f4546dfc77a3fe17fc",
     "js/account-upgrade.js": "377eb936d2f0742a3a8ae5129485434ea828f167c23706f938437e953824fbca",
     "js/ai-solver/index.js": "77376069fc1e9ee8f59a67427b7ae508d480d3333942d45def0b544527ea36ec",
@@ -75,7 +75,7 @@
     "js/platform/classroom-shell.js": "cbe13d00ad26e280e2401d31abde27a43acb55e76a603507260cc6b3a7a6937b",
     "js/platform/learning-advisor.js": "62c2f10d53fc15303b79d41b8677b9d12a631594d7ed722be16cd62063d77abf",
     "js/platform/learning.js": "e13bfb9580af7abe5b964b56c52b6ccb156839c06a989754dd638810479129cc",
-    "js/platform/literature.js": "7ee7c5a41175f64ae7fbb93db1ff9d00f93840871a52bc48d7fad1133768c2d4",
+    "js/platform/literature.js": "a901b50a18e840af75f74caad9de0fec6af58dbdcda193fab2884fe38ee5ed4c",
     "js/platform/portal.js": "ca87fe0bd3b34c5269e7c241e8b22f9647bf628794eda906a116ad2d7bc1e414",
     "js/platform/router.js": "98f65f445785cb4a7138eb55706de3a82e2f2054acb24962e4346a761ec48147",
     "js/platform/school-access.js": "0021d03cbf2a2faa75bc46346f885f1b1195cbdb138e90840b2557b53aba0120",

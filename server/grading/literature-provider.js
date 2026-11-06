@@ -21,6 +21,9 @@ export function literatureConfig(env = process.env) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(model) || model.length > 200) {
     throw aiError("AI_MODEL_MISSING", "LITERATURE_AI_MODEL cần ID dạng namespace/model trong NVIDIA API Catalog.");
   }
+  if (/(?:^|[\/._-])(?:embed(?:ding|qa)?s?|rerank(?:er|qa)?)(?:$|[._-])/i.test(model)) {
+    throw aiError("AI_MODEL_UNSUPPORTED", "LITERATURE_AI_MODEL đang là model embedding/rerank, không thể chấm Văn. Hãy chọn model chat/instruct hỗ trợ sinh văn bản trên NVIDIA.");
+  }
   let url;
   try { url = new URL(configValue(env.LITERATURE_AI_BASE_URL) || nvidiaBaseUrl); }
   catch { throw aiError("AI_BASE_URL_INVALID", "LITERATURE_AI_BASE_URL không hợp lệ."); }

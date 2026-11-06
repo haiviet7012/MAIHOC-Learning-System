@@ -183,3 +183,21 @@ test("Real grading HTTP route dispatches to NVIDIA and preserves the rubric/prov
   assert.equal(result.score, null);
   assert.equal(calls, 1);
 });
+
+test('Complete Markdown-fenced JSON is accepted, but prose, partial JSON and truncation stay rejected', async () => {
+  const valid = createLiteratureGenerator({ env, fetcher: async () => resultResponse('```json\n{"questions":[]}\n```') });
+  assert.deepEqual(await valid({ instruction: 'JSON', data: {} }), { questions: [] });
+  for (const content of ['Lời giải: {"questions":[]}', '```json\n{"questions":[]\n```']) {
+    const generate = createLiteratureGenerator({ env, fetcher: async () => resultResponse(content) });
+    await assert.rejects(() => generate({ instruction: 'JSON', data: {} }), e => e.code === 'AI_RESPONSE_INVALID');
+  }
+  const truncated = createLiteratureGenerator({ env, fetcher: async () => resultResponse('{"questions":[]}', 'length') });
+  await assert.rejects(() => truncated({ instruction: 'JSON', data: {} }), e => e.code === 'AI_RESPONSE_TRUNCATED');
+});
+
+test('Embedding and reranking models are rejected locally with actionable diagnostics', async () => {
+  for (const model of ['nvidia/nemotron-3.5-embed-1b', 'nvidia/nv-embedqa-e5-v5', 'nvidia/llama-3.2-nv-rerankqa-1b-v2', 'nvidia/embedding-model']) {
+    const generate = createLiteratureGenerator({ env: { ...env, LITERATURE_AI_MODEL: model }, fetcher: async () => { throw new Error('must not call'); } });
+    await assert.rejects(() => generate({ instruction: 'JSON', data: {} }), e => e.code === 'AI_MODEL_UNSUPPORTED');
+  }
+});
