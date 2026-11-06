@@ -21,7 +21,7 @@ export async function ensureLearningSchema(db) {
   }
 }
 
-export const TIMETABLE_SUBJECTS = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'IELTS', 'Tự học'];
+export const TIMETABLE_SUBJECTS = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'GDQP-AN', 'GDDP', 'IELTS', 'Tự học'];
 export function normalizeTimetable(row) {
   if (!row) return null;
   if (row.layout_version === 2) return { ...row, layoutVersion: 2, legacyCells: row.legacy_cells };

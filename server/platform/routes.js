@@ -14,6 +14,7 @@ import {
   fail,
   integer,
   membership,
+  homeroomPermission,
   superAdmin,
   text,
   assertAttemptOwner,
@@ -110,6 +111,7 @@ export function createPlatformRouter({
             );
       res.json({
         classes,
+        homeroomClassIds: member.role==='school_admin'?classes.map(c=>c.id):(await rows(db,"SELECT class_id FROM teacher_course_assignments WHERE school_id=$1 AND teacher_id=$2 AND kind='homeroom'",[sid,req.user.id])).map(c=>c.class_id),
         terms: await rows(
           db,
           "SELECT * FROM terms WHERE school_id=$1 ORDER BY start_date DESC",
@@ -144,8 +146,10 @@ export function createPlatformRouter({
     "/schools/:schoolId/years",
     wrap(async (req, res) => {
       await school(req, ["school_admin"]);
-      const start = date(req.body.startDate, "Ngày bắt đầu"),
-        end = date(req.body.endDate, "Ngày kết thúc");
+      const yearMatch=/^(\d{4})\s*-\s*(\d{4})$/.exec(String(req.body.code||''));
+      const canonical=yearMatch&&Number(yearMatch[2])===Number(yearMatch[1])+1;
+      const start = date(req.body.startDate || (canonical?`${yearMatch[1]}-08-01`:''), "Ngày bắt đầu"),
+        end = date(req.body.endDate || (canonical?`${yearMatch[2]}-07-31`:''), "Ngày kết thúc");
       if (end <= start) fail("Năm học phải kết thúc sau ngày bắt đầu.");
       const record = await db.transaction(async () => {
         const r = await one(
@@ -176,6 +180,9 @@ export function createPlatformRouter({
         [req.params.schoolId, integer(req.body.academicYearId, "Năm học")],
       );
       if (!year) fail("Năm học không thuộc trường.");
+      const termName=String(req.body.name||'');
+      const startYear=/^(\d{4})/.exec(year.code)?.[1]||String(new Date(year.start_date).getUTCFullYear());
+      if(!new RegExp(`^${startYear}\\.[12]$`).test(termName)) fail(`Học kỳ phải có định dạng ${startYear}.1 hoặc ${startYear}.2.`);
       const start = date(req.body.startDate, "Bắt đầu"),
         end = date(req.body.endDate, "Kết thúc");
       if (
@@ -319,6 +326,7 @@ export function createPlatformRouter({
         [req.params.schoolId, classId],
       );
       if (!cls) fail("Lớp không thuộc trường.", 404);
+      const enrollmentMember=await homeroomPermission(db,req.user,req.params.schoolId,classId);
       const users = await rows(
         db,
         "SELECT id,email,role,admin_level FROM users WHERE lower(email)=ANY($1::text[])",
@@ -347,6 +355,7 @@ export function createPlatformRouter({
           [req.params.schoolId, cls.academic_year_id, user.id],
         );
         if (String(current?.class_id) === String(classId)) continue;
+        if(current&&enrollmentMember.role!=='school_admin') await homeroomPermission(db,req.user,req.params.schoolId,current.class_id);
         await db.query(
           "UPDATE student_enrollments SET status='ended',ended_at=now() WHERE school_id=$1 AND academic_year_id=$2 AND student_id=$3 AND status='active'",
           [req.params.schoolId, cls.academic_year_id, user.id],
@@ -378,7 +387,7 @@ export function createPlatformRouter({
   router.post(
     "/schools/:schoolId/enrollments",
     wrap(async (req, res) => {
-      await school(req, ["school_admin"]);
+      await school(req, ["school_admin", "teacher"]);
       res.json(
         await enroll(
           req,

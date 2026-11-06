@@ -33,3 +33,13 @@ Trong School → Quản lý nhà trường, chọn trường và lớp để m�
 - Excel gồm tổng hợp, điểm/chuyên cần, dữ liệu biểu đồ, hoạt động và ghi chú. PDF dùng font Unicode DejaVuSans có sẵn, hỗ trợ tiếng Việt, tổng hợp và chi tiết. Xuất báo cáo chỉ lấy dữ liệu đã qua kiểm tra quyền trên backend.
 - Feedback được lưu bằng notifyUser vào notifications đúng một học sinh thuộc lớp; không đăng lên bảng tin hay gửi toàn lớp, không tự gửi email phụ huynh.
 - Không cần migration mới cho báo cáo/feedback ngoài migration 011 đã dùng cho sổ điểm/chuyên cần. Cần deploy cả backend và frontend.
+
+## Bố cục quản lý và năm học
+
+Quản lý nhà trường chỉ giữ các khối rộng toàn trang, cách nhau 24px: năm học, lịch/sự kiện, sổ điểm, chuyên cần (chủ nhiệm/quản trị), thêm học kỳ (quản trị), xếp/chuyển lớp (chủ nhiệm/quản trị). Sổ liên lạc/bảng tin và các form quản trị khác được bỏ khỏi trang; dữ liệu cũ không bị xóa.
+
+Bộ chọn năm học có bốn lựa chọn dựa theo năm lịch tại Việt Nam: năm hiện tại trừ 1 đến năm hiện tại cộng 2. Ví dụ 2026: 2025–2026 đến 2028–2029; sang 2027 sẽ thành 2026–2027 đến 2029–2030. Chọn năm lọc lớp và form học kỳ; tạo năm chưa có dùng khoảng mặc định 01/08–31/07, không sửa các năm đã lưu. Học kỳ mới phải là năm.kỳ, ví dụ 2025.1/2025.2, khớp năm học được chọn. Tên học kỳ cũ không tự đổi.
+
+Giáo viên bộ môn không ghi/xem dữ liệu chuyên cần trong quản lý và báo cáo; API điểm danh/xếp lớp kiểm tra quyền chủ nhiệm hoặc quản trị. Giáo viên chủ nhiệm chỉ xếp vào lớp mình chủ nhiệm; chuyển học sinh từ lớp khác cũng cần quyền chủ nhiệm lớp nguồn, nếu không phải nhờ quản trị trường. Quản trị có thể chuyển trong phạm vi trường.
+
+Thời khóa biểu hỗ trợ thêm GDQP-AN và GDDP, kể cả nhập/xuất Excel và lưu backend.
