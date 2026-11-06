@@ -59,6 +59,8 @@ test('THPT API uses real submissions, counts unique completed exams and protects
   const data = await response.json();
   assert.deepEqual(data.stats, { total: 2, completed: 2, average: 6.5 });
   const math = data.exams.find(exam => exam.id === 'N101');
+  assert.ok(math.createdAt); assert.ok(math.lastCompletedAt);
+  assert.equal(guest.exams.find(e => e.id === 'N101').lastCompletedAt, null);
   assert.equal(math.bestScore, 8);
   assert.equal(math.attemptCount, 3);
   assert.equal(math.questionCount, 22);
@@ -70,4 +72,18 @@ test('THPT API uses real submissions, counts unique completed exams and protects
   assert.ok(history.attempts.every(attempt => !Object.hasOwn(attempt, 'answers')));
   assert.equal((await get('/N104/history', 81)).status, 404);
   assert.equal((await (await get('/N101/history', 82)).json()).attempts.length, 1);
+});
+
+test('exam date/status filters combine with subject and search using the current user history', () => {
+  const exams = [
+    { id: 'new', title: 'Toán mới', subject: 'Toán', createdAt: '2026-11-05', completed: false, attemptCount: 100 },
+    { id: 'old', title: 'Toán cũ', subject: 'Toán', createdAt: '2026-11-01', completed: false },
+    { id: 'done', title: 'Toán đã làm', subject: 'Toán', createdAt: '2026-11-06', completed: true, lastCompletedAt: '2026-11-07 01:00:00' },
+  ];
+  const ids = f => filterNationalExams(exams, f).map(q => q.id);
+  assert.deepEqual(ids({}), ['new', 'old', 'done']);
+  assert.deepEqual(ids({ dateOrder: 'oldest' }), ['old', 'new', 'done']);
+  assert.deepEqual(ids({ completion: 'completed', query: 'toan' }), ['done']);
+  assert.deepEqual(ids({ completion: 'unanswered' }), ['new', 'old']);
+  assert.deepEqual(ids({ completion: 'all' }), ['done', 'new', 'old']);
 });

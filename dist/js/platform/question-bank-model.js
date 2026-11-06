@@ -1,3 +1,4 @@
+import { filterContentTimeline } from './content-filters.js';
 import { questionFingerprint, uniqueQuestions } from './question-identity.js';
 export { questionFingerprint, uniqueQuestions } from './question-identity.js';
 export const LEVELS = { nb: 'Nhận biết', th: 'Thông hiểu', vd: 'Vận dụng', vdc: 'Vận dụng cao' };
@@ -26,12 +27,12 @@ export function normalizeSearch(value) {
   return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 }
 export function filterQuestions(rows, filters, userId) {
-  return uniqueQuestions(rows.filter(q => {
+  return filterContentTimeline(uniqueQuestions(rows.filter(q => {
     const tab = filters.tab || 'school';
     const inTab = tab === 'personal' ? String(q.owner) === String(userId) : tab === 'pending' ? q.status === 'draft' && q.bank === 'school' : q.status === 'approved' && q.bank === tab;
     return inTab && (!filters.search || normalizeSearch([q.id, q.stem, q.topic, ...q.choices].join(' ')).includes(normalizeSearch(filters.search))) &&
       ['subject', 'grade', 'type', 'level'].every(key => !filters[key] || String(q[key]) === filters[key]);
-  }));
+  })), filters);
 }
 export function needsReview(q) { return q.level === 'nb' && q.attempts > 0 && q.rate < 40; }
 export function validateQuestion(q) {
@@ -83,7 +84,7 @@ export function buildExam(rows, { title = 'Đề kiểm tra từ Ngân hàng câ
 
 export function generateVariants(original, existing = []) {
   return uniqueQuestions([2, 3].map((n, i) => {
-    const q = { ...clone(original), id: `AI-${globalThis.crypto.randomUUID()}`, status: 'draft', ai: true, attempts: 0, rate: null, uses: 0, bank: 'school', reviewer: '', createdAt: new Date().toISOString().slice(0, 10) };
+    const q = { ...clone(original), id: `AI-${globalThis.crypto.randomUUID()}`, status: 'draft', completed: false, lastCompletedAt: null, ai: true, attempts: 0, rate: null, uses: 0, bank: 'school', reviewer: '', createdAt: new Date().toISOString() };
     const math = original.subject === 'Toán', physics = original.subject === 'Vật lý';
     if (math || physics) {
       const answer = math ? n * n : n * 10;

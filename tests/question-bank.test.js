@@ -98,3 +98,21 @@ test('repository rejects duplicate inserts/edits and removal survives reload wit
   assert.equal(exam.variants[0].questions[0].id, q.id);
   assert.throws(() => repo.remove('missing'), /Không tìm thấy/);
 });
+
+test('timeline filters use personal completion, real dates and deterministic fallbacks', () => {
+  const q = rows[1];
+  const items = [
+    { ...q, id: 'a', stem: 'A', createdAt: '2026-11-01T08:00:00Z', attempts: 999 },
+    { ...q, id: 'b', stem: 'B', createdAt: '2026-11-03T08:00:00Z' },
+    { ...q, id: 'c', stem: 'C', createdAt: '2026-11-02', completed: true, lastCompletedAt: '2026-11-05 07:00:00' },
+    { ...q, id: 'd', stem: 'D', createdAt: '2026-11-04', completed: true, lastCompletedAt: '2026-11-04T08:00:00Z' },
+    { ...q, id: 'e', stem: 'E', createdAt: 'invalid' },
+  ];
+  const ids = filters => filterQuestions(items, { tab: 'school', ...filters }, 17).map(q => q.id);
+  assert.deepEqual(ids({}), ['b', 'a', 'e', 'c', 'd']);
+  assert.deepEqual(ids({ dateOrder: 'oldest' }), ['a', 'b', 'e', 'd', 'c']);
+  assert.deepEqual(ids({ completion: 'unanswered' }), ['b', 'a', 'e']);
+  assert.deepEqual(ids({ completion: 'completed' }), ['c', 'd']);
+  assert.deepEqual(ids({ completion: 'all' }), ['d', 'b', 'c', 'a', 'e']);
+  assert.equal(items[0].id, 'a', 'Filtering never mutates the stored order');
+});

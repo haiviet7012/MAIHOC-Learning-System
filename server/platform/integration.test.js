@@ -1,3 +1,6 @@
+import { questionBankHistory } from '../question-bank-history.js';
+import { ensureNationalExamBank } from '../national-exam-bank.js';
+import { questionFingerprint } from '../../js/platform/question-identity.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -1053,6 +1056,13 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
         assert.equal(resumed.deadline_at, session.deadline_at);
       },
     );
+    await t.test("question completion history belongs to the current learner and ignores other users", async () => {
+      await ensureNationalExamBank(db, { seed: false });
+      const stored = (await db.query('SELECT * FROM question_versions WHERE id=$1', [question.id])).rows[0];
+      const own = await questionBankHistory(db, 2);
+      assert.ok(own.some(item => item.fingerprint === questionFingerprint(stored) && item.lastCompletedAt));
+      assert.deepEqual(await questionBankHistory(db, 3), [], 'Teacher sees no student answers in their own history');
+    });
     await t.test("question deduplication, role gates and soft deletion preserve assessment history", async () => {
       const path = `/api/platform/schools/${schoolA.id}/questions`;
       const source = (await db.query('SELECT * FROM question_versions WHERE id=$1', [question.id])).rows[0];

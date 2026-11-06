@@ -88,9 +88,10 @@ html.dark .qb-kpi-icon.is-amber { color: #f4c46b; }
 .qb-tabs button span { font-weight: 400; font-size: 13px; }
 .qb-tabs button b { border-radius: 5px; padding: 2px 6px; background: var(--qb-purple-soft); font-size: 12px; margin-left: 3px; color: var(--qb-purple); }
 .qb-tabs svg { width: 14px; height: 14px; margin-right: 4px; }
-.qb-filters { display: grid; grid-template-columns: minmax(200px, 1.8fr) 1fr .9fr 1.2fr 1.1fr; gap: 10px; padding: 18px; align-items: end; }
+.qb-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 18px; align-items: end; }
 .qb-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: var(--qb-muted); font-size: 14px; font-weight: 500; margin: 0; }
 .qb-field select, .qb-field input, .qb-field textarea { width: 100%; }
+.qb-search { grid-column: span 2; }
 .qb-filters .qb-field > span { font-size: 12px; }
 .qb-filters :is(select, input) { font-size: 13px !important; }
 .qb-search { position: relative; display: flex; align-items: center; margin: 0; }

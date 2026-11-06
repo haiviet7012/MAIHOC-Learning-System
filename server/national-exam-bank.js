@@ -12,6 +12,11 @@ export async function ensureNationalExamBank(db, { seed = true } = {}) {
     id TEXT PRIMARY KEY, exam_id TEXT NOT NULL, user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     snapshot_json TEXT NOT NULL, started_at BIGINT NOT NULL, deadline BIGINT NOT NULL, result_json TEXT, attempt_id BIGINT);
     CREATE INDEX IF NOT EXISTS national_exam_sessions_user_idx ON national_exam_sessions(user_id,exam_id);`);
+  // Older banks recorded only updated_at. Preserve that earliest available date once.
+  await db.query(`ALTER TABLE national_exam_bank ADD COLUMN IF NOT EXISTS created_at TEXT;
+    UPDATE national_exam_bank SET created_at=updated_at WHERE created_at IS NULL;
+    ALTER TABLE national_exam_bank ALTER COLUMN created_at SET DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'));
+    ALTER TABLE national_exam_bank ALTER COLUMN created_at SET NOT NULL;`);
   if (!seed) return;
   const { exams } = JSON.parse(await readFile(new URL('./national-exam-mock.json', import.meta.url), 'utf8'));
   for (const exam of exams) {
@@ -28,7 +33,7 @@ export async function bankCatalog(db, user) {
     const unlocked = exam.access === 'learn' || canAccessSchool(user);
     const summary = publicNationalExam(exam);
     if (!unlocked) delete summary.questions;
-    return [{ ...summary, locked: !unlocked }];
+    return [{ ...summary, createdAt: row.created_at, locked: !unlocked }];
   });
 }
 

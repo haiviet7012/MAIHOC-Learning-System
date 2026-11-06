@@ -164,6 +164,38 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-qb-status]')?.textContent.includes('đã có trong kho'));
   assert.equal(await page.locator('.qb-variant-card').count(), 0);
   console.log('Delete confirmation/cancel, basket cleanup, persistence and duplicate generation guards pass.');
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  assert.equal((await context.request.get(origin + '/api/question-bank/history')).status(), 200);
+  const fingerprint = await page.evaluate(async () => {
+    const { questionFingerprint } = await import('/js/platform/question-identity.js');
+    const key = Object.keys(localStorage).find(key => key.startsWith('maihoc:question-bank:v1:'));
+    const questions = JSON.parse(localStorage.getItem(key));
+    questions.forEach(q => { q.createdAt = q.id === 'MATH12-089' ? '2024-01-01T00:00:00Z' : q.id === 'PHYS12-042' ? '2028-01-01T00:00:00Z' : '2026-01-01T00:00:00Z'; });
+    localStorage.setItem(key, JSON.stringify(questions));
+    return questionFingerprint(questions.find(q => q.id === 'MATH12-089'));
+  });
+  await page.route('**/api/question-bank/history', route => route.fulfill({ json: { history: [{ fingerprint, lastCompletedAt: '2026-11-07T01:00:00Z' }] } }));
+  await page.reload(); await dismissDevelopmentNotice(page);
+  await page.locator('[data-qb-results] > .qb-card').first().waitFor();
+  await page.locator('[name="completion"]').selectOption('completed');
+  assert.equal(await resultCount(), 1);
+  assert.equal(await page.locator('[data-qb-results] > .qb-card').first().getAttribute('data-qb-card'), 'MATH12-089');
+  await page.locator('[name="completion"]').selectOption('unanswered');
+  assert.equal(await page.locator('[data-qb-results] > [data-qb-card="MATH12-089"]').count(), 0);
+  await page.locator('[name="completion"]').selectOption('all');
+  assert.equal(await page.locator('[data-qb-results] > .qb-card').first().getAttribute('data-qb-card'), 'PHYS12-042');
+  await page.locator('[name="dateOrder"]').selectOption('oldest');
+  assert.equal(await page.locator('[data-qb-results] > .qb-card').first().getAttribute('data-qb-card'), 'MATH12-089');
+  await click('reset');
+  assert.equal(await page.locator('[name="dateOrder"]').inputValue(), 'newest');
+  assert.equal(await page.locator('[name="completion"]').inputValue(), 'unanswered-first');
+  await page.screenshot({ path: 'test-results/question-bank-time-filters.png', fullPage: true });
+  await page.unroute('**/api/question-bank/history');
+  await page.route('**/api/question-bank/history', route => route.fulfill({ status: 503, json: { error: 'Unavailable' } }));
+  await page.reload(); await dismissDevelopmentNotice(page);
+  await page.locator('[name="completion"]:disabled').waitFor();
+  assert.match(await page.locator('[data-qb-status]').innerText(), /Chưa tải được lịch sử/);
+  console.log('Personal completion/date filters, chronological ordering, reset and history error handling pass.');
   assert.deepEqual(errors, []);
   console.log('Mobile layout, floating basket, matrix dialog, import sample and zero browser errors pass.');
 } finally {
