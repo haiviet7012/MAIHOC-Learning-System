@@ -37,6 +37,7 @@ jobs:
       - run: npm run build && npm run check:dist
       - run: node --check physics-lab/physics-lab.js && node --check dist/physics-lab/physics-lab.js
       - run: npx playwright install --with-deps chromium
+      - run: node scripts/question-bank-check.mjs
       - run: npm run test:learning-welcome
       - run: npm run test:school-theme
       - run: npm run test:school-upgrade:browser

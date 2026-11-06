@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { build, transform } from "esbuild";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareQuestionMath } from './vendor-question-math.mjs';
 const root = new URL("../", import.meta.url),
   dist = new URL("dist/", root);
 const sources = ["js", "css", "configs", "study-rooms", "public", "physics-lab"];
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
 const check = process.argv.includes("--check");
+await prepareQuestionMath(check);
 // Keep the browser entry usable on hosts that serve source modules directly.
 const livekit = await build({ absWorkingDir: fileURLToPath(root), entryPoints: ['livekit-client'], bundle: true, minify: true, format: 'esm', target: 'es2022', write: false, legalComments: 'inline' });
 const livekitFile = new URL('js/vendor/livekit-client.js', root);
