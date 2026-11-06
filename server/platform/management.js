@@ -1,3 +1,4 @@
+import { loadSchoolReport, sendReportPdf } from '../school-reports.js';
 import { randomUUID } from 'node:crypto';
 import { membership, classPermission, integer, text, fail, audit } from './policy.js';
 import { enqueueSchoolNotice } from '../school-notifications.js';
@@ -23,6 +24,14 @@ export function installManagement(router,{db}) {
    } else if(write&&member.role!=='school_admin') fail('Chỉ quản trị trường được đăng toàn trường.',403);
    return {sid,cid,member};
  }
+ router.get('/schools/:schoolId/management/reports',wrap(async(req,res)=>{
+   const {sid,cid,member}=await scope(req);
+   if(!cid||member.role==='student') fail('Chỉ giáo viên/quản trị được xem báo cáo lớp.',403);
+   const studentId=req.query.studentId?integer(req.query.studentId,'Học sinh'):null;
+   const report=await loadSchoolReport(db,{schoolId:sid,classId:cid,studentId});
+   if(req.query.format==='pdf') return sendReportPdf(res,report);
+   res.json(report);
+ }));
  router.get('/schools/:schoolId/management',wrap(async(req,res)=>{
    const {sid,cid,member}=await scope(req);
    if(!cid&&member.role!=='school_admin') fail('Hãy chọn lớp.',400);

@@ -37,6 +37,11 @@ test('Management enforces school/class/subject scope, roster, and duplicate atte
  assert.equal((await call('/message',2,{classId:1,title:'Học tập',studentId:3,body:'Tiến bộ',category:'learning'})).status,201);
  const data=await (await call('?classId=1',1)).json();
  assert.equal(data.items.filter(r=>r.kind==='attendance').length,1);assert.equal(data.summaries[0].average,9);
+ const reportResponse=await call('/reports?classId=1',2);assert.equal(reportResponse.status,200);
+ const report=await reportResponse.json();assert.equal(report.attendanceCount,1);assert.equal(report.attendanceRate,0);assert.equal(report.summaries[0].average,9);
+ assert.equal((await call('/reports?classId=1',3)).status,403);
+ assert.equal((await call('/reports?classId=1&studentId=4',2)).status,404);
+ const pdf=await call('/reports?classId=1&format=pdf',2);assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,4).toString(),'%PDF');
  const student=await (await call('?classId=1',3)).json();assert.equal(student.guardians.length,0);
  assert.ok((await db.query("SELECT id FROM school_mail_outbox WHERE event_key LIKE 'management:%'")).rows.length>=3);
 });
