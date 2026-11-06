@@ -167,3 +167,31 @@ test("Generic exact-match engine refuses Literature even when a model answer is 
   assert.equal(result.score, null);
   assert.equal(result.matchedAnswerCount, 0);
 });
+
+test('Invalid rubric gets one fresh repair attempt with original script and exact output IDs', async () => {
+  const answers = { 'II-1': 'Luận điểm có căn cứ.' };
+  let calls = 0;
+  const result = await gradeLiteratureSubmission({ exam: examFixture(), answers, generate: async ({instruction,data}) => {
+    calls++;
+    assert.equal(data.questions[0].studentAnswer, answers['II-1']);
+    assert.ok(instruction.includes('"targetId":"II-1"'));
+    if (calls === 1) return { questions: [] };
+    assert.ok(instruction.includes('Lần trước'));
+    return gradeFixture(answers);
+  }});
+  assert.equal(calls, 2);
+  assert.equal(result.gradingStatus, 'provisional');
+  assert.equal(result.proposedScore, 2);
+});
+
+test('Repair remains bounded and never accepts fabricated evidence', async () => {
+  let calls = 0;
+  const answers = { 'II-1': 'Luận điểm có căn cứ.' };
+  const result = await gradeLiteratureSubmission({ exam: examFixture(), answers, generate: async () => {
+    calls++; const row = gradeFixture(answers); row.questions[0].criteria[0].evidence = ['Không có trong bài']; return row;
+  }});
+  assert.equal(calls, 2);
+  assert.equal(result.errorCode, 'AI_RUBRIC_INVALID');
+  assert.equal(result.score, null);
+  assert.equal(result.proposedScore, undefined);
+});

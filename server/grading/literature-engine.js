@@ -175,14 +175,28 @@ export async function gradeLiteratureSubmission({ exam, answers = {}, generate, 
   if (active.length && typeof generate !== "function") return pendingLiteratureGrade("Chưa cấu hình trợ lý chấm Ngữ văn; cần giáo viên chấm.");
   let receivedResponse = false;
   try {
-    const generated = active.length ? parseObject(await generate({
-      instruction: literatureInstruction,
-      data: { passage: validated.passage, source: validated.source, questions: active.map(q => ({
-        ...q, studentAnswer: submitted[q.targetId]
-      })) }
-    })) : { questions: [] };
+    const data = { passage: validated.passage, source: validated.source, questions: active.map(q => ({
+      ...q, studentAnswer: submitted[q.targetId]
+    })) };
+    // Give the model a concrete output contract instead of an ambiguous criteria:[...].
+    const contract = { questions: active.map(q => ({ targetId: q.targetId, confidence: "number 0..1",
+      criteria: q.criteria.map(c => ({ id: c.id, points: `number 0..${c.maxPoints}, step 0.25`,
+        feedback: "Nhận xét ngắn", evidence: ["Trích đoạn NGUYÊN VĂN liên tục từ studentAnswer; không dấu ... thay thế"] })) })) };
+    const instruction = literatureInstruction + "\nCấu trúc đầu ra bắt buộc (thay mô tả bằng giá trị thực): " + JSON.stringify(contract)
+      + "\nGiữ nguyên targetId và id. confidence là số, không phải chuỗi hay phần trăm. Không sao chép toàn bài vào evidence; mỗi trích dẫn tối đa 2000 ký tự.";
+    let generated = active.length ? parseObject(await generate({ instruction, data })) : { questions: [] };
     receivedResponse = true;
-    const results = evaluateRows(validated, submitted, generated, profile);
+    let results;
+    try { results = evaluateRows(validated, submitted, generated, profile); }
+    catch {
+      // One fresh attempt only for invalid rubric output, never for auth/quota/network errors.
+      // Do not echo invalid model output or arbitrary exception text into the next prompt.
+      receivedResponse = false;
+      generated = parseObject(await generate({ instruction: instruction
+        + "\nLần trước không qua kiểm tra rubric. Hãy chấm lại từ dữ liệu gốc: đủ đúng các ID và tiêu chí, điểm dạng số đúng bước 0.25 và không vượt maxPoints. Evidence phải khớp nguyên văn studentAnswer, không sửa chữ hoặc dấu câu. Điểm dương bắt buộc có evidence.", data }));
+      receivedResponse = true;
+      results = evaluateRows(validated, submitted, generated, profile);
+    }
     if (results.some(q => q.confidence < profile.grading.minimumConfidence)) {
       return { ...pendingLiteratureGrade("AI chưa đủ căn cứ; cần giáo viên xem lại."), results };
     }
