@@ -1,3 +1,4 @@
+import { installQuestionBankHistory } from './question-bank-history.js';
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
 import { installClassroomAccess } from './classroom-access.js';
 import { ensureAccountUpgrade, installAccountUpgrade } from './account-upgrade.js';
@@ -2313,6 +2314,7 @@ app.post(
 
 // -------------------- DOCUMENT LIBRARY API --------------------
 
+installQuestionBankHistory(app, { db, requireAuth });
 installNationalExamBank(app, { db, requireAuth, requireSameOrigin, notifyUser, upsertLearningResult });
 installNationalExamRoutes(app, { db, requireAuth, documentResponse, assessmentConfigFor });
 

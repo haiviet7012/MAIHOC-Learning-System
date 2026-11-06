@@ -24,7 +24,7 @@ try {
     preview.once('exit', code => { clearTimeout(timeout); reject(new Error(`Preview exited: ${code}`)); });
     preview.stderr.on('data', chunk => process.stderr.write(chunk));
   });
-  browser = await chromium.launch({ headless: true, channel: process.env.MAIHOC_BROWSER_CHANNEL || 'chrome' });
+  browser = await chromium.launch({ headless: true, channel: process.env.MAIHOC_BROWSER_CHANNEL || (process.platform === 'win32' ? 'chrome' : undefined) });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -32,10 +32,10 @@ try {
   const base = { category: 'exam', grade: '12', durationMinutes: 90, questionCount: 22, attemptCount: 127, completed: false, bestScore: null,
     content: 'Câu 1: Tính 1 + 1.\nA. 1\nB. 2\nC. 3\nD. 4' };
   const exams = [
-    { ...base, id: 'M101', subject: 'Toán', year: '2026', title: 'Đề minh họa Bộ GD&ĐT môn Toán 2026', examType: 'illustrative', completed: true, bestScore: 8.5 },
-    { ...base, id: 'L102', subject: 'Vật lý', year: '2025', title: 'Đề chính thức tốt nghiệp THPT môn Vật lý 2025', examType: 'official' },
-    { ...base, id: 'H103', subject: 'Hóa học', year: '2024', title: 'Đề thi thử THPT chuyên môn Hóa học 2024', examType: 'trial' },
-    { ...base, id: 'A104', subject: 'Tiếng Anh', year: '2026', title: 'Đề thi thử Sở GD&ĐT môn Tiếng Anh 2026', examType: 'trial' },
+    { ...base, id: 'M101', createdAt: '2026-11-06', lastCompletedAt: '2026-11-07T01:00:00Z', subject: 'Toán', year: '2026', title: 'Đề minh họa Bộ GD&ĐT môn Toán 2026', examType: 'illustrative', completed: true, bestScore: 8.5 },
+    { ...base, id: 'L102', createdAt: '2026-11-01', subject: 'Vật lý', year: '2025', title: 'Đề chính thức tốt nghiệp THPT môn Vật lý 2025', examType: 'official' },
+    { ...base, id: 'H103', createdAt: '2026-11-02', subject: 'Hóa học', year: '2024', title: 'Đề thi thử THPT chuyên môn Hóa học 2024', examType: 'trial' },
+    { ...base, id: 'A104', createdAt: '2026-11-03', subject: 'Tiếng Anh', year: '2026', title: 'Đề thi thử Sở GD&ĐT môn Tiếng Anh 2026', examType: 'trial' },
   ];
   let failCatalog = false, emptyCatalog = false;
   await page.route('**/api/national-exams', route => route.fulfill({ status: failCatalog ? 503 : 200,
@@ -54,6 +54,17 @@ try {
   assert.ok(!(await page.locator('#toast-region').innerText()).includes('chưa được kích hoạt'));
   assert.equal(await page.locator('.education-top-title').innerText(), 'MAIHOC Learning');
   assert.equal(await page.locator('nav[data-sidebar-space="learning"]').isVisible(), true);
+  await page.locator('[data-national-completion]').selectOption('completed');
+  assert.equal(await page.locator('.national-exam-card').count(), 1);
+  assert.equal(await page.locator('.national-exam-card [data-national-start]').first().getAttribute('data-national-start'), 'M101');
+  await page.locator('[data-national-completion]').selectOption('unanswered');
+  assert.equal(await page.locator('.national-exam-card').count(), 3);
+  await page.locator('[data-national-completion]').selectOption('all');
+  assert.equal(await page.locator('.national-exam-card [data-national-start]').first().getAttribute('data-national-start'), 'M101');
+  await page.locator('[data-national-date]').selectOption('oldest');
+  assert.equal(await page.locator('.national-exam-card [data-national-start]').first().getAttribute('data-national-start'), 'L102');
+  await page.locator('[data-national-date]').selectOption('newest');
+  await page.locator('[data-national-completion]').selectOption('unanswered-first');
   await page.locator('[data-national-history="M101"]').click();
   await page.getByText('Đăng nhập để lưu kết quả', { exact: false }).waitFor();
   await page.locator('[data-national-close]').click();

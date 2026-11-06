@@ -1,3 +1,4 @@
+import { filterContentTimeline, CONTENT_DATE_OPTIONS, CONTENT_STATE_OPTIONS, contentTimestamp } from './content-filters.js';
 import { escapeHTML as e } from '../ui.js';
 import { loadNationalExams, loadNationalExamHistory } from './national-exam-api.js';
 import { canManageNationalExams } from './national-exam-access.js';
@@ -8,11 +9,11 @@ const types = { illustrative: 'Đề minh họa Bộ GD&ĐT', official: 'Đề c
 const normalize = value => String(value || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[đĐ]/g, 'd').toLowerCase();
 const score = value => value == null ? '—' : Number(value).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 
-export function filterNationalExams(exams, { subject = 'Tất cả', year = '', type = '', query = '' } = {}) {
+export function filterNationalExams(exams, { subject = 'Tất cả', year = '', type = '', query = '', dateOrder = 'newest', completion = 'unanswered-first' } = {}) {
   const words = normalize(query).trim().split(/\s+/).filter(Boolean);
-  return exams.filter(exam => (subject === 'Tất cả' || exam.subject === subject)
+  return filterContentTimeline(exams.filter(exam => (subject === 'Tất cả' || exam.subject === subject)
     && (!year || exam.year === year) && (!type || exam.examType === type)
-    && words.every(word => normalize(`${exam.title} ${exam.id} ${exam.originalName || ''}`).includes(word)));
+    && words.every(word => normalize(`${exam.title} ${exam.id} ${exam.originalName || ''}`).includes(word))), { dateOrder, completion });
 }
 
 function card(exam) {
@@ -20,7 +21,7 @@ function card(exam) {
     <div class="national-exam-badges"><span class="pill">${e(exam.subject)}</span><span class="pill">${e(exam.year || 'Chưa rõ năm')}</span></div>
     <p class="national-exam-type">${e(types[exam.examType] || '')}</p><h3>${e(exam.title)}</h3>
     <p class="national-exam-code">Mã đề: ${e(exam.examCode || exam.id)} · ${exam.mock ? 'Đề mẫu · ' : ''}${exam.access === 'school' ? 'Paid School' : 'Free Learn'}</p>
-    <div class="national-exam-meta"><span>◷ ${exam.durationMinutes} phút${exam.questionCount ? ` · ${exam.questionCount} câu` : ' · Số câu theo đề'}</span><span>↗ ${Number(exam.attemptCount).toLocaleString('vi-VN')} lượt làm bài</span></div>
+    <div class="national-exam-meta"><span>Ngày thêm: ${e(contentTimestamp(exam.createdAt) === null ? 'Chưa ghi nhận' : new Date(contentTimestamp(exam.createdAt)).toLocaleString('vi-VN'))}</span>${exam.lastCompletedAt ? `<span>Làm gần nhất: ${e(new Date(contentTimestamp(exam.lastCompletedAt)).toLocaleString('vi-VN'))}</span>` : ''}<span>◷ ${exam.durationMinutes} phút${exam.questionCount ? ` · ${exam.questionCount} câu` : ' · Số câu theo đề'}</span><span>↗ ${Number(exam.attemptCount).toLocaleString('vi-VN')} lượt làm bài</span></div>
     <p class="national-exam-status ${exam.completed ? 'is-completed' : ''}">${exam.completed ? `✓ Đã hoàn thành · ${exam.bestScore == null ? 'Chờ chấm điểm' : `Cao nhất: ${score(exam.bestScore)}/10`}` : '○ Chưa làm'}</p>
     <div class="national-exam-actions"><button type="button" class="button primary" data-national-start="${e(exam.id)}" ${exam.locked ? 'disabled' : ''}>${exam.locked ? 'Cần gói Paid School' : 'Vào phòng thi →'}</button><button type="button" class="button secondary" data-national-history="${e(exam.id)}">Xem lịch sử/Đáp án</button></div>
   </article>`;
@@ -28,7 +29,7 @@ function card(exam) {
 
 export function mountNationalExamHub(container, { user, onStart, onResult }) {
   const controller = new AbortController();
-  const filters = { subject: 'Tất cả', year: '', type: '', query: '' };
+  const filters = { subject: 'Tất cả', year: '', type: '', query: '', dateOrder: 'newest', completion: 'unanswered-first' };
   let exams = [], historyRequest = 0;
   container.innerHTML = `<section class="national-exam-hub" aria-labelledby="national-exam-title">
     <header class="portal-heading"><div><p class="eyebrow">MAIHOC • LUYỆN ĐỀ THPT QUỐC GIA</p><h1 id="national-exam-title">Kho Đề Thi THPT Quốc Gia</h1><p class="muted">Luyện đề chuẩn cấu trúc Bộ GD&ĐT với bộ đếm giờ thực tế và phân tích chi tiết.</p></div>${canManageNationalExams(user) ? '<div class="national-management-actions"><button type="button" data-national-create>+ Tạo đề thi mới</button><button type="button" data-national-manage>Quản lý ngân hàng đề</button></div>' : ''}</header>
@@ -37,6 +38,8 @@ export function mountNationalExamHub(container, { user, onStart, onResult }) {
       <div class="national-exam-subjects" role="group" aria-label="Môn thi">${subjects.map((subject, index) => `<button type="button" data-national-subject="${subject}" aria-pressed="${index === 0}">${subject}</button>`).join('')}</div>
       <div class="national-exam-filters"><label>Năm học<select data-national-year><option value="">Tất cả năm</option>${['2026', '2025', '2024'].map(year => `<option>${year}</option>`).join('')}</select></label>
       <label>Loại đề<select data-national-type><option value="">Tất cả loại đề</option>${Object.entries(types).map(([value, name]) => `<option value="${value}">${e(name)}</option>`).join('')}</select></label>
+      <label>Ngày thêm<select data-national-date>${Object.entries(CONTENT_DATE_OPTIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
+      <label>Trạng thái làm bài<select data-national-completion>${Object.entries(CONTENT_STATE_OPTIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
       <label class="national-exam-search">Tìm kiếm<input type="search" data-national-search placeholder="Tìm theo tên đề hoặc mã đề…" autocomplete="off"></label></div>
     </section>
     <div class="national-exam-list-heading"><h2>Danh sách đề thi</h2><p class="muted" data-national-count role="status" aria-live="polite"></p></div>
@@ -109,19 +112,22 @@ export function mountNationalExamHub(container, { user, onStart, onResult }) {
       renderList();
     }
     if (button.hasAttribute('data-national-reset')) {
-      Object.assign(filters, { subject: 'Tất cả', year: '', type: '', query: '' });
-      container.querySelectorAll('select,input').forEach(input => { input.value = ''; });
+      Object.assign(filters, { subject: 'Tất cả', year: '', type: '', query: '', dateOrder: 'newest', completion: 'unanswered-first' });
+      container.querySelectorAll('.national-exam-filters select,.national-exam-filters input').forEach(input => { input.value = ''; });
+      container.querySelector('[data-national-date]').value = 'newest';
+      container.querySelector('[data-national-completion]').value = 'unanswered-first';
       container.querySelectorAll('[data-national-subject]').forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.nationalSubject === 'Tất cả')));
       renderList();
     }
   }
   function filter(event) {
     const input = event.target;
-    const key = input.matches('[data-national-year]') ? 'year' : input.matches('[data-national-type]') ? 'type' : input.matches('[data-national-search]') ? 'query' : null;
+    const key = input.matches('[data-national-year]') ? 'year' : input.matches('[data-national-type]') ? 'type' : input.matches('[data-national-search]') ? 'query' : input.matches('[data-national-date]') ? 'dateOrder' : input.matches('[data-national-completion]') ? 'completion' : null;
     if (key) { filters[key] = input.value; renderList(); }
   }
   container.addEventListener('click', click);
   container.addEventListener('input', filter);
+  container.addEventListener('change', filter);
   load();
-  return () => { controller.abort(); management?.dispose(); container.removeEventListener('click', click); container.removeEventListener('input', filter); };
+  return () => { controller.abort(); management?.dispose(); container.removeEventListener('click', click); container.removeEventListener('input', filter); container.removeEventListener('change', filter); };
 }

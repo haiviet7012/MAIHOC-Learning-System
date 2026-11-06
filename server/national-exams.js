@@ -25,7 +25,7 @@ export function installNationalExamRoutes(app, { db, requireAuth, documentRespon
       WHERE d.category='exam' AND d.grade='12' ORDER BY d.uploaded_at DESC,d.id`).all();
     const legacy = rows.filter(row => SUBJECTS.includes(row.subject)).map(row => {
       const document = documentResponse(row);
-      return { ...document, ...nationalExamMetadata(document, assessmentConfigFor(row.subject, row.category)?.layout) };
+      return { ...document, createdAt: row.uploaded_at, ...nationalExamMetadata(document, assessmentConfigFor(row.subject, row.category)?.layout) };
     });
     return [...await bankCatalog(db, user), ...legacy];
   };
@@ -35,7 +35,7 @@ export function installNationalExamRoutes(app, { db, requireAuth, documentRespon
       const documents = await catalog(req.user);
       const counts = await db.prepare("SELECT document_id,COUNT(*) AS count FROM exam_attempts WHERE category='exam' GROUP BY document_id").all();
       const attempts = req.user ? await db.prepare(`SELECT id,document_id,graded,score,scale,created_at
-        FROM exam_attempts WHERE user_id=? AND category='exam' ORDER BY id DESC`).all(req.user.id) : [];
+        FROM exam_attempts WHERE user_id=? AND category='exam' ORDER BY created_at DESC,id DESC`).all(req.user.id) : [];
       const available = new Set(documents.map(document => document.id));
       const ownAttempts = attempts.filter(attempt => available.has(attempt.document_id));
       const scoreOf = attempt => Number(attempt.graded) && attempt.score != null && Number(attempt.scale) > 0
@@ -45,7 +45,7 @@ export function installNationalExamRoutes(app, { db, requireAuth, documentRespon
         const own = ownAttempts.filter(attempt => attempt.document_id === document.id);
         const best = own.map(scoreOf).filter(score => score != null);
         return { ...document, attemptCount: Number(counts.find(row => row.document_id === document.id)?.count || 0),
-          completed: own.length > 0, bestScore: best.length ? Math.max(...best) : null };
+          completed: own.length > 0, lastCompletedAt: own[0]?.created_at || null, bestScore: best.length ? Math.max(...best) : null };
       });
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ exams, stats: { total: exams.length,

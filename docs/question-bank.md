@@ -78,3 +78,16 @@ Danh sách, KPI, tồn kho ma trận và đề được lọc tự động theo 
 Biến thể mô phỏng bỏ qua câu đã có; lưu câu mới/sửa trùng báo lỗi. Thiếu câu duy nhất theo ma trận thì báo thiếu, không lặp câu để bù số lượng.
 
 API School bổ sung `DELETE /api/platform/schools/:schoolId/questions/:questionId`: kiểm tra đăng nhập, same-origin, membership giáo viên/admin; archive mọi phiên bản của câu, ghi audit và giữ lịch sử bài làm. API danh sách bỏ câu archive/phiên bản cũ, lọc trùng; POST câu hỏi chặn trùng với HTTP 409 và khóa theo trường để tránh ghi trùng đồng thời. Số hóa đề tái sử dụng câu đã có và loại mã trùng trong kết quả publish. API giao bài chặn nội dung trùng khác ID; luyện chuyên đề rút tối đa 10 câu duy nhất. Không cần migration mới vì schema đã hỗ trợ `archived`.
+
+## Ngày thêm và trạng thái làm bài cá nhân
+
+Cả `/school/question-bank` và `/learning/national-exams` có hai bộ lọc kết hợp với từ khóa/môn/khối/dạng/mức độ hiện có:
+
+- **Ngày thêm**: Mới nhất → Cũ nhất (mặc định), hoặc Cũ nhất → Mới nhất.
+- **Trạng thái làm bài**: Chưa làm → Đã làm (mặc định), Chỉ chưa làm, Chỉ đã làm, Tất cả · Theo ngày thêm.
+
+Khi nhóm theo trạng thái, câu/đề chưa làm đứng trước và sắp theo ngày thêm; nhóm đã làm sắp theo thời điểm làm gần nhất với chiều thời gian đã chọn. Ngày thiếu hoặc không hợp lệ xếp cuối; mã nội dung phân định khi cùng thời điểm. Bộ lọc không thay đổi thứ tự dữ liệu đã lưu. Đặt lại trả về mặc định; chuyển tab giữ bộ lọc.
+
+Trạng thái câu hỏi được đối chiếu bằng fingerprint nội dung, không dùng tổng `attempts` của người học khác. `GET /api/question-bank/history` chỉ trả lịch sử tài khoản hiện tại từ bài School đã nộp và phiên THPT đã nộp; câu bỏ trống không được tính đã làm. API trả fingerprint và thời điểm, không trả đáp án/lời giải. Lỗi tải lịch sử sẽ tạm khóa lọc trạng thái và thông báo, không tự coi các câu là chưa làm. Kho local vẫn lưu trên trình duyệt; dữ liệu trạng thái cá nhân lấy từ máy chủ.
+
+Đề THPT dùng `createdAt` và `lastCompletedAt` từ API. Ngày thêm đề tài liệu là `uploaded_at`. Ngân hàng đề bổ sung cột `created_at` ổn định khi khởi tạo; đề cũ không có ngày tạo dùng `updated_at` được ghi nhận tại lần nâng cấp làm mốc thay thế, không thay đổi khi sửa đề về sau. Câu local mới/biến thể lưu thời điểm ISO đầy đủ; dữ liệu cũ có độ chính xác ngày được giữ nguyên. Tổng lượt làm và năm của đề không được dùng làm lịch sử cá nhân hay ngày thêm.

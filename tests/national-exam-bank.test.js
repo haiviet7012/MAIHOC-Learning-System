@@ -1,3 +1,5 @@
+import { installQuestionBankHistory } from '../server/question-bank-history.js';
+import { questionFingerprint } from '../js/platform/question-identity.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -50,6 +52,7 @@ test('Bank API enforces staff ownership and School access, hides solutions, pres
     requireSameOrigin: (req, res, next) => req.get('origin') === origin ? next() : res.sendStatus(403),
     notifyUser: (userId, type, title, message, link) => db.prepare('INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)').run(userId, type, title, message, link) };
   installNationalExamBank(app, shared);
+  installQuestionBankHistory(app, shared);
   installNationalExamRoutes(app, { ...shared, documentResponse: row => row, assessmentConfigFor: () => null });
   app.use((error, _req, res, _next) => res.status(error.status || 500).json({ error: error.message }));
   const server = createServer(app); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -85,6 +88,17 @@ test('Bank API enforces staff ownership and School access, hides solutions, pres
   assert.equal(submitted.status, 200, await submitted.clone().text()); const result = await submitted.json();
   assert.equal(result.score, 10); assert.ok(result.timeSpentSeconds >= 65 && result.timeSpentSeconds < 68);
   assert.equal(result.questions[0].correctAnswer, 'B'); assert.ok(result.questions[0].explanation);
+  const historyUrl = `http://127.0.0.1:${server.address().port}/api/question-bank/history`;
+  assert.equal((await fetch(historyUrl)).status, 401);
+  const historyResponse = await fetch(historyUrl, { headers: { 'x-test-user': '81' } });
+  assert.match(historyResponse.headers.get('cache-control'), /private, no-store/);
+  const questionHistory = (await historyResponse.json()).history;
+  assert.equal(questionHistory.length, 4);
+  const first = mocks[0].questions[0];
+  assert.ok(questionHistory.some(item => item.fingerprint === questionFingerprint({ ...first, subject: mocks[0].subject, grade: '12', stem: first.text, choices: first.options.map(o => o.text) })));
+  assert.ok(questionHistory.every(item => item.lastCompletedAt && !('answer' in item)));
+  assert.deepEqual((await (await fetch(historyUrl, { headers: { 'x-test-user': '82' } })).json()).history, []);
+
   const duplicate = await (await request(`/${mockId}/submit`, { user: 81, method: 'POST', body: { sessionId: opened.sessionId, answers: {} } })).json();
   assert.equal(duplicate.attemptId, result.attemptId); assert.equal(duplicate.score, 10);
   assert.equal(Number((await db.prepare('SELECT COUNT(*) AS n FROM exam_attempts WHERE user_id=81').get()).n), 1);
