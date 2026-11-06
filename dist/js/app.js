@@ -9,6 +9,9 @@ let disposeTeachingAdvisor = null;
 import { mountTimetablePreview, mountTimetable, mountLearningProgress } from "./platform/learning.js";
 import { TestDraft } from './platform/test-draft.js';
 import { routeUrl, parseRoute } from './platform/router.js';
+import { mountNationalExamHub } from './platform/national-exam-hub.js';
+import { mountExamRoom } from './platform/exam-room-view.js';
+import { mountExamResult, normalizeExamResult } from './platform/exam-result-view.js';
 import { dashboardMarkup, hydrateActivity, mountPortal } from './platform/portal.js';
 import { SUBJECTS, SUBJECT_CATALOG, ENABLED_SUBJECTS, setSubjectCatalog, getSubjectConfig, CATEGORIES } from "./data.js";
 import { initTheme } from "./theme.js?v=20261031v1";
@@ -54,6 +57,7 @@ try {
 }
 let activeActivityCleanup = null;
 let activePortalCleanup = null;
+let activeExamRoom = null;
 let activeTestDraft = null;
 let testStarting = false;
 let activeStudyRoomsCleanup = null;
@@ -95,6 +99,7 @@ let activeExamQuestionsFor = null;
 let examLayoutConfig = null;
 const gradeLabel = g => `Lớp ${g}`;
 function canRefreshBackgroundView() {
+    if (state.route === 'exam-room-view') return false;
     if (state.route === 'school-rooms') return false;
     // Mounted portal views fetch their own content, including drawers outside
     // #view; recreating them would close dialogs and discard their draft state.
@@ -124,8 +129,9 @@ async function initRemoteData() {
 }
 // Luôn đọc danh sách mới nhất từ documents.js và bộ nhớ đệm bài kiểm tra.
 const docs = () => getDocuments();
+const nationalExamDocuments = new Map();
 const findDoc = id =>
-    findCachedTest(id) || docs().find(d => String(d.id) === String(id));
+    findCachedTest(id) || nationalExamDocuments.get(String(id)) || docs().find(d => String(d.id) === String(id));
 const by = (grade, category) =>
     docs().filter(
         d =>
@@ -160,6 +166,10 @@ function saveRouteHistory() {
     };
 }
 function go(route, params = {}) {
+    if (activeExamRoom?.isInProgress() && route !== 'exam-room-view') {
+        activeExamRoom.confirmExit(() => go(route, params));
+        return;
+    }
     if (route === 'school-rooms' && !Object.hasOwn(params, 'classroomCode')) state.classroomCode = null;
     if (route === 'assignments' && !Object.hasOwn(params, 'assignmentId')) {
         state.assignmentId = null;
@@ -207,6 +217,12 @@ history.replaceState(saveRouteHistory(), "", window.location.href);
 // Khôi phục trang khi nhấn Back hoặc Forward.
 window.addEventListener("popstate", function (event) {
     const saved = event.state;
+    if (activeExamRoom?.isInProgress()) {
+        const target = saved?.maihoc && saved.appState ? saved.appState : parseRoute(new URL(window.location.href));
+        history.pushState(saveRouteHistory(), '', routeUrl(state));
+        activeExamRoom.confirmExit(() => go(target.route, target));
+        return;
+    }
     // Nếu trạng thái trước đó thuộc MAI HỌC,
     // khôi phục trang đó và không chuyển sang Google.
     if (saved?.maihoc && saved.appState) {
@@ -646,7 +662,10 @@ function resultPage() {
           ? `<div class="result-score" style="color:var(--orange)">Đang chờ chấm</div><p class="muted">${escapeHTML(result?.message || "Bài kiểm tra của bạn đã được nộp và đang chờ giáo viên chấm điểm.")}</p>`
           : `<div class="result-score">—/${result?.scale ?? result?.totalPoints ?? gradingScaleFor(d)}</div><p class="muted">${escapeHTML(result?.message || "Bài đã nộp. Chưa có đáp án máy đọc được để chấm tự động.")}</p>`;
     const isTestItem = d?.category === "test" || result?.isTest;
-    const actions = isTestItem
+    const returnToNationalHub = (saved ? state.savedResultOrigin : state.examOrigin) === "national-exam-hub";
+    const actions = returnToNationalHub
+        ? `<button class="button secondary" data-route="national-exam-hub">← Về Kho Đề Thi THPT Quốc Gia</button>`
+        : isTestItem
         ? `<button class="button secondary" data-route="tests">← Về danh sách Bài kiểm tra</button><button class="button primary" data-export-user-sheets="xlsx">⬇ Xuất Sheets kết quả học tập</button>`
         : saved
           ? (currentUser?.role === "admin" ? `<button class="button secondary" data-route="admin">Quay lại tiến trình</button>` : `<button class="button secondary" data-route="home">Về trang học tập</button>`)
@@ -654,7 +673,7 @@ function resultPage() {
     return `${pageHeading("Kết quả bài làm", d?.title || "Đề thi")}<div class="result-panel"><span class="pill">${isPendingGrade ? "ĐANG CHỜ CHẤM" : "ĐÃ NỘP BÀI"}</span>${owner}${details}${result?.graded ? "" : `<h2>Tình trạng bài làm</h2><p class="muted">Số câu đã trả lời: ${answered}/${answerableCount}</p>`}<div class="modal-actions">${actions}</div></div>`;
 }
 
-async function openSavedExamResult(id) {
+async function openSavedExamResult(id, returnRoute = null) {
     try {
         const endpoint = currentUser?.role === "admin"
             ? "/api/admin/exam-results/" + encodeURIComponent(id)
@@ -663,6 +682,11 @@ async function openSavedExamResult(id) {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Không tải được kết quả bài làm.");
         state.savedExamResult = data;
+        state.savedResultOrigin = returnRoute;
+        if (data.result?.nationalExam) {
+            go('exam-result-view', { resultId: String(id), nationalResult: data.result });
+            return;
+        }
         go("saved-result");
     } catch (error) {
         toast(error.message || "Không tải được kết quả bài làm.", "error");
@@ -883,7 +907,7 @@ async function loadAdminUsers() {
 
 function render() {
     disposeLiterature?.(); disposeLiterature = null;
-    if ((schoolRoutes.has(state.route) || state.route === "analytics") && !authResolved) {
+    if ((schoolRoutes.has(state.route) || ['analytics', 'national-exam-hub', 'exam-room-view', 'exam-result-view'].includes(state.route)) && !authResolved) {
         const schoolPending = schoolRoutes.has(state.route);
         document.body.toggleAttribute('data-school-ui', schoolPending);
         document.querySelectorAll('[data-sidebar-space]').forEach(group => { group.hidden = group.dataset.sidebarSpace !== (schoolPending ? 'school' : 'learning'); });
@@ -892,6 +916,7 @@ function render() {
     }
     if (activeActivityCleanup) { activeActivityCleanup(); activeActivityCleanup = null; }
     if (activePortalCleanup) { activePortalCleanup(); activePortalCleanup = null; }
+    if (activeExamRoom) { activeExamRoom.dispose(); activeExamRoom = null; }
     if (!currentUser && (state.route === 'school-announcements' || (state.route === 'assignments' && state.assignmentId) || (state.route === 'tests' && state.pendingTestId))) {
         view.innerHTML = '<section class="portal-panel"><h1>Đăng nhập để xem nội dung</h1><p>Vui lòng dùng tài khoản nhận email. Sau khi đăng nhập, nội dung được liên kết sẽ mở tại đây.</p><button class="button primary" data-portal-login>Đăng nhập</button></section>';
         return;
@@ -909,6 +934,13 @@ function render() {
         history.replaceState(saveRouteHistory(), "", window.location.href);
     }
     document.querySelectorAll('.education-sidebar [data-route]').forEach(button => { const active=button.dataset.route===state.route; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current'); });
+    document.querySelectorAll('.subject-menu [data-subject]').forEach(button => {
+        const active = state.route === 'national-exam-hub'
+            ? button.dataset.subject === 'Đề thi THPT quốc gia'
+            : button.dataset.subject === state.subject;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+    });
     // Paid/active School users should not see the purchase/introduction entry.
     const schoolPlansNav = document.querySelector('.education-sidebar [data-route="school-plans"]');
     if (schoolPlansNav) schoolPlansNav.hidden = Boolean(currentUser && canAccessSchool(currentUser));
@@ -954,6 +986,8 @@ function render() {
     view.classList.toggle("reader-fullscreen", state.route === "reader");
     document.body.classList.toggle("reader-open", state.route === "reader");
     view.classList.toggle("exam-workspace", state.route === "exam");
+    view.classList.toggle("national-exam-workspace", state.route === "national-exam-hub");
+    document.body.classList.toggle('exam-room-open', state.route === 'exam-room-view');
     view.classList.toggle("chemistry-workspace", state.route === "chemistry");
     view.classList.toggle("physics-workspace", state.route === "physics-formulas");
     view.classList.toggle("universal-ai-workspace", ["ai-solver", "school-tutor"].includes(state.route));
@@ -971,6 +1005,40 @@ function render() {
     else if (state.route === "home") {
         view.innerHTML = homePage();
         activePortalCleanup = mountTimetablePreview(view, currentUser);
+    }
+    else if (state.route === 'national-exam-hub') activePortalCleanup = mountNationalExamHub(view, {
+        user: currentUser,
+        onStart: document => {
+            if (!document) return;
+            nationalExamDocuments.set(String(document.id), document);
+            go('exam-room-view', { examDocId: document.id, examOrigin: 'national-exam-hub' });
+        },
+        onResult: id => go('exam-result-view', { resultId: String(id), nationalResult: null }),
+    });
+    else if (state.route === 'exam-room-view') activeExamRoom = mountExamRoom(view, {
+        examId: state.examDocId, user: currentUser,
+        document: nationalExamDocuments.get(String(state.examDocId)),
+        onDocument: document => nationalExamDocuments.set(String(document.id), document),
+        onExit: () => go('national-exam-hub'),
+        onComplete: (result, { document, answers }) => {
+            state.examDocId = document.id; state.answers = answers; state.gradeResult = result;
+            state.examOrigin = 'national-exam-hub'; state.examFinished = true; state.examStarted = false;
+            const nationalResult = normalizeExamResult(result, document, answers);
+            if (!result.attemptId) {
+                try { sessionStorage.setItem(`maihoc:national-result:${currentUser?.id || 'guest'}`, JSON.stringify(nationalResult)); } catch {}
+            }
+            go('exam-result-view', { resultId: String(result.attemptId || 'guest'), nationalResult });
+        },
+    });
+    else if (state.route === 'exam-result-view') {
+        let result = state.nationalResult;
+        if (!result && state.resultId === 'guest') {
+            try { result = JSON.parse(sessionStorage.getItem(`maihoc:national-result:${currentUser?.id || 'guest'}`) || 'null'); } catch {}
+        }
+        activePortalCleanup = mountExamResult(view, { result, attemptId: state.resultId !== 'guest' ? state.resultId : null, user: currentUser,
+            onBack: () => go('national-exam-hub'),
+            onAI: prompt => go('ai-solver', { aiQuestionContext: prompt }),
+        });
     }
     else if (state.route === 'school-announcements') activePortalCleanup = mountSchoolAnnouncements(view, currentUser, state.announcementId);
     else if (state.route === "analytics") activePortalCleanup = mountLearningProgress(view, currentUser);
@@ -1000,7 +1068,8 @@ function render() {
     }
     else if (["ai-solver", "school-tutor"].includes(state.route)) {
         view.innerHTML = "";
-        activeUniversalAiCleanup = mountUniversalAiSolver(view, { onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
+        activeUniversalAiCleanup = mountUniversalAiSolver(view, { initialPrompt: state.aiQuestionContext || '', onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
+        state.aiQuestionContext = null;
     }
     else if (state.route === "subject") {
         disposeLiterature?.();
@@ -1263,6 +1332,7 @@ function startExam(id) {
     const d = findDoc(id);
     if (!d)
         return;
+    state.examOrigin = state.route === 'national-exam-hub' ? 'national-exam-hub' : null;
     const isTimedExam = d.category === "exam";
     // Yêu cầu toàn màn hình ngay trong thao tác nhấn nút.
     // Trình duyệt yêu cầu thao tác này phải xuất phát từ người dùng.
@@ -1373,6 +1443,11 @@ async function openSavedTestSubmission(id) {
     }
 }
 function subjectClick(subject) {
+    if (subject === "Đề thi THPT quốc gia") {
+        go("national-exam-hub");
+        $("#subject-menu").classList.remove("open");
+        return;
+    }
     const config = getSubjectConfig(subject);
     if (!config || !config.enabled) {
         toast(`${subject}: môn học chưa được kích hoạt.`);
@@ -1873,12 +1948,12 @@ async function refreshAuthUI({ preserveOnError = false, deferRender = false } = 
     const educationUser=document.getElementById('education-user'); if(educationUser)educationUser.textContent=currentUser?.name || '';
     window.maihocCurrentUser = currentUser;
     if (!deferRender) {
-        // Initial auth must mount a deep-linked room even though background
-        // refreshes are disabled while its camera/meeting is active.
-        if (initialAuth && state.route === 'school-rooms') render();
+        // These mounted views need the resolved identity on their first render,
+        // even when a previous view has disabled background refreshes.
+        if (initialAuth && ['school-rooms', 'national-exam-hub', 'exam-room-view', 'exam-result-view'].includes(state.route)) render();
         await refreshTestsQueue();
         resumePendingTest();
-        if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center"].includes(state.route)) && canRefreshBackgroundView()) render();
+        if ((schoolRoutes.has(state.route) || ["home","analytics","study-rooms","account-center","national-exam-hub"].includes(state.route)) && canRefreshBackgroundView()) render();
     }
     // A confirmed payment requests one full reload, then opens the School AI tutor.
     if (sessionStorage.getItem("maihoc-school-paid-go-tutor") === "1" && currentUser && canAccessSchool(currentUser)) {

@@ -1,6 +1,6 @@
 import { escapeHTML } from "../ui.js";
 
-export function mountUniversalAiSolver(container, { onNavigate } = {}) {
+export function mountUniversalAiSolver(container, { onNavigate, initialPrompt = '' } = {}) {
   let selectedImage = null;
   let selectedImagePreviewUrl = null;
   let selectedFile = null;
@@ -104,7 +104,8 @@ export function mountUniversalAiSolver(container, { onNavigate } = {}) {
     const errorBox = container.querySelector(".universal-ai-error");
     const modeButtons = [...container.querySelectorAll("[data-ai-mode]")];
     let mode = "hint";
-    try { const authorDraft=sessionStorage.getItem('maihoc:ai-author-draft');if(authorDraft){prompt.value=authorDraft;sessionStorage.removeItem('maihoc:ai-author-draft');} } catch {}
+    if (initialPrompt) prompt.value = initialPrompt;
+    else try { const authorDraft=sessionStorage.getItem('maihoc:ai-author-draft');if(authorDraft){prompt.value=authorDraft;sessionStorage.removeItem('maihoc:ai-author-draft');} } catch {}
     const backgroundKey = `maihoc:ai-job:${window.maihocCurrentUser?.id || 'guest'}`;
     let resumedJob = null;
     try { resumedJob=localStorage.getItem(backgroundKey); } catch {}
