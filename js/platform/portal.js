@@ -1,6 +1,6 @@
 import { mountQuestionBank } from './question-bank.js';
 import { mountSchoolManagement } from './school-management.js';
-import { schoolYearOptions, schoolYearPayload } from './school-years.js';
+import { schoolYearOptions, schoolYearPayload, normalizeSchoolYearCode } from './school-years.js';
 import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
@@ -193,13 +193,17 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       const data = await request(schoolUrl("/overview"));
       const admin=school.role==='school_admin'||user.isSuperAdmin;
       const yearOptions=schoolYearOptions();
-      if(!yearOptions.some(y=>y.code===selectedYear)) selectedYear=yearOptions.find(y=>data.years.some(r=>String(r.code).replace(/\s/g,'')===y.code.replace(/\s/g,'')))?.code||yearOptions[0].code;
-      const year=data.years.find(r=>String(r.code).replace(/\s/g,'')===selectedYear.replace(/\s/g,''));
+      if(!yearOptions.some(y=>y.code===selectedYear)) selectedYear=yearOptions.find(y=>data.years.some(r=>normalizeSchoolYearCode(r.code)===normalizeSchoolYearCode(y.code)))?.code||yearOptions[0].code;
+      const year=data.years.find(r=>normalizeSchoolYearCode(r.code)===normalizeSchoolYearCode(selectedYear));
       const classes=data.classes.filter(c=>String(c.academic_year_id)===String(year?.id));
       const homeroomIds=data.homeroomClassIds||[];
       const transferClasses=admin?classes:classes.filter(c=>homeroomIds.some(id=>String(id)===String(c.id)));
       content.className='school-management-stack';
       content.innerHTML=`<section class="portal-panel"><h2>Năm học</h2><label>Năm học<select data-management-year>${yearOptions.map(y=>`<option value="${e(y.code)}" ${selectedYear===y.code?'selected':''}>${e(y.code)}</option>`).join('')}</select></label>${!year?`<p class="muted">Năm học này chưa được tạo trong trường.</p>${admin?`<form data-platform-form="year"><input type="hidden" name="code" value="${e(selectedYear)}"><button class="button primary">Tạo năm học đã chọn</button></form><p class="muted">Năm học bắt đầu từ 05/09 và kết thúc vào 30/06 năm sau.</p>`:''}`:''}</section><div data-management-modules></div>`;
+      if(year&&admin){
+        const panel=content.querySelector('.portal-panel');
+        panel.insertAdjacentHTML('beforeend',`<details data-management-create-class><summary>Thêm lớp vào năm học ${e(selectedYear)}</summary><p class="muted">Các lớp được thêm sẽ xuất hiện trong lịch sự kiện, sổ điểm và xếp/chuyển lớp. Học sinh cần được xếp vào lớp trước khi nhập điểm.</p>${form('class','Thêm lớp',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+input('classCode','Mã lớp')+input('name','Tên lớp')+'<label>Khối<select name="gradeLevel" required><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>')}</details>`);
+      }
       disposeManagement=mountSchoolManagement(content.querySelector('[data-management-modules]'),{schoolId,classes,admin,homeroomClassIds:homeroomIds});
       if(year&&admin)content.insertAdjacentHTML('beforeend',form('term','Thêm học kỳ',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+`<label>Học kỳ (năm.kỳ)<input name="name" required pattern="${yearOptions.find(y=>y.code===selectedYear).start}\\.[12]" placeholder="${yearOptions.find(y=>y.code===selectedYear).start}.1"></label>`+input('startDate','Bắt đầu','date')+input('endDate','Kết thúc','date')));
       if(admin&&!year)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Thêm học kỳ</h2><p>Tạo năm học đã chọn trước khi thêm học kỳ.</p></section>');

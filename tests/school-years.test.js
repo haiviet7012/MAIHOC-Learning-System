@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schoolYearOptions, schoolYearPayload } from '../js/platform/school-years.js';
+import { schoolYearOptions, schoolYearPayload, normalizeSchoolYearCode } from '../js/platform/school-years.js';
 import { subjects, createTimetableWorkbook, parseTimetableWorkbook } from '../js/platform/timetable-xlsx.js';
 import { TIMETABLE_SUBJECTS, validateTimetable } from '../server/learning.js';
 import ExcelJS from 'exceljs';
@@ -23,3 +23,8 @@ test('Selected school year explicitly includes valid default dates for older bac
  for(const year of schoolYearOptions(new Date('2026-01-01'))){const p=schoolYearPayload(year.code);assert.ok(new Date(p.endDate)>new Date(p.startDate));}
  for(const value of ['2026 - 2028','2026','',null])assert.throws(()=>schoolYearPayload(value));
 });
+
+ test('School year lookup accepts historical dash variants without mixing years',()=>{
+ for(const code of ['2026 - 2027','2026–2027','2026—2027','2026−2027'])assert.equal(normalizeSchoolYearCode(code),'2026-2027');
+ assert.notEqual(normalizeSchoolYearCode('2025–2026'),normalizeSchoolYearCode('2026 - 2027'));
+ });

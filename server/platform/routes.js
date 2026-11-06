@@ -1176,6 +1176,9 @@ export function createPlatformRouter({
   installManagement(router, { db });
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
+    if ((error.pgCode || error.code) === '42P01' && req.path.includes('/management')) {
+      return res.status(503).json({code:'SCHOOL_MANAGEMENT_NOT_READY',error:'Dữ liệu quản lý nhà trường chưa được khởi tạo đầy đủ. Vui lòng liên hệ quản trị trường để cập nhật hệ thống.'});
+    }
     const status =
       error.status ||
       (["23503", "23505", "23514", "22P02"].includes(error.pgCode || error.code)
