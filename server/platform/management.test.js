@@ -27,6 +27,7 @@ test('Management enforces school/class/subject scope, roster, and duplicate atte
  const explicit=await createYear({code:'2026 - 2027',startDate:'2026-09-05',endDate:'2027-06-30'});assert.equal(explicit.status,201);const savedYear=await explicit.json();assert.equal(String(savedYear.start_date).slice(0,10),'2026-09-05');assert.equal(String(savedYear.end_date).slice(0,10),'2027-06-30');
  const automatic=await createYear({code:'2027 - 2028'});assert.equal(automatic.status,201);const automaticYear=await automatic.json();assert.equal(String(automaticYear.start_date).slice(0,10),'2027-09-05');assert.equal(String(automaticYear.end_date).slice(0,10),'2028-06-30');
  assert.equal((await createYear({code:'bad-year'})).status,400);
+ assert.equal((await call('',1)).status,200);
  assert.equal((await call('?classId=2',2)).status,403);
  assert.equal((await call('/board',3,{classId:1,title:'No',body:'No'})).status,403);
  assert.equal((await call('/grade',2,{classId:1,title:'TX1',studentId:3,subject:'Văn',term:'2026.1',score:8,weight:1})).status,403);
@@ -52,4 +53,6 @@ test('Management enforces school/class/subject scope, roster, and duplicate atte
  await db.query("INSERT INTO teacher_course_assignments(school_id,class_id,teacher_id,subject,kind) VALUES(1,1,2,'Chủ nhiệm','homeroom')");
  assert.equal((await call('/attendance',2,attendance)).status,201);
  assert.ok((await db.query("SELECT id FROM school_mail_outbox WHERE event_key LIKE 'management:%'")).rows.length>=3);
+ await db.query('DROP TABLE school_management_records');
+ const notReady=await call('',1);assert.equal(notReady.status,503);assert.equal((await notReady.json()).code,'SCHOOL_MANAGEMENT_NOT_READY');
 });

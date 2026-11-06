@@ -8,3 +8,7 @@ export function schoolYearPayload(code) {
  if(!match||Number(match[2])!==Number(match[1])+1)throw new Error('Năm học phải gồm hai năm liên tiếp, ví dụ 2026 - 2027.');
  return {code:`${match[1]} - ${match[2]}`,startDate:`${match[1]}-09-05`,endDate:`${match[2]}-06-30`};
 }
+
+export function normalizeSchoolYearCode(code) {
+ return String(code ?? '').trim().replace(/[–—−]/g,'-').replace(/\s/g,'');
+}

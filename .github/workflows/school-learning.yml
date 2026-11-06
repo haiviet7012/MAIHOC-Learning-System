@@ -40,6 +40,7 @@ jobs:
       - run: node scripts/question-bank-check.mjs
       - run: npm run test:learning-welcome
       - run: npm run test:school-theme
+      - run: npm run test:school-management-options
       - run: npm run test:school-upgrade:browser
       - run: npm run test:school-access
       - run: npm run test:account-upgrade
