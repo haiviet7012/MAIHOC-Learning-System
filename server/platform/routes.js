@@ -148,8 +148,8 @@ export function createPlatformRouter({
       await school(req, ["school_admin"]);
       const yearMatch=/^(\d{4})\s*-\s*(\d{4})$/.exec(String(req.body.code||''));
       const canonical=yearMatch&&Number(yearMatch[2])===Number(yearMatch[1])+1;
-      const start = date(req.body.startDate || (canonical?`${yearMatch[1]}-08-01`:''), "Ngày bắt đầu"),
-        end = date(req.body.endDate || (canonical?`${yearMatch[2]}-07-31`:''), "Ngày kết thúc");
+      const start = date(req.body.startDate || (canonical?`${yearMatch[1]}-09-05`:''), "Ngày bắt đầu"),
+        end = date(req.body.endDate || (canonical?`${yearMatch[2]}-06-30`:''), "Ngày kết thúc");
       if (end <= start) fail("Năm học phải kết thúc sau ngày bắt đầu.");
       const record = await db.transaction(async () => {
         const r = await one(
