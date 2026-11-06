@@ -1,5 +1,5 @@
 // Excel is loaded only when importing/exporting, from our own deployment.
-export const subjects = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'IELTS', 'Tự học'];
+export const subjects = ['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lý', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Tin học', 'Giáo dục kinh tế và pháp luật', 'Công nghệ', 'GDQP-AN', 'GDDP', 'IELTS', 'Tự học'];
 export const days = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'];
 export const sessions = [{ name: 'Sáng', count: 5, start: 0 }, { name: 'Chiều', count: 4, start: 5 }];
 const colours = ['F8DCD6', 'F6EDC7', 'D6EEE7', 'E7DDF3', 'DAE8F6'];

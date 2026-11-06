@@ -803,7 +803,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
       );
       const term = await request(path, "POST", {
         academicYearId: yearA.id,
-        name: "Học kỳ I",
+        name: "2026.1",
         startDate: "2026-08-01",
         endDate: "2026-12-31",
       });

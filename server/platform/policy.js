@@ -128,3 +128,10 @@ export async function hasActiveExam(db, userId) {
   );
   return result.rows.length > 0;
 }
+
+export async function homeroomPermission(db,user,schoolId,classId) {
+ const member=await membership(db,user,schoolId);
+ if(member.role==='school_admin')return member;
+ if(member.role==='teacher'&&(await db.query("SELECT id FROM teacher_course_assignments WHERE school_id=$1 AND class_id=$2 AND teacher_id=$3 AND kind='homeroom'",[schoolId,classId,user.id])).rows.length)return member;
+ fail('Chức năng này chỉ dành cho giáo viên chủ nhiệm của lớp hoặc quản trị trường.',403);
+}

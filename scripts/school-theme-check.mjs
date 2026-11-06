@@ -60,7 +60,9 @@ try {
     });
     for (const theme of ["light", "dark"]) {
       await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
-      await page.locator(".school-overview-hero").waitFor();
+      await page.locator("[data-platform-content].school-management-stack").waitFor();
+      assert.equal(await page.locator('.school-overview-hero,.school-quick-links,.school-overview-stats').count(),0);
+      assert.equal(await page.locator('[data-management-year] option').count(),4);
       const dark = await page
         .locator("html")
         .evaluate((el) => el.classList.contains("dark"));
@@ -97,7 +99,7 @@ try {
             .reduce((sum, x, i) => sum + x * [0.2126, 0.7152, 0.0722][i], 0);
         return [
           ...document.querySelectorAll(
-            ".school-overview-stats .portal-stat>span:not(.school-stat-symbol),.education-sidebar nav button.active",
+            ".school-management-stack h2,.education-sidebar nav button.active",
           ),
         ].map((el) => {
           const fg = luminance(getComputedStyle(el).color);
@@ -201,7 +203,7 @@ try {
     // The logo stays anchored in the sidebar; the opposite-workspace action
     // must remain inside the top-right dropdown in both workspace layouts.
     await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
-    await page.locator(".school-overview-hero").waitFor();
+    await page.locator("[data-platform-content].school-management-stack").waitFor();
     await page.locator("#menu-toggle").click();
     const schoolHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {

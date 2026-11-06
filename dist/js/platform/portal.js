@@ -1,6 +1,6 @@
 import { mountQuestionBank } from './question-bank.js';
 import { mountSchoolManagement } from './school-management.js';
-import { schoolOverviewMarkup } from './school-overview.js';
+import { schoolYearOptions } from './school-years.js';
 import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
@@ -93,6 +93,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   let disposeManagement = () => {};
   let context;
   let schoolId = String(target.targetSchoolId || "");
+  let selectedYear = "";
   let activeAttempt = null;
   let saveTimer;
   let version = 0;
@@ -135,7 +136,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     context = await request("/api/platform/context");
     if (!context.enabled && route === 'organization' && (user.isTeacher || user.isSuperAdmin || user.role === 'teacher' || user.role === 'admin')) {
       container.innerHTML = header('Quản lý nhà trường', 'Backend chưa bật nền tảng quản lý School.') +
-        `<section class="portal-panel"><h2>Cần quản trị viên kích hoạt</h2><p>PR đã bổ sung chức năng, nhưng môi trường backend hiện trả về enabled=false. Các mục bên dưới sẽ dùng được khi nền tảng được bật và tài khoản được phân công vào trường.</p><div class="grid three">${['Sổ liên lạc điện tử / Nhắn tin','Bảng tin lớp học','Thời khóa biểu & Lịch sự kiện','Sổ điểm điện tử','Theo dõi chuyên cần'].map(title => `<article class="card"><h3>${title}</h3><p class="muted">Chờ kích hoạt nền tảng</p></article>`).join('')}</div><details><summary>Hướng dẫn cho quản trị viên triển khai</summary><ol><li>Chạy migration School trên backend theo quy trình sao lưu hiện có: <code>npm run db:migrate</code>.</li><li>Nếu lớp hiện tại chưa ánh xạ vào trường/năm học, cấu hình LEGACY_SCHOOL_* / LEGACY_YEAR_* / LEGACY_ADMIN_ID và chạy <code>npm run db:bootstrap</code> để xem trước; kiểm tra rồi mới dùng <code>npm run db:bootstrap -- --apply</code>. Không chạy lại nếu đã ánh xạ.</li><li>Trong Environment của backend Render, đặt <code>MAIHOC_PLATFORM_ENABLED=1</code>, lưu và deploy lại backend.</li><li>Đảm bảo tài khoản giáo viên có phân công trong trường. Cấu hình email và mail worker để gửi thông báo phụ huynh.</li></ol><p>Merge code hoặc deploy frontend không tự thay đổi biến môi trường backend.</p></details><button class="button secondary" data-route="school">Lớp của bạn</button></section>`;
+        `<section class="portal-panel"><h2>Cần quản trị viên kích hoạt</h2><p>PR đã bổ sung chức năng, nhưng môi trường backend hiện trả về enabled=false. Các mục bên dưới sẽ dùng được khi nền tảng được bật và tài khoản được phân công vào trường.</p><div class="grid three">${['Thời khóa biểu & Lịch sự kiện','Sổ điểm điện tử','Theo dõi chuyên cần'].map(title => `<article class="card"><h3>${title}</h3><p class="muted">Chờ kích hoạt nền tảng</p></article>`).join('')}</div><details><summary>Hướng dẫn cho quản trị viên triển khai</summary><ol><li>Chạy migration School trên backend theo quy trình sao lưu hiện có: <code>npm run db:migrate</code>.</li><li>Nếu lớp hiện tại chưa ánh xạ vào trường/năm học, cấu hình LEGACY_SCHOOL_* / LEGACY_YEAR_* / LEGACY_ADMIN_ID và chạy <code>npm run db:bootstrap</code> để xem trước; kiểm tra rồi mới dùng <code>npm run db:bootstrap -- --apply</code>. Không chạy lại nếu đã ánh xạ.</li><li>Trong Environment của backend Render, đặt <code>MAIHOC_PLATFORM_ENABLED=1</code>, lưu và deploy lại backend.</li><li>Đảm bảo tài khoản giáo viên có phân công trong trường. Cấu hình email và mail worker để gửi thông báo phụ huynh.</li></ol><p>Merge code hoặc deploy frontend không tự thay đổi biến môi trường backend.</p></details><button class="button secondary" data-route="school">Lớp của bạn</button></section>`;
       return;
     }
     if (!context.enabled) {
@@ -190,10 +191,20 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     }
     if (route === "organization") {
       const data = await request(schoolUrl("/overview"));
-      content.innerHTML = schoolOverviewMarkup(user, school, data, staff) + `<div class="portal-form-grid"><section class="portal-panel"><h2>Lớp và năm học</h2>${list(data.classes, (c) => `<div class="portal-record"><div><strong>${e(c.name)}</strong><p>${e(c.year_code)} · Khối ${e(c.grade_level)}</p></div><small>${e(c.class_code)}</small></div>`)}</section>${school.role === "school_admin" || user.isSuperAdmin ? form("class", "Thêm lớp học", select("academicYearId", "Năm học", data.years) + input("classCode", "Mã lớp") + input("name", "Tên lớp") + input("gradeLevel", "Khối lớp", "number")) : ""}</div>${school.role === "school_admin" || user.isSuperAdmin ? `<div class="portal-form-grid">${form("year", "Thêm năm học", input("code", "Năm học") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("term", "Thêm học kỳ", select("academicYearId", "Năm học", data.years) + input("name", "Tên học kỳ") + input("startDate", "Bắt đầu", "date") + input("endDate", "Kết thúc", "date"))}${form("course", "Môn học trong học kỳ", select("classId", "Lớp", data.classes) + select("termId", "Học kỳ", data.terms) + input("subject", "Môn học"))}${form("member", "Thêm thành viên đã có tài khoản", input("email", "Email", "email") + `<label>Vai trò<select name="role"><option value="student">Học sinh</option><option value="teacher">Giáo viên</option><option value="school_admin">Quản trị trường</option></select></label>`)}${form("enrollment", "Xếp hoặc chuyển lớp", input("email", "Email học sinh", "email") + select("classId", "Lớp", data.classes) + input("reason", "Lý do"))}${form("teacher", "Phân công giáo viên", input("email", "Email giáo viên", "email") + select("classId", "Lớp", data.classes) + input("subject", "Môn học") + `<label>Phân công<select name="kind"><option value="subject">Bộ môn</option><option value="homeroom">Chủ nhiệm</option></select></label>`)}</div>${form("import", "Nhập danh sách học sinh", select("classId", "Lớp", data.classes) + '<label>Danh sách email đã có tài khoản<textarea name="emails" required placeholder="Mỗi dòng một email, tối đa 200 dòng"></textarea></label><p class="muted">Hệ thống kiểm tra toàn bộ danh sách trước khi ghi dữ liệu.</p>', "Kiểm tra và nhập")}` : ""}`;
-      const managementRoot = document.createElement('div');
-      content.prepend(managementRoot);
-      disposeManagement = mountSchoolManagement(managementRoot, { schoolId, classes: data.classes });
+      const admin=school.role==='school_admin'||user.isSuperAdmin;
+      const yearOptions=schoolYearOptions();
+      if(!yearOptions.some(y=>y.code===selectedYear)) selectedYear=yearOptions.find(y=>data.years.some(r=>String(r.code).replace(/\s/g,'')===y.code.replace(/\s/g,'')))?.code||yearOptions[0].code;
+      const year=data.years.find(r=>String(r.code).replace(/\s/g,'')===selectedYear.replace(/\s/g,''));
+      const classes=data.classes.filter(c=>String(c.academic_year_id)===String(year?.id));
+      const homeroomIds=data.homeroomClassIds||[];
+      const transferClasses=admin?classes:classes.filter(c=>homeroomIds.some(id=>String(id)===String(c.id)));
+      content.className='school-management-stack';
+      content.innerHTML=`<section class="portal-panel"><h2>Năm học</h2><label>Năm học<select data-management-year>${yearOptions.map(y=>`<option value="${e(y.code)}" ${selectedYear===y.code?'selected':''}>${e(y.code)}</option>`).join('')}</select></label>${!year?`<p class="muted">Năm học này chưa được tạo trong trường.</p>${admin?`<form data-platform-form="year"><input type="hidden" name="code" value="${e(selectedYear)}"><button class="button primary">Tạo năm học đã chọn</button></form><p class="muted">Mặc định từ 01/08 đến 31/07 năm sau.</p>`:''}`:''}</section><div data-management-modules></div>`;
+      disposeManagement=mountSchoolManagement(content.querySelector('[data-management-modules]'),{schoolId,classes,admin,homeroomClassIds:homeroomIds});
+      if(year&&admin)content.insertAdjacentHTML('beforeend',form('term','Thêm học kỳ',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+`<label>Học kỳ (năm.kỳ)<input name="name" required pattern="${yearOptions.find(y=>y.code===selectedYear).start}\\.[12]" placeholder="${yearOptions.find(y=>y.code===selectedYear).start}.1"></label>`+input('startDate','Bắt đầu','date')+input('endDate','Kết thúc','date')));
+      if(admin&&!year)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Thêm học kỳ</h2><p>Tạo năm học đã chọn trước khi thêm học kỳ.</p></section>');
+      if(admin&&!transferClasses.length)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Xếp hoặc chuyển lớp</h2><p>Chưa có lớp trong năm học đã chọn.</p></section>');
+      if(year&&transferClasses.length)content.insertAdjacentHTML('beforeend',form('enrollment','Xếp hoặc chuyển lớp',input('email','Email học sinh','email')+select('classId','Lớp',transferClasses)+input('reason','Lý do')));
     } else if (route === "assignments") {
       const data = await request(schoolUrl("/assignments"));
       if (target.assignmentId) {
@@ -321,8 +332,10 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   container.addEventListener(
     "change",
     (event) => {
+      if(event.target.matches("[data-management-year]")){selectedYear=event.target.value;render().catch(renderError);}
       if (event.target.matches("[data-platform-school]")) {
         schoolId = event.target.value;
+        selectedYear="";
         render().catch(renderError);
       }
     },
