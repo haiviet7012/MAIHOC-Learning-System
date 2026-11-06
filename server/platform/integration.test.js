@@ -1053,6 +1053,31 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
         assert.equal(resumed.deadline_at, session.deadline_at);
       },
     );
+    await t.test("question deduplication, role gates and soft deletion preserve assessment history", async () => {
+      const path = `/api/platform/schools/${schoolA.id}/questions`;
+      const source = (await db.query('SELECT * FROM question_versions WHERE id=$1', [question.id])).rows[0];
+      const body = { ...source, curriculumNodeId: source.curriculum_node_id };
+      assert.equal((await request(path, 'POST', body, 3)).status, 409);
+      const fresh = { ...body, stem: 'Câu hỏi mới riêng cho kiểm thử xóa' };
+      const created = await request(path, 'POST', fresh, 3);
+      assert.equal(created.status, 201);
+      const revised = await request(path, 'POST', { ...fresh, previousVersionId: created.data.id }, 3);
+      assert.equal(revised.status, 201);
+      const removePath = `${path}/${created.data.id}`;
+      assert.equal((await request(removePath, 'DELETE', undefined, 2)).status, 403);
+      assert.equal((await request(removePath, 'DELETE', undefined, 5)).status, 403);
+      assert.equal((await request(removePath, 'DELETE', undefined, 3, false)).status, 403);
+      assert.equal((await request(removePath, 'DELETE', undefined, 99)).status, 401);
+      assert.equal((await request(removePath, 'DELETE', undefined, 3)).status, 200);
+      assert.ok((await db.query('SELECT status FROM question_versions WHERE question_item_id=$1', [created.data.question_item_id])).rows.every(q => q.status === 'archived'));
+      assert.ok(!(await request(path, 'GET', undefined, 3)).data.items.some(q => String(q.question_item_id) === String(created.data.question_item_id)));
+      assert.equal((await request(`${path}/${revised.data.id}/approve`, 'POST', {}, 3)).status, 404);
+      assert.equal((await request(path, 'POST', { ...fresh, previousVersionId: revised.data.id }, 3)).status, 404);
+      const snapshots = (await db.query('SELECT snapshot FROM assessment_items WHERE question_version_id=$1', [question.id])).rows;
+      assert.ok(snapshots.length > 0);
+      assert.equal((await request(`${path}/${question.id}`, 'DELETE', undefined, 1)).status, 200);
+      assert.deepEqual((await db.query('SELECT snapshot FROM assessment_items WHERE question_version_id=$1', [question.id])).rows, snapshots);
+    });
   } finally {
     if (oldFlag === undefined) delete process.env.MAIHOC_PLATFORM_ENABLED;
     else process.env.MAIHOC_PLATFORM_ENABLED = oldFlag;

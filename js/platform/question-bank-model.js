@@ -1,3 +1,5 @@
+import { questionFingerprint, uniqueQuestions } from './question-identity.js';
+export { questionFingerprint, uniqueQuestions } from './question-identity.js';
 export const LEVELS = { nb: 'Nhận biết', th: 'Thông hiểu', vd: 'Vận dụng', vdc: 'Vận dụng cao' };
 export const TYPES = { multiple_choice: 'Trắc nghiệm 4 đáp án', true_false: 'Đúng/Sai 4 mệnh đề', short_answer: 'Trả lời ngắn', essay: 'Tự luận' };
 export const SUBJECTS = ['Toán', 'Vật lý', 'Hóa học', 'Tiếng Anh', 'Ngữ văn', 'Sinh học'];
@@ -24,12 +26,12 @@ export function normalizeSearch(value) {
   return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 }
 export function filterQuestions(rows, filters, userId) {
-  return rows.filter(q => {
+  return uniqueQuestions(rows.filter(q => {
     const tab = filters.tab || 'school';
     const inTab = tab === 'personal' ? String(q.owner) === String(userId) : tab === 'pending' ? q.status === 'draft' && q.bank === 'school' : q.status === 'approved' && q.bank === tab;
     return inTab && (!filters.search || normalizeSearch([q.id, q.stem, q.topic, ...q.choices].join(' ')).includes(normalizeSearch(filters.search))) &&
       ['subject', 'grade', 'type', 'level'].every(key => !filters[key] || String(q[key]) === filters[key]);
-  });
+  }));
 }
 export function needsReview(q) { return q.level === 'nb' && q.attempts > 0 && q.rate < 40; }
 export function validateQuestion(q) {
@@ -47,7 +49,7 @@ export function shuffle(items, random = Math.random) {
   return result;
 }
 export function extractMatrix(rows, spec) {
-  const pool = rows.filter(q => q.status === 'approved' && q.subject === spec.subject && String(q.grade) === spec.grade && (!spec.topic || q.topic === spec.topic));
+  const pool = uniqueQuestions(rows.filter(q => q.status === 'approved' && q.subject === spec.subject && String(q.grade) === spec.grade && (!spec.topic || q.topic === spec.topic)));
   const picked = [];
   for (const key of Object.keys(LEVELS)) {
     const count = Number(spec.counts[key]);
@@ -60,6 +62,7 @@ export function extractMatrix(rows, spec) {
   return picked;
 }
 export function buildExam(rows, { title = 'Đề kiểm tra từ Ngân hàng câu hỏi', codes = 2 } = {}) {
+  rows = uniqueQuestions(rows);
   if (!rows.length) throw new Error('Giỏ đề đang trống.');
   if (!Number.isInteger(Number(codes)) || codes < 1 || codes > 20) throw new Error('Số mã đề phải từ 1 đến 20.');
   if (rows.some(q => q.status !== 'approved')) throw new Error('Chỉ sử dụng câu hỏi đã được duyệt.');
@@ -78,8 +81,8 @@ export function buildExam(rows, { title = 'Đề kiểm tra từ Ngân hàng câ
   return { version: 1, title, subject: rows[0].subject, grade: rows[0].grade, source: 'question-bank-demo', createdAt: new Date().toISOString(), totalPoints: 10, variants };
 }
 
-export function generateVariants(original) {
-  return [2, 3].map((n, i) => {
+export function generateVariants(original, existing = []) {
+  return uniqueQuestions([2, 3].map((n, i) => {
     const q = { ...clone(original), id: `AI-${globalThis.crypto.randomUUID()}`, status: 'draft', ai: true, attempts: 0, rate: null, uses: 0, bank: 'school', reviewer: '', createdAt: new Date().toISOString().slice(0, 10) };
     const math = original.subject === 'Toán', physics = original.subject === 'Vật lý';
     if (math || physics) {
@@ -106,10 +109,10 @@ export function generateVariants(original) {
       else if (q.type === 'true_false') { q.stem = `Consider the word “${words[0]}”. Mark each statement True or False.`; q.choices = [`It is similar in meaning to “${words[1]}”.`, `It means “${words[2]}”.`, `It means “${words[3]}”.`, `It means “${words[4]}”.`]; q.answer = [true, false, false, false]; }
     } else throw new Error('Mô phỏng biến thể hiện hỗ trợ Toán, Vật lý và Tiếng Anh. Có thể kết nối dịch vụ AI qua adapter.');
     return validateQuestion(q);
-  });
+  }), [original, ...existing]);
 }
 
-// Repository contract: list(), save(question), approve(id). Replace this adapter to use authenticated APIs.
+// Repository contract: list(), save(question), approve(id), remove(id). Replace this adapter to use authenticated APIs.
 export function createLocalRepository(userId, storage = globalThis.localStorage) {
   const key = `maihoc:question-bank:v1:${userId}`;
   let questions;
@@ -118,7 +121,8 @@ export function createLocalRepository(userId, storage = globalThis.localStorage)
   const persist = () => { try { storage?.setItem(key, JSON.stringify(questions)); return true; } catch { return false; } };
   return {
     list: () => clone(questions),
-    save(q) { validateQuestion(q); const index = questions.findIndex(x => x.id === q.id); if (index >= 0) questions[index] = clone(q); else questions.unshift(clone(q)); return persist(); },
+    save(q) { validateQuestion(q); if (questions.some(x => x.id !== q.id && questionFingerprint(x) === questionFingerprint(q))) throw new Error('Câu hỏi đã có trong kho (trùng nội dung và phương án).'); const index = questions.findIndex(x => x.id === q.id); if (index >= 0) questions[index] = clone(q); else questions.unshift(clone(q)); return persist(); },
+    remove(id) { const index = questions.findIndex(q => q.id === id); if (index < 0) throw new Error('Không tìm thấy câu hỏi.'); questions.splice(index, 1); return persist(); },
     approve(id) { const q = questions.find(x => x.id === id); if (!q) throw new Error('Không tìm thấy câu hỏi.'); q.status = 'approved'; q.reviewer = 'Tổ chuyên môn (mô phỏng)'; return persist(); },
   };
 }

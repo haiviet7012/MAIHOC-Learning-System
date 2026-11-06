@@ -1,3 +1,5 @@
+import { uniqueQuestions } from '../../js/platform/question-identity.js';
+import { lockQuestionBank, assertQuestionIsNew } from './question-bank-policy.js';
 import { installManagement } from './management.js';
 import { enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
@@ -509,10 +511,10 @@ export function createPlatformRouter({
       const member = await school(req, ["school_admin", "teacher"]);
       const items = await rows(
         db,
-        `SELECT q.*,n.name AS topic_name FROM question_versions q JOIN curriculum_nodes n ON n.id=q.curriculum_node_id WHERE q.school_id=$1 ORDER BY q.id DESC LIMIT 500`,
+        `SELECT q.*,n.name AS topic_name FROM question_versions q JOIN curriculum_nodes n ON n.id=q.curriculum_node_id WHERE q.school_id=$1 AND q.status<>'archived' AND NOT EXISTS (SELECT 1 FROM question_versions newer WHERE newer.question_item_id=q.question_item_id AND newer.version>q.version) ORDER BY q.id DESC`,
         [req.params.schoolId],
       );
-      res.json({ items });
+      res.json({ items: uniqueQuestions(items) });
     }),
   );
   router.post(
@@ -555,6 +557,7 @@ export function createPlatformRouter({
           );
       }
       const result = await db.transaction(async () => {
+        await lockQuestionBank(db, req.params.schoolId);
         const node = await one(
           db,
           "SELECT * FROM curriculum_nodes WHERE school_id=$1 AND id=$2",
@@ -578,7 +581,7 @@ export function createPlatformRouter({
               integer(req.body.previousVersionId, "Phiên bản trước"),
             ],
           );
-          if (!previous) fail("Phiên bản trước không thuộc trường.", 404);
+          if (!previous || previous.status === "archived") fail("Phiên bản trước không thuộc trường hoặc đã xóa.", 404);
           item = await one(
             db,
             "SELECT id FROM question_items WHERE school_id=$1 AND id=$2 FOR UPDATE",
@@ -600,6 +603,7 @@ export function createPlatformRouter({
             "INSERT INTO question_items(school_id,created_by) VALUES($1,$2) RETURNING id",
             [req.params.schoolId, req.user.id],
           );
+        await assertQuestionIsNew(db, req.params.schoolId, { subject, grade, type, stem: text(req.body.stem, "Nội dung", 12000), choices }, item.id);
         const q = await one(
           db,
           "INSERT INTO question_versions(school_id,question_item_id,version,subject,grade,curriculum_node_id,type,stem,choices,answer,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
@@ -628,6 +632,23 @@ export function createPlatformRouter({
         return q;
       })();
       res.status(201).json(result);
+    }),
+  );
+  router.delete(
+    "/schools/:schoolId/questions/:questionId",
+    wrap(async (req, res) => {
+      await school(req, ["school_admin", "teacher"]);
+      await db.transaction(async () => {
+        await lockQuestionBank(db, req.params.schoolId);
+        const question = await one(db,
+          "SELECT question_item_id FROM question_versions WHERE school_id=$1 AND id=$2 AND status<>'archived'",
+          [req.params.schoolId, integer(req.params.questionId, "Câu hỏi")]);
+        if (!question) fail("Không tìm thấy câu hỏi trong trường.", 404);
+        await db.query("UPDATE question_versions SET status='archived' WHERE school_id=$1 AND question_item_id=$2",
+          [req.params.schoolId, question.question_item_id]);
+        await audit(db, req.user, req.params.schoolId, "delete", "question_version", req.params.questionId);
+      })();
+      res.json({ ok: true });
     }),
   );
   router.post(
@@ -700,6 +721,7 @@ export function createPlatformRouter({
         );
         if (questions.length !== ids.length)
           fail("Có câu hỏi chưa duyệt hoặc không thuộc trường.");
+        if (uniqueQuestions(questions).length !== questions.length) fail("Đề có câu hỏi trùng nội dung.", 409);
         const subject = questions[0].subject;
         if (
           questions.some(
@@ -808,9 +830,10 @@ export function createPlatformRouter({
           fail("Bạn cần được ghi danh vào lớp cùng khối để luyện chuyên đề.");
         const questions = await rows(
           db,
-          "SELECT q.* FROM question_versions q WHERE q.school_id=$1 AND q.curriculum_node_id=$2 AND q.status='approved' AND q.type<>'essay' ORDER BY q.id LIMIT 10",
+          "SELECT q.* FROM question_versions q WHERE q.school_id=$1 AND q.curriculum_node_id=$2 AND q.status='approved' AND q.type<>'essay' ORDER BY q.id",
           [sid, node.id],
         );
+        questions.splice(0, questions.length, ...uniqueQuestions(questions).slice(0, 10));
         if (!questions.length)
           fail("Chưa có câu hỏi được duyệt cho chuyên đề này.");
         const assessment = await one(
