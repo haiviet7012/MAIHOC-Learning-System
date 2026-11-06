@@ -45,5 +45,5 @@ test('Text tutor preserves both pasted fields through NVIDIA, accepts fenced rub
    assert.equal(data.errorCode,code); assert.equal(data.proposedScore,null); assert.equal(data.score,null);
    assert.ok(!JSON.stringify(data).includes('private provider details')); assert.ok(!JSON.stringify(data).includes(env.LITERATURE_AI_API_KEY));
  }
- assert.equal(calls,4);
+ assert.equal(calls,5);
 });
