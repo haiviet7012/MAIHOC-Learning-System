@@ -2108,3 +2108,14 @@ html { scrollbar-gutter: stable; }
   min-width: 144px;
   text-decoration: none;
 }
+
+/* Teacher profile controls must not inherit full-width text input sizing. */
+#register-dialog .teacher-registration-profile { display: grid; gap: 16px; min-width: 0; }
+#register-dialog .teacher-registration-profile[hidden],
+#register-dialog .teacher-registration-profile [hidden] { display: none !important; }
+#register-dialog .teacher-registration-profile fieldset { min-width: 0; margin: 0; padding: 12px; border: 1px solid #dce3ee; }
+#register-dialog .teacher-choice-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+#register-dialog .teacher-registration-profile .teacher-class-choice { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 0; cursor: pointer; }
+#register-dialog .teacher-registration-profile input:is([type=checkbox],[type=radio]) { appearance: auto; width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; flex: 0 0 18px; accent-color: #123b70; }
+#register-dialog .teacher-registration-profile select { width: 100%; min-height: 44px; }
+@media(max-width:400px) { #register-dialog .teacher-choice-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }

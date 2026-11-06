@@ -73,8 +73,8 @@ export function wireAccountUpgrade() {
   details.before(panel);
   const educationEmail = /^[^\s@]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+edu\.vn$/i;
   const classes=['10A','11B','12C'].flatMap(p=>Array.from({length:9},(_,i)=>p+(i+1)));
-  const profile=document.createElement('div');profile.hidden=true;
-  profile.innerHTML=`<label>Loại giáo viên<select name="teacherKind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select></label><label>Lớp chủ nhiệm<select name="homeroomClass"><option value="">Chọn lớp chủ nhiệm (nếu có)</option>${classes.map(c=>`<option>${c}</option>`).join('')}</select></label><fieldset><legend>Bộ môn giảng dạy</legend>${['Toán','Tiếng Anh','Vật lý','Hóa học','Ngữ văn','Sinh học','IELTS'].map(s=>`<label><input type="checkbox" name="subjects" value="${s}">${s}</label>`).join('')}</fieldset><fieldset><legend>Các lớp đang giảng dạy</legend>${classes.map(c=>`<label><input type="checkbox" name="teachingClasses" value="${c}">${c}</label>`).join('')}</fieldset>`;
+  const profile=document.createElement('div');profile.className='teacher-registration-profile';profile.hidden=true;
+  profile.innerHTML=`<label>Loại giáo viên<select name="teacherKind"><option value="subject">Giáo viên bộ môn</option><option value="homeroom">Giáo viên chủ nhiệm</option></select></label><fieldset data-homeroom-choice><legend>Lớp chủ nhiệm — chọn đúng một lớp</legend><p>Đây là lớp bạn chủ nhiệm, tách biệt với danh sách lớp dạy bộ môn bên dưới.</p><div class="teacher-choice-grid">${classes.map(c=>`<label class="teacher-class-choice"><input type="radio" name="homeroomClass" value="${c}"><span>${c}</span></label>`).join('')}</div></fieldset><fieldset><legend>Bộ môn giảng dạy</legend>${['Toán','Tiếng Anh','Vật lý','Hóa học','Ngữ văn','Sinh học','IELTS'].map(s=>`<label class="teacher-class-choice"><input type="checkbox" name="subjects" value="${s}"><span>${s}</span></label>`).join('')}</fieldset><fieldset><legend>Các lớp dạy bộ môn (có thể chọn nhiều)</legend><div class="teacher-choice-grid">${classes.map(c=>`<label class="teacher-class-choice"><input type="checkbox" name="teachingClasses" value="${c}"><span>${c}</span></label>`).join('')}</div></fieldset>`;
   details.append(profile);
   const isTeacher=()=>form.elements.accountType.value==='teacher';
   function update(){
@@ -85,10 +85,13 @@ export function wireAccountUpgrade() {
     panel.querySelector('[data-teacher-instructions]').hidden=Boolean(token);
     form.elements.email.readOnly=teacher&&Boolean(token);
     details.querySelectorAll('input,select').forEach(input=>{input.disabled=details.hidden||(!teacher&&profile.contains(input));});
+    const homeroom=teacher&&profile.querySelector('[name=teacherKind]').value==='homeroom';
+    profile.querySelector('[data-homeroom-choice]').hidden=!homeroom;
+    profile.querySelectorAll('[name=homeroomClass]').forEach(radio=>{radio.required=homeroom;radio.disabled=!homeroom||details.hidden;});
     form.elements.email.setCustomValidity(valid?'':'Giáo viên cần email của trường có đuôi .edu.vn.');
     form.querySelector('[type=submit]').disabled=teacher&&(!valid||!token);
   }
-  form.addEventListener('change',ev=>{if(ev.target.name==='accountType'){if(!isTeacher()){token='';verifiedEmail='';form.elements.email.readOnly=false;}update();}});
+  form.addEventListener('change',ev=>{if(ev.target.name==='teacherKind')update();if(ev.target.name==='accountType'){if(!isTeacher()){token='';verifiedEmail='';form.elements.email.readOnly=false;}update();}});
   form.elements.email.addEventListener('input',()=>{token='';verifiedEmail='';linkToken='';panel.querySelector('[data-teacher-confirm-link]').hidden=true;update();});
   panel.addEventListener('click',async ev=>{
     const button=ev.target.closest('[data-teacher-send-link], [data-teacher-confirm-link]');if(!button)return;button.disabled=true;
@@ -102,6 +105,7 @@ export function wireAccountUpgrade() {
     const button=form.querySelector('[type=submit]');if(button.disabled)return;button.disabled=true;
     try{if(!educationEmail.test(form.elements.email.value.trim()))throw Error('Giáo viên cần email của trường có đuôi .edu.vn.');
       if(!token||verifiedEmail!==form.elements.email.value.trim().toLowerCase())throw Error('Hãy xác nhận email qua link trong hộp thư trước.');
+      if(!form.reportValidity())return;
       const data=Object.fromEntries(new FormData(form));if(data.password!==data.confirmPassword)throw Error('Mật khẩu nhập lại chưa khớp.');
       data.subjects=[...profile.querySelectorAll('[name=subjects]:checked')].map(n=>n.value);data.teachingClasses=[...profile.querySelectorAll('[name=teachingClasses]:checked')].map(n=>n.value);
       await request('/api/auth/teacher/register',{...data,challengeId,token});location.assign('/school/classes');
