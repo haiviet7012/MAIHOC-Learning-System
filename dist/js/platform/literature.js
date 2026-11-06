@@ -73,7 +73,11 @@ export function mountLiterature(container, { documents, user }) {
       const data = await api('/api/literature/tutor', { method: 'POST', body: { prompt: form.elements.prompt.value, answer: form.elements.answer.value, kind: form.elements.kind.value, confirmed: form.elements.confirmed.checked }, signal: controller.signal });
       if (current !== operation || !form.isConnected) return;
       status.textContent = data.message;
-      output.innerHTML = `<h3>${data.proposedScore == null ? 'Cần xem lại bài' : `Điểm luyện tập đề xuất: ${e(data.proposedScore)}/${e(data.maximumPoints)}`}</h3><p>Đây là góp ý AI để luyện tập; giáo viên cần kiểm tra trước khi dùng làm điểm chính thức.</p>${(data.result?.criteria || []).map(c => `<article class="card"><h4>${e(c.label)} · ${e(c.points)}/${e(c.maxPoints)}</h4><p>${e(c.feedback)}</p>${c.evidence.map(q => `<blockquote>${e(q)}</blockquote>`).join('')}</article>`).join('')}`;
+      if (data.errorCode) {
+        output.innerHTML = `<h3>Đã nhận đề và bài làm, nhưng chưa chấm được</h3><p>Nội dung bạn nhập vẫn được giữ trong biểu mẫu. Hãy xử lý lỗi được báo ở trên rồi chấm lại.</p><p class="muted">Mã lỗi: ${e(data.errorCode)}</p>`;
+      } else {
+        output.innerHTML = `<h3>${data.proposedScore == null ? 'Cần xem lại bài' : `Điểm luyện tập đề xuất: ${e(data.proposedScore)}/${e(data.maximumPoints)}`}</h3><p>Đây là góp ý AI để luyện tập; giáo viên cần kiểm tra trước khi dùng làm điểm chính thức.</p>${(data.result?.criteria || []).map(c => `<article class="card"><h4>${e(c.label)} · ${e(c.points)}/${e(c.maxPoints)}</h4><p>${e(c.feedback)}</p>${c.evidence.map(q => `<blockquote>${e(q)}</blockquote>`).join('')}</article>`).join('')}`;
+      }
     } catch (err) { if (current === operation) status.textContent = err.message; }
     finally { if (current === operation && form.isConnected) [...form.elements].forEach(el => el.disabled = false); }
   }, { signal: controller.signal });

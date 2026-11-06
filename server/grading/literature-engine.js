@@ -119,6 +119,24 @@ export function pendingLiteratureGrade(reason = "Chờ chấm theo rubric Ngữ 
     requiresReview: true, score: null, earnedPoints: null, totalPoints: 10, scale: 10,
     percent: null, questionCount: 7, results: [], message: reason };
 }
+const gradingErrors = {
+  AI_KEY_MISSING: "Chưa cấu hình API key riêng cho Ngữ văn trên backend.",
+  AI_KEY_FORMAT: "API key Ngữ văn không đúng định dạng; quản trị viên cần kiểm tra cấu hình.",
+  AI_MODEL_MISSING: "Chưa cấu hình model Ngữ văn hợp lệ trên backend.",
+  AI_MODEL_UNSUPPORTED: "Model Ngữ văn đang là embedding/rerank, không thể chấm bài. Quản trị viên cần đổi LITERATURE_AI_MODEL sang model chat/instruct.",
+  AI_CONFIG_INCOMPLETE: "Cần cấu hình đủ API key và model riêng cho Ngữ văn.",
+  AI_CONFIG_INVALID: "Cấu hình giới hạn token hoặc thời gian chờ Ngữ văn không hợp lệ.",
+  AI_BASE_URL_INVALID: "Địa chỉ API Ngữ văn không hợp lệ; quản trị viên cần kiểm tra cấu hình.",
+  AI_PROVIDER_UNSUPPORTED: "Nhà cung cấp AI Ngữ văn chưa được hỗ trợ.",
+  AI_AUTH_INVALID: "Dịch vụ AI từ chối API key; quản trị viên cần kiểm tra cấu hình Ngữ văn.",
+  AI_PERMISSION_DENIED: "API key chưa có quyền sử dụng model Ngữ văn này.",
+  AI_QUOTA_EXHAUSTED: "Dịch vụ AI đã hết hạn ngạch; vui lòng thử lại sau hoặc liên hệ quản trị viên.",
+  AI_REQUEST_INVALID: "Dịch vụ AI không chấp nhận model hoặc tham số chấm Văn; quản trị viên cần kiểm tra cấu hình.",
+  AI_PROVIDER_PENDING: "Dịch vụ AI chưa trả kết quả hoàn chỉnh; vui lòng thử lại sau.",
+  AI_PROVIDER_UNAVAILABLE: "Kết nối AI gián đoạn hoặc hết thời gian chờ; vui lòng thử lại sau.",
+  AI_RESPONSE_TRUNCATED: "Kết quả AI bị cắt do hết giới hạn token. Quản trị viên cần kiểm tra LITERATURE_AI_MAX_TOKENS và model chấm Văn.",
+  AI_RESPONSE_INVALID: "AI chưa trả JSON hoàn chỉnh để chấm Văn; vui lòng thử lại."
+};
 function evaluateRows(exam, answers, generated, profile) {
   const active = exam.questions.filter(q => answers[q.targetId].trim());
   const byId = uniqueMap(rows(generated.questions, "Kết quả"), "targetId", active.map(q => q.targetId), "Kết quả");
@@ -155,6 +173,7 @@ export async function gradeLiteratureSubmission({ exam, answers = {}, generate, 
   catch { return pendingLiteratureGrade("Thiếu đề, ngữ liệu hoặc hướng dẫn chấm đã được duyệt."); }
   const active = validated.questions.filter(q => submitted[q.targetId].trim());
   if (active.length && typeof generate !== "function") return pendingLiteratureGrade("Chưa cấu hình trợ lý chấm Ngữ văn; cần giáo viên chấm.");
+  let receivedResponse = false;
   try {
     const generated = active.length ? parseObject(await generate({
       instruction: literatureInstruction,
@@ -162,6 +181,7 @@ export async function gradeLiteratureSubmission({ exam, answers = {}, generate, 
         ...q, studentAnswer: submitted[q.targetId]
       })) }
     })) : { questions: [] };
+    receivedResponse = true;
     const results = evaluateRows(validated, submitted, generated, profile);
     if (results.some(q => q.confidence < profile.grading.minimumConfidence)) {
       return { ...pendingLiteratureGrade("AI chưa đủ căn cứ; cần giáo viên xem lại."), results };
@@ -170,8 +190,14 @@ export async function gradeLiteratureSubmission({ exam, answers = {}, generate, 
     return { ...pendingLiteratureGrade("Điểm AI đề xuất; chờ giáo viên duyệt."),
       gradingStatus: "provisional", proposedScore, proposedPercent: round(proposedScore * 10),
       blueprintVersion: profile.schemaVersion, results };
-  } catch {
-    return pendingLiteratureGrade("Chưa nhận được kết quả chấm hợp lệ; bài làm cần được chấm lại.");
+  } catch (error) {
+    // Only fixed messages/codes leave the backend; never expose raw provider errors or student text.
+    const code = Object.hasOwn(gradingErrors, error?.code) ? error.code
+      : receivedResponse ? "AI_RUBRIC_INVALID" : "AI_GRADING_FAILED";
+    const reason = gradingErrors[code] || (receivedResponse
+      ? "Phản hồi AI không khớp tiêu chí, điểm hoặc dẫn chứng; chưa thể dùng làm kết quả chấm. Vui lòng thử lại."
+      : "Chưa thể hoàn tất yêu cầu chấm với dịch vụ AI; vui lòng thử lại hoặc liên hệ quản trị viên.");
+    return { ...pendingLiteratureGrade(reason), errorCode: code };
   }
 }
 

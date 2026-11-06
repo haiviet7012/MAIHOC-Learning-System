@@ -35,6 +35,6 @@ export function installLiteratureTutor(app, { requireAuth, requireSameOrigin, ge
     const exam = { schemaVersion: 1, reviewStatus: 'draft', passage: prompt, source: 'Bài luyện cá nhân; chưa được giáo viên duyệt', questions: targets.map(t => ({ targetId: t.targetId, questionText: t.targetId === kind ? prompt : 'Không làm trong lượt luyện này.', guidance: t.criteria.map(c => `${c.label}: tối đa ${c.maxPoints} điểm`).join('; '), context: 'Chấm luyện tập theo yêu cầu đã cung cấp. Nếu thiếu ngữ liệu để đánh giá, báo thiếu căn cứ; không bịa tác phẩm hoặc dẫn chứng.' })) };
     const grade = await gradeLiteratureSubmission({ exam, answers: { [kind]: answer }, generate, requireReviewed: false });
     const result = grade.results?.find(r => r.question === kind);
-    res.status(grade.gradingStatus === 'provisional' ? 200 : 202).json({ gradingStatus: grade.gradingStatus, message: grade.message, score: null, proposedScore: grade.gradingStatus === 'provisional' ? result?.earnedPoints : null, maximumPoints: targets.find(t => t.targetId === kind).maximumPoints, result });
+    res.status(grade.gradingStatus === 'provisional' ? 200 : 202).json({ gradingStatus: grade.gradingStatus, errorCode: grade.errorCode, message: grade.message, score: null, proposedScore: grade.gradingStatus === 'provisional' ? result?.earnedPoints : null, maximumPoints: targets.find(t => t.targetId === kind).maximumPoints, result });
   });
 }
