@@ -879,8 +879,14 @@ async function loadAdminUsers() {
           : (u.accountType === "school" || u.classCode)
             ? (u.classCode ? `Học sinh trong trường · Lớp ${u.classCode}` : "Học sinh trong trường")
             : "Học sinh ngoài trường";
+      const permanentSchool = ['legacy', 'premium'].includes(u.schoolPlan) || u.schoolPlan === 'standard' && !u.schoolExpiresAt;
+      const schoolLabel = isSuper || isTeacher ? 'School theo vai trò'
+        : permanentSchool ? 'School · Không thời hạn'
+        : u.schoolPlan === 'standard' ? `School · Hết hạn ${formatAdminCreatedAt(u.schoolExpiresAt)}` : 'Chưa có gói School';
+      const grantSchool = payload.isSuperAdmin && u.role === 'user' && !permanentSchool
+        ? `<button class="button secondary small" data-grant-school="${u.id}" data-user-name="${escapeHTML(u.name)}">Add vào gói School</button>` : '';
       const canRequestDelete = Boolean(payload.isOwnerAdmin) && Number(u.id) !== Number(payload.currentUserId);
-      return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">Xóa</button>` : "—"}</td></tr>`;
+      return `<tr><td>${u.id}</td><td>${escapeHTML(u.name)}</td><td>${escapeHTML(u.email)}</td><td><span class="role-chip">${escapeHTML(roleLabel)}</span></td><td>${escapeHTML(created)}</td><td>${escapeHTML(schoolLabel)}</td><td>${grantSchool}${canRequestDelete ? `<button class="button secondary small" data-delete-user="${u.id}">Xóa</button>` : "—"}</td></tr>`;
     }).join("");
 
     let extra = "";
@@ -892,7 +898,7 @@ async function loadAdminUsers() {
     }
 
     if (container) {
-      container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
+      container.innerHTML = `<div class="admin-table-wrap admin-users-scroll" role="region" aria-label="Danh sách tài khoản, tối đa 5 dòng hiển thị trước khi cuộn" tabindex="0"><table class="admin-table"><thead><tr><th>ID</th><th>Họ và tên</th><th>Email</th><th>Vai trò</th><th>Ngày tạo</th><th>Gói School</th><th>Thao tác</th></tr></thead><tbody>${rows || '<tr><td colspan="7">Chưa có tài khoản.</td></tr>'}</tbody></table></div>${extra}`;
     }
     if (payload.isOwnerAdmin) await loadAccountDeletionRequests();
   } catch (error) {
@@ -1480,6 +1486,28 @@ document.addEventListener("click", async (e) => {
         } catch (error) {
             toast(error.message || "Không thể xóa tài khoản.", "error");
             deleteUserButton.disabled = false;
+        }
+        return;
+    }
+
+    const grantSchoolButton = e.target.closest('[data-grant-school]');
+    if (grantSchoolButton) {
+        if (grantSchoolButton.disabled) return;
+        const id = grantSchoolButton.dataset.grantSchool;
+        const name = grantSchoolButton.dataset.userName || `#${id}`;
+        if (!confirm(`Cấp gói School Standard miễn phí, không thời hạn cho ${name}?`)) return;
+        grantSchoolButton.disabled = true;
+        try {
+            const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}/school`, {
+                method: 'POST', credentials: 'same-origin',
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) throw new Error(payload.error || 'Không thể cấp gói School.');
+            toast(payload.message || 'Đã cấp gói School miễn phí.', 'success');
+            await loadAdminUsers();
+        } catch (error) {
+            toast(error.message || 'Không thể cấp gói School.', 'error');
+            grantSchoolButton.disabled = false;
         }
         return;
     }

@@ -186,6 +186,24 @@ test("Billing creates student and school orders, activates one Standard subscrip
     )).rows[0];
     assert.equal(schoolSubCount.n, 2);
     assert.equal(publicUser({ id: studentTwoId, role: "user", school_plan: "standard", school_expires_at: recipients[0].school_expires_at }).schoolPlan, "standard");
+    // A payment from an order opened before an admin grant cannot shorten permanent access.
+    const pendingBeforeGrant = await post("/api/billing/orders", { buyerType: "school", schoolId: Number(school.id), studentIds: [studentTwoId] }, schoolBuyerId);
+    assert.equal(pendingBeforeGrant.status, 201);
+    const pendingOrder = (await pendingBeforeGrant.json()).order;
+    await fixture.db.query("UPDATE users SET school_plan='standard',school_expires_at=NULL WHERE id=$1", [studentTwoId]);
+    assert.equal((await sendWebhook({ id: 900004, gateway: "Vietcombank", accountNumber: env.SEPAY_ACCOUNT_NUMBER, transferType: "in", transferAmount: 50000, content: pendingOrder.transferContent })).status, 200);
+    assert.equal((await fixture.db.query('SELECT school_expires_at FROM users WHERE id=$1', [studentTwoId])).rows[0].school_expires_at, null);
+    assert.equal((await fixture.db.query('SELECT status FROM billing_orders WHERE id=$1', [pendingOrder.id])).rows[0].status, 'paid');
+    assert.equal((await fixture.db.query('SELECT count(*)::int AS n FROM billing_subscriptions WHERE user_id=$1', [studentTwoId])).rows[0].n, 2);
+    const eligible = await (await fetch(origin + `/api/billing/schools/${school.id}/students`, { headers: { 'X-Test-User': String(schoolBuyerId) } })).json();
+    assert.ok(!eligible.students.some(student => Number(student.id) === studentTwoId));
+    assert.equal((await post('/api/billing/orders', { buyerType:'school', schoolId:Number(school.id), studentIds:[studentTwoId] }, schoolBuyerId)).status, 400);
+    await fixture.db.query("UPDATE billing_subscriptions SET starts_at=now()-interval '24 days',expires_at=now()+interval '6 days' WHERE user_id=$1", [studentTwoId]);
+    const reminderWorker = createBillingReminderWorker(fixture.db, { env: {} });
+    await reminderWorker.drain();
+    assert.equal((await fixture.db.query("SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND type='billing_renewal_reminder'", [studentTwoId])).rows[0].n, 0);
+    assert.equal((await fixture.db.query("SELECT count(*)::int AS n FROM billing_reminders WHERE user_id=$1", [studentTwoId])).rows[0].n, 0);
+
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await fixture.close();

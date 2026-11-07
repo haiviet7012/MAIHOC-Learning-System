@@ -85,3 +85,13 @@ Hệ thống tự chuyển subscription quá hạn sang expired và hạ users.s
 - GET /api/billing/history và GET /api/billing/subscription — lịch sử và quyền cá nhân.
 - POST /api/billing/sepay/webhook — nhận giao dịch SePay.
 - GET /api/admin/billing/overview — Admin/Super Admin xem doanh thu và giao dịch ngoại lệ.
+
+## Admin cấp School miễn phí
+
+Tại **School → Quản trị → Tài khoản người dùng**, Admin chọn **Add vào gói School** trên dòng học sinh và xác nhận. Hệ thống cấp `school_plan=standard`, `school_expires_at=NULL`, `account_type=school`: School Standard miễn phí, không thời hạn. Không tạo đơn hàng, subscription thanh toán hoặc giao dịch SePay. Giáo viên và Admin đã có School theo vai trò; tài khoản Legacy hoặc Standard không thời hạn không cần cấp lại. Lớp học, bài làm, mật khẩu và lịch sử thanh toán được giữ nguyên; thao tác không tự thêm học sinh vào lớp/trường.
+
+API `POST /api/admin/users/:id/school` dùng `requireSuperAdmin` và kiểm tra same-origin; chỉ Admin hệ thống (bao gồm Admin quản lý đã được ủy quyền), không phải giáo viên hoặc school_admin theo membership. Khóa dòng user và transaction bảo đảm cấp lặp không tạo thêm audit/thông báo. Ghi `audit_logs.action=school_grant` với người cấp, user nhận, trạng thái cũ, quyền mới và `paymentRequired=false`; thông báo trong tài khoản nhận. Lỗi audit hoặc ghi dữ liệu sẽ rollback toàn bộ thao tác.
+
+Người dùng đang đăng nhập nhận quyền mới ở request kế tiếp; tải lại trang để cập nhật giao diện. Trang gói School hiển thị quyền không thời hạn, không yêu cầu mua/gia hạn. Đơn đã mở trước khi Admin cấp vẫn được đối soát khi thanh toán, nhưng webhook không ghi đè quyền không thời hạn bằng thời hạn hữu hạn. Worker không tạo nhắc gia hạn cho tài khoản không thời hạn; nhắc đang chờ bị hủy khi cấp. Không cần migration mới.
+
+Kiểm tra: `node --test server/admin-school-grants.test.js server/billing.test.js tests/admin-users-ui.test.js` và `node scripts/admin-school-grants-check.mjs` (preview PostgreSQL cô lập, không dùng dữ liệu thật).

@@ -24,6 +24,7 @@ const billingConfig = (env = process.env) => ({
   bankCode: String(env.SEPAY_BANK_CODE || "").trim(),
   webhookSecret: String(env.SEPAY_WEBHOOK_SECRET || "").trim(),
 });
+const hasPermanentSchool = user => ['legacy', 'premium'].includes(user.schoolPlan ?? user.school_plan) || (user.schoolPlan ?? user.school_plan) === 'standard' && (user.schoolExpiresAt ?? user.school_expires_at) == null;
 const money = value => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Number(value || 0)) + "đ";
 const qrUrl = (order, env = process.env) => {
   const config = billingConfig(env);
@@ -96,7 +97,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
     res.json({
       canBuyForSchool: schools.length > 0,
       schools,
-      canBuyForSelf: req.user.role === "user" && !req.user.isTeacher && !req.user.isSuperAdmin && req.user.schoolPlan !== "legacy",
+      canBuyForSelf: req.user.role === "user" && !req.user.isTeacher && !req.user.isSuperAdmin && !hasPermanentSchool(req.user),
     });
   }));
 
@@ -109,7 +110,8 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
        LEFT JOIN student_enrollments e ON e.school_id=m.school_id AND e.student_id=u.id AND e.status='active'
        LEFT JOIN classes c ON c.school_id=e.school_id AND c.id=e.class_id
        WHERE m.school_id=$1 AND m.role='student' AND m.status='active' AND u.role='user'
-         AND COALESCE(u.school_plan,'none')<>'legacy'
+         AND COALESCE(u.school_plan,'none') NOT IN ('legacy','premium')
+         AND NOT (u.school_plan='standard' AND u.school_expires_at IS NULL)
        ORDER BY c.class_code NULLS LAST,u.name LIMIT 500`,
       [schoolId],
     );
@@ -124,7 +126,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
     let schoolId = null, recipientIds = [];
     if (buyerType === "student") {
       if (req.user.role !== "user" || req.user.isTeacher || req.user.isSuperAdmin) fail("Chỉ tài khoản học sinh mới được tự mua School Standard.", 403);
-      if (req.user.schoolPlan === "legacy") fail("Tài khoản của bạn đã có quyền School được giữ từ trước; không cần mua gói này.");
+      if (hasPermanentSchool(req.user)) fail("Tài khoản đã có School không thời hạn; không cần mua gói này.", 409);
       recipientIds = [Number(req.user.id)];
     } else {
       schoolId = positiveInt(req.body.schoolId);
@@ -132,12 +134,12 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
       const ids = Array.isArray(req.body.studentIds) ? [...new Set(req.body.studentIds.map(Number))] : [];
       if (!ids.length || ids.length > 200 || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) fail("Hãy chọn từ 1 đến 200 học sinh hợp lệ.");
       const members = await db.query(
-        `SELECT u.id,u.school_plan FROM school_memberships m JOIN users u ON u.id=m.user_id
+        `SELECT u.id,u.school_plan,u.school_expires_at FROM school_memberships m JOIN users u ON u.id=m.user_id
          WHERE m.school_id=$1 AND m.status='active' AND m.role='student' AND u.role='user' AND u.id=ANY($2::bigint[])`,
         [schoolId, ids],
       );
       if (members.rows.length !== ids.length) fail("Một hoặc nhiều học sinh không còn thuộc trường này. Hãy tải lại danh sách.");
-      if (members.rows.some(row => row.school_plan === "legacy")) fail("Danh sách có học sinh đã được giữ quyền School cũ. Hãy bỏ các em này khỏi đơn.");
+      if (members.rows.some(hasPermanentSchool)) fail("Danh sách có học sinh đã có School không thời hạn. Hãy bỏ các em này khỏi đơn.");
       recipientIds = members.rows.map(row => Number(row.id));
     }
     const quantity = recipientIds.length;
@@ -270,7 +272,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
       }
       for (const recipient of recipients) {
         const studentId = Number(recipient.user_id);
-        const lockedUser = await db.query("SELECT id FROM users WHERE id=$1 AND role='user' FOR UPDATE", [studentId]);
+        const lockedUser = await db.query("SELECT id,school_plan,school_expires_at FROM users WHERE id=$1 AND role='user' FOR UPDATE", [studentId]);
         if (!lockedUser.rows.length) continue;
         const timing = (await db.query(
           "SELECT GREATEST(now(),COALESCE(max(expires_at),now())) AS starts_at FROM billing_subscriptions WHERE user_id=$1 AND status='active' AND expires_at>now()",
@@ -285,7 +287,7 @@ export function installBillingRoutes(app, { db, requireAuth, requireSameOrigin, 
           [subscriptionId, studentId, order.id, order.school_id, startsAt, expiresAt],
         );
         await db.query("UPDATE billing_order_recipients SET subscription_id=$1 WHERE order_id=$2 AND user_id=$3", [subscriptionId, order.id, studentId]);
-        await db.query("UPDATE users SET school_plan='standard',school_expires_at=$1,account_type='school' WHERE id=$2 AND role='user'", [expiresAt, studentId]);
+        if (!hasPermanentSchool(lockedUser.rows[0])) await db.query("UPDATE users SET school_plan='standard',school_expires_at=$1,account_type='school' WHERE id=$2 AND role='user'", [expiresAt, studentId]);
         await db.prepare("INSERT INTO notifications(user_id,type,title,message,link) VALUES(?,?,?,?,?)")
           .run(studentId, "billing_activated", "MAIHOC School Standard đã được kích hoạt", "Gói School Standard đã được kích hoạt hoặc gia hạn thành công.", "/school/plans");
       }
@@ -329,8 +331,8 @@ export function createBillingReminderWorker(db, { env = process.env, send = deli
         `WITH queued AS (
            INSERT INTO billing_reminders(subscription_id,user_id,next_at)
            SELECT s.id,s.user_id,s.expires_at-interval '7 days'
-           FROM billing_subscriptions s
-           WHERE s.status='active' AND s.expires_at>now() AND s.expires_at<=now()+interval '7 days'
+           FROM billing_subscriptions s JOIN users u ON u.id=s.user_id
+           WHERE u.school_plan='standard' AND u.school_expires_at IS NOT NULL AND s.status='active' AND s.expires_at>now() AND s.expires_at<=now()+interval '7 days'
              AND s.expires_at=(SELECT max(s2.expires_at) FROM billing_subscriptions s2 WHERE s2.user_id=s.user_id AND s2.status='active')
            ON CONFLICT(subscription_id) DO NOTHING
            RETURNING user_id
