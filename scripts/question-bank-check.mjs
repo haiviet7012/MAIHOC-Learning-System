@@ -84,12 +84,17 @@ try {
   await page.locator('[data-qb-tab="school"]').click();
   const source = page.locator('[data-qb-card="MATH12-089"]');
   await source.locator('[data-qb-action="clone"]').click();
-  await source.locator('.qb-variant-card').first().waitFor();
-  assert.equal(await source.locator('.qb-variant-card').count(), 2);
-  await source.locator('[data-qb-action="save-variant"]').first().click();
-  await page.waitForFunction(() => document.querySelector('[data-qb-kpi="ai"]').textContent === '1');
-  await page.locator('[data-qb-action="dismiss-variant"]').first().click();
-  assert.equal(await page.locator('.qb-variant-card').count(), 0);
+  await page.waitForFunction(() => document.querySelector('[data-qb-kpi="ai"]').textContent === '2');
+  assert.equal(await page.locator('[data-qb-action="save-variant"]').count(),0);
+  const saved = (await (await context.request.get(origin+'/api/question-bank/variants')).json()).items;
+  assert.equal(saved.length,2); assert.ok(saved.every(q=>q.status==='approved' && q.autoSaved));
+  // A fresh browser storage context must still read variants from PostgreSQL.
+  const other = await browser.newContext();
+  await other.request.post(origin+'/api/auth/login',{headers:{Origin:origin},data:{email:'teacher@maihoc.test',password}});
+  const fresh=await other.newPage(); await fresh.goto(origin+'/school/question-bank'); await dismissDevelopmentNotice(fresh);
+  await fresh.locator('[data-qb-kpi="ai"]').filter({hasText:'2'}).waitFor();
+  assert.equal(await fresh.locator('[data-qb-action="save-variant"]').count(),0);
+  await other.close();
   await page.locator('[data-qb-select="MATH12-089"]').check();
   await page.locator('[data-qb-select="MATH12-124"]').check();
   assert.match(await page.locator('[data-qb-basket]').innerText(), /Đã chọn: 2/);
@@ -101,7 +106,7 @@ try {
   await click('export');
   assert.match(await page.locator('[data-qb-status]').innerText(), /cùng môn/);
   await click('clear');
-  console.log('AI variant review, exam basket, shuffling and mixed-subject validation pass.');
+  console.log('AI automatic database persistence, exam basket, shuffling and mixed-subject validation pass.');
 
   await click('matrix');
   await dialog.locator('[name="nb"]').fill('99');
@@ -145,6 +150,7 @@ try {
   await page.screenshot({ path: 'test-results/question-bank-mobile-matrix.png' });
   await click('close'); await click('clear');
   await click('import'); await click('import-sample');
+  await page.locator('[data-qb-status]').filter({hasText:'Đã nhập 1 câu hỏi mẫu'}).waitFor();
   assert.match(await page.locator('[data-qb-status]').innerText(), /Đã nhập 1 câu hỏi mẫu/);
   assert.ok(await page.locator('[data-qb-tab="personal"]').getAttribute('aria-selected') === 'true');
   await page.locator('[data-qb-tab="school"]').click();

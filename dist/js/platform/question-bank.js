@@ -1,7 +1,8 @@
+import { createQuestionBankRepository } from './question-bank-storage.js';
 import { CONTENT_DATE_OPTIONS, CONTENT_STATE_OPTIONS, isContentCompleted, contentTimestamp } from './content-filters.js';
 import { escapeHTML as e } from '../ui.js';
 import { renderQuestionMath } from './question-bank-math.js';
-import { LEVELS, TYPES, SUBJECTS, GRADES, createLocalRepository, filterQuestions, needsReview, validateQuestion, extractMatrix, buildExam, generateVariants, uniqueQuestions, questionFingerprint } from './question-bank-model.js';
+import { LEVELS, TYPES, SUBJECTS, GRADES, filterQuestions, needsReview, validateQuestion, extractMatrix, buildExam, generateVariants, uniqueQuestions, questionFingerprint } from './question-bank-model.js';
 
 const icons = {
   book: '<path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4z"/><path d="M20 4h-4a3 3 0 0 0-3 3v14a4 4 0 0 1 4-2h3z"/>',
@@ -48,31 +49,30 @@ export function readExamDraft(userId) {
   } catch { return null; }
 }
 
-export function mountQuestionBank(container, user, onNavigate, { repository = createLocalRepository(user.id) } = {}) {
+export function mountQuestionBank(container, user, onNavigate, { repository = createQuestionBankRepository(user.id) } = {}) {
   const events = new AbortController(), timers = new Set();
   let questions = [], filters = { tab: 'school', search: '', subject: '', grade: '', type: '', level: '', dateOrder: 'newest', completion: 'unanswered-first' }, selected = new Set();
   let pro = true, activeModal = '', editing = null, exam = readExamDraft(user.id), disposed = false, trigger = null;
-  const variants = new Map(), busy = new Set();
+  const busy = new Set();
   let history = new Map(), historyFailed = false;
   const canReview = user.isSuperAdmin || user.isTeacher || ['teacher', 'admin', 'school_admin'].includes(user.role);
   const find = selector => container.querySelector(selector);
   const later = (fn, ms = 650) => { const t = setTimeout(() => { timers.delete(t); if (!disposed) fn(); }, ms); timers.add(t); };
   const announce = message => { const el = find('[data-qb-status]'); if (el) el.textContent = message; };
-  const persisted = ok => ok ? 'Đã lưu trên trình duyệt này.' : 'Đã lưu trong phiên này; trình duyệt không cho phép lưu lâu dài.';
+  const persisted = ok => ok ? 'Đã lưu câu hỏi.' : 'Đã lưu trong phiên này; trình duyệt không cho phép lưu lâu dài.';
   function math(root) {
     if (!disposed) renderQuestionMath(root);
   }
   function paywall(inline = false) {
     return `<section class="qb-paywall ${inline ? 'is-inline' : ''}"><div class="qb-paywall-symbol">${icon('crown')}</div><span class="qb-overline">DÀNH CHO NHỮNG NGƯỜI TRUYỀN CẢM HỨNG</span><h2>Một kho tri thức.<br>Vô hạn khả năng giảng dạy.</h2><p>Nâng cấp <strong>MAIHOC School Pro</strong> để nhà trường và giáo viên có thêm thời gian đồng hành cùng học sinh.</p><div class="qb-benefits"><span>${icon('shield')} Kho chuẩn hóa dùng chung toàn trường</span><span>${icon('grid')} Tạo đề tự động theo ma trận GDPT 2018</span><span>${icon('spark')} Nhân bản AI & phân tích độ khó thực tế</span></div><div class="qb-actions">${btn('plans', 'Khám phá School Pro', 'arrow', 'qb-primary')}${inline ? btn('personal', 'Tiếp tục với kho cá nhân') : ''}</div><small>Đây là chế độ xem trước Free. Công tắc thử nghiệm không thay đổi gói tài khoản thật.</small></section>`;
   }
-  function card(q, preview = false) {
-    const id = e(q.id), checked = selected.has(q.id), generated = variants.get(q.id);
-    return `<article class="qb-card ${checked ? 'is-selected' : ''} ${preview ? 'qb-variant-card' : ''}" data-qb-card="${id}">
-      <div class="qb-card-header"><div class="qb-card-tags">${!preview && q.status === 'approved' ? `<input type="checkbox" class="qb-checkbox" data-qb-select="${id}" aria-label="Chọn câu ${id}" ${checked ? 'checked' : ''}>` : ''}<span class="qb-code">#${id}</span><span class="qb-type-tag">${historyFailed ? 'Chưa tải được lịch sử' : isContentCompleted(q) ? 'Đã làm' : 'Chưa làm'}</span>${!historyFailed && contentTimestamp(q.lastCompletedAt) !== null ? `<span class="qb-type-tag">Làm gần nhất: ${e(new Date(contentTimestamp(q.lastCompletedAt)).toLocaleString('vi-VN'))}</span>` : ''}<span class="qb-type-tag">Ngày thêm: ${e(contentTimestamp(q.createdAt) === null ? 'Chưa ghi nhận' : new Date(contentTimestamp(q.createdAt)).toLocaleString('vi-VN'))}</span><span class="qb-subject-tag">${e(q.subject)} ${e(q.grade)} <span>· ${e(q.topic)}</span></span><span class="qb-type-tag">${q.type === 'true_false' ? 'Đúng/Sai 4 ý' : q.type === 'multiple_choice' ? '4 lựa chọn' : e(TYPES[q.type])}</span>${levelBadge(q.level)}</div><span class="qb-analytics">${q.attempts ? `<span class="qb-analytics-dot"></span>Tỷ lệ đúng: <strong>${q.rate}%</strong> <span>(${q.attempts} lượt làm)</span>` : 'Chưa có lượt làm'}</span></div>
+  function card(q) {
+    const id = e(q.id), checked = selected.has(q.id);
+    return `<article class="qb-card ${checked ? 'is-selected' : ''}" data-qb-card="${id}">
+      <div class="qb-card-header"><div class="qb-card-tags">${q.status === 'approved' ? `<input type="checkbox" class="qb-checkbox" data-qb-select="${id}" aria-label="Chọn câu ${id}" ${checked ? 'checked' : ''}>` : ''}<span class="qb-code">#${id}</span><span class="qb-type-tag">${historyFailed ? 'Chưa tải được lịch sử' : isContentCompleted(q) ? 'Đã làm' : 'Chưa làm'}</span>${!historyFailed && contentTimestamp(q.lastCompletedAt) !== null ? `<span class="qb-type-tag">Làm gần nhất: ${e(new Date(contentTimestamp(q.lastCompletedAt)).toLocaleString('vi-VN'))}</span>` : ''}<span class="qb-type-tag">Ngày thêm: ${e(contentTimestamp(q.createdAt) === null ? 'Chưa ghi nhận' : new Date(contentTimestamp(q.createdAt)).toLocaleString('vi-VN'))}</span><span class="qb-subject-tag">${e(q.subject)} ${e(q.grade)} <span>· ${e(q.topic)}</span></span><span class="qb-type-tag">${q.type === 'true_false' ? 'Đúng/Sai 4 ý' : q.type === 'multiple_choice' ? '4 lựa chọn' : e(TYPES[q.type])}</span>${levelBadge(q.level)}</div><span class="qb-analytics">${q.attempts ? `<span class="qb-analytics-dot"></span>Tỷ lệ đúng: <strong>${q.rate}%</strong> <span>(${q.attempts} lượt làm)</span>` : 'Chưa có lượt làm'}</span></div>
       ${needsReview(q) ? `<div class="qb-warning">${icon('alert')} Cần rà soát độ khó <span>· Tỷ lệ làm đúng thấp hơn kỳ vọng ở mức Nhận biết</span></div>` : ''}
       <div class="qb-card-body"><p class="qb-stem">${e(q.stem)}</p>${answers(q)}<details class="qb-solution"><summary>Xem lời giải chi tiết & Hướng dẫn chấm <span>⌄</span></summary><div>${e(q.solution || 'Chưa có lời giải chi tiết. Giáo viên có thể bổ sung trong Chỉnh sửa.')}</div></details></div>
-      <footer class="qb-card-footer"><div class="qb-author"><span class="qb-avatar">${e(q.author?.split(' ').slice(-2).map(x => x[0]).join('') || 'MH')}</span><span>${e(q.author)}<small>${q.status === 'approved' ? `${icon('check')} Đã duyệt bởi ${e(q.reviewer)}` : 'Bản nháp · Chờ kiểm duyệt'}${q.uses ? ` <span>· Đã dùng trong ${q.uses} đề</span>` : ''}</small></span></div><div class="qb-actions">${preview ? btn('save-variant', 'Duyệt & lưu vào kho', 'check', 'qb-primary', `data-id="${id}"`) + btn('dismiss-variant', 'Bỏ qua', '', '', `data-id="${id}"`) : `${q.status === 'approved' ? btn('clone', busy.has(q.id) ? 'Đang tạo biến thể…' : 'Nhân bản AI', 'spark', 'qb-ai', `data-id="${id}" ${busy.has(q.id) ? 'disabled' : ''}`) : canReview ? btn('approve', 'Duyệt câu hỏi', 'check', '', `data-id="${id}"`) : ''}${btn('edit', 'Chỉnh sửa', 'edit', '', `data-id="${id}"`)}${canReview && repository.remove ? btn('delete', 'Xóa câu hỏi', 'trash', '', `data-id="${id}"`) : ''}${q.status === 'approved' ? btn('select', checked ? 'Đã thêm vào đề' : 'Đưa vào bài kiểm tra', checked ? 'check' : 'basket', checked ? 'qb-added' : '', `data-id="${id}" aria-pressed="${checked}"`) : ''}`}</div></footer>
-      ${generated?.length ? `<section class="qb-variants"><div class="qb-section-heading"><div><span class="qb-overline">AI STUDIO · BẢN NHÁP MÔ PHỎNG</span><h3>Hai ý tưởng mới, cùng một nền tảng.</h3><p>Biến thể minh họa theo dạng câu hỏi. Hãy kiểm tra chuyên đề, mức độ và lời giải trước khi lưu.</p></div></div>${generated.map(v => card(v, true)).join('')}</section>` : ''}
+      <footer class="qb-card-footer"><div class="qb-author"><span class="qb-avatar">${e(q.author?.split(' ').slice(-2).map(x => x[0]).join('') || 'MH')}</span><span>${e(q.author)}<small>${q.status === 'approved' ? `${icon('check')} ${q.autoSaved ? 'Đã lưu tự động vào ngân hàng' : `Đã duyệt bởi ${e(q.reviewer)}`}` : 'Bản nháp · Chờ kiểm duyệt'}${q.uses ? ` <span>· Đã dùng trong ${q.uses} đề</span>` : ''}</small></span></div><div class="qb-actions">${`${q.status === 'approved' && canReview ? btn('clone', busy.has(q.id) ? 'Đang tạo biến thể…' : 'Nhân bản AI', 'spark', 'qb-ai', `data-id="${id}" ${busy.has(q.id) ? 'disabled' : ''}`) : canReview ? btn('approve', 'Duyệt câu hỏi', 'check', '', `data-id="${id}"`) : ''}${btn('edit', 'Chỉnh sửa', 'edit', '', `data-id="${id}"`)}${canReview && repository.remove ? btn('delete', 'Xóa câu hỏi', 'trash', '', `data-id="${id}"`) : ''}${q.status === 'approved' ? btn('select', checked ? 'Đã thêm vào đề' : 'Đưa vào bài kiểm tra', checked ? 'check' : 'basket', checked ? 'qb-added' : '', `data-id="${id}" aria-pressed="${checked}"`) : ''}`}</div></footer>
     </article>`;
   }
   function renderList() {
@@ -132,7 +132,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     editing = q || { id: `Q-${Date.now().toString(36).toUpperCase()}`, subject: 'Toán', grade: '12', topic: '', level: 'nb', type: 'multiple_choice', stem: '', choices: ['', '', '', ''], answer: 0, solution: '', status: 'draft', bank: 'school', owner: user.id, author: user.name || 'Giáo viên', reviewer: '', attempts: 0, rate: null, uses: 0, ai: false, createdAt: new Date().toISOString() };
     editing = JSON.parse(JSON.stringify(editing));
     activeModal = 'editor';
-    modal(q ? 'Chỉnh sửa câu hỏi' : 'Thêm câu hỏi mới', 'Soạn một lần, chia sẻ tri thức nhiều lần. Công thức hỗ trợ cú pháp $LaTeX$.', `<form data-qb-editor><div class="qb-editor-grid"><section class="qb-editor-fields"><div class="qb-form-row">${fieldSelect('subject', 'Môn học', SUBJECTS, editing.subject)}${fieldSelect('grade', 'Khối lớp', gradeLabels, editing.grade)}</div><label class="qb-field">Chuyên đề<input name="topic" value="${e(editing.topic)}" required maxlength="150" placeholder="VD: Hàm số"></label><div class="qb-form-row">${fieldSelect('type', 'Loại câu hỏi', TYPES, editing.type)}${fieldSelect('level', 'Mức độ nhận thức', LEVELS, editing.level)}</div><label class="qb-field">Nội dung câu hỏi<textarea name="stem" rows="4" required maxlength="12000" placeholder="Nhập đề bài, sử dụng $…$ cho công thức">${e(editing.stem)}</textarea></label><fieldset class="qb-answer-editor" data-qb-answer-editor></fieldset><div class="qb-field"><div class="qb-label-line"><label for="qb-solution">Lời giải & Hướng dẫn chấm</label>${btn('suggest', 'Gợi ý bằng AI', 'spark', 'qb-ai')}</div><textarea name="solution" id="qb-solution" rows="4" maxlength="12000">${e(editing.solution)}</textarea><small>Gợi ý AI trong bản trải nghiệm là mẫu hướng dẫn; giáo viên cần kiểm tra nội dung.</small></div></section><aside class="qb-live-preview"><div class="qb-preview-label"><span class="qb-live-dot"></span> XEM TRƯỚC TRỰC TIẾP</div><div data-qb-preview></div></aside></div><footer class="qb-modal-footer"><p data-qb-form-error role="alert"></p><span>Câu mới và câu sửa được lưu thành bản nháp chờ duyệt.</span>${btn('close', 'Hủy')}<button type="submit" class="qb-btn qb-primary">Lưu câu hỏi</button></footer></form>`, true);
+    modal(q ? 'Chỉnh sửa câu hỏi' : 'Thêm câu hỏi mới', 'Soạn một lần, chia sẻ tri thức nhiều lần. Công thức hỗ trợ cú pháp $LaTeX$.', `<form data-qb-editor><div class="qb-editor-grid"><section class="qb-editor-fields"><div class="qb-form-row">${fieldSelect('subject', 'Môn học', SUBJECTS, editing.subject)}${fieldSelect('grade', 'Khối lớp', gradeLabels, editing.grade)}</div><label class="qb-field">Chuyên đề<input name="topic" value="${e(editing.topic)}" required maxlength="150" placeholder="VD: Hàm số"></label><div class="qb-form-row">${fieldSelect('type', 'Loại câu hỏi', TYPES, editing.type)}${fieldSelect('level', 'Mức độ nhận thức', LEVELS, editing.level)}</div><label class="qb-field">Nội dung câu hỏi<textarea name="stem" rows="4" required maxlength="12000" placeholder="Nhập đề bài, sử dụng $…$ cho công thức">${e(editing.stem)}</textarea></label><fieldset class="qb-answer-editor" data-qb-answer-editor></fieldset><div class="qb-field"><div class="qb-label-line"><label for="qb-solution">Lời giải & Hướng dẫn chấm</label>${btn('suggest', 'Gợi ý bằng AI', 'spark', 'qb-ai')}</div><textarea name="solution" id="qb-solution" rows="4" maxlength="12000">${e(editing.solution)}</textarea><small>Gợi ý AI trong bản trải nghiệm là mẫu hướng dẫn; giáo viên cần kiểm tra nội dung.</small></div></section><aside class="qb-live-preview"><div class="qb-preview-label"><span class="qb-live-dot"></span> XEM TRƯỚC TRỰC TIẾP</div><div data-qb-preview></div></aside></div><footer class="qb-modal-footer"><p data-qb-form-error role="alert"></p><span>${editing.autoSaved ? 'Câu nhân bản AI được cập nhật trực tiếp trong ngân hàng.' : 'Câu mới và câu sửa được lưu thành bản nháp chờ duyệt.'}</span>${btn('close', 'Hủy')}<button type="submit" class="qb-btn qb-primary">Lưu câu hỏi</button></footer></form>`, true);
     renderAnswerEditor(); renderPreview();
   }
   function renderAnswerEditor() {
@@ -238,7 +238,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
       button.disabled = true;
       try {
         const ok = await repository.remove(q.id);
-        selected.delete(q.id); variants.delete(q.id);
+        selected.delete(q.id);
         close(); await updateQuestions(); announce(`Đã xóa câu hỏi. ${persisted(ok)}`);
       } finally { button.disabled = false; }
       return;
@@ -254,13 +254,13 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     if (name === 'clone' && q && gate()) {
       if (busy.has(id)) return;
       busy.add(id); button.disabled = true; button.innerHTML = `${icon('spark')} Đang tạo 2 biến thể…`;
-      later(() => { busy.delete(id); try { variants.set(id, generateVariants(q, questions).map(v => ({ ...v, owner: user.id, author: user.name || 'Giáo viên' }))); renderList(); announce(variants.get(id).length ? `Đã tạo ${variants.get(id).length} biến thể mới. Hãy rà soát trước khi duyệt lưu.` : 'Các biến thể mô phỏng đã có trong kho. Hãy biên soạn câu hỏi mới.'); } catch (error) { renderList(); announce(error.message); } });
+      try {
+        if (!canReview || !repository.clone) throw new Error('Chỉ giáo viên hoặc quản trị viên được nhân bản và lưu câu hỏi.');
+        const result = await repository.clone(q, questions);
+        await updateQuestions();
+        announce(result.items.length ? `Đã lưu tự động ${result.items.length} câu hỏi mới vào database ngân hàng. Đã bỏ qua ${result.skipped} câu trùng.` : 'Các biến thể đã có trong kho. Không lưu câu hỏi trùng.');
+      } finally { busy.delete(id); if (!disposed) renderList(); }
     }
-    if (name === 'save-variant' && gate()) {
-      if (!canReview) { announce('Chỉ giáo viên hoặc quản trị viên được duyệt câu hỏi.'); return; }
-      for (const [parentId, list] of variants) { const v = list.find(v => v.id === id); if (v) { const ok = await repository.save({ ...v, status: 'approved', reviewer: 'Giáo viên duyệt (mô phỏng)' }); variants.set(parentId, list.filter(x => x.id !== id)); await updateQuestions(); announce(persisted(ok)); break; } }
-    }
-    if (name === 'dismiss-variant') { for (const [parent, list] of variants) variants.set(parent, list.filter(q => q.id !== id)); renderList(); }
     if (name === 'approve' && q && canReview && gate()) { const ok = await repository.approve(q.id); await updateQuestions(); announce(`Đã duyệt #${q.id}. ${persisted(ok)}`); }
     if (name === 'suggest' && gate()) {
       readEditor(); button.disabled = true;
@@ -271,10 +271,10 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     if (name === 'download' && exam) downloadExam(exam);
     if (name === 'send' && exam && saveExam()) { close(); onNavigate('tests'); }
     if (name === 'import-sample') {
-      const available = generateVariants(questions.find(q => q.subject === 'Toán'), questions);
+      const available = questions.filter(q => q.subject === 'Toán').flatMap(q => generateVariants(q, questions));
       if (!available.length) throw new Error('Câu hỏi mẫu đã có trong kho.');
       const sample = { ...available[0], id: `IMPORT-${Date.now().toString(36)}`, owner: user.id, author: user.name || 'Giáo viên', ai: false };
-      const ok = await repository.save(sample); close(); await updateQuestions(); selectTab('personal'); announce(`Đã nhập 1 câu hỏi mẫu, đang chờ duyệt. ${persisted(ok)}`);
+      const ok = await repository.save(sample); await updateQuestions(); selectTab('personal'); close(); announce(`Đã nhập 1 câu hỏi mẫu, đang chờ duyệt. ${persisted(ok)}`);
     }
   }
   container.addEventListener('click', event => {
@@ -303,7 +303,7 @@ export function mountQuestionBank(container, user, onNavigate, { repository = cr
     event.preventDefault();
     try {
       if (event.target.matches('[data-qb-editor]')) {
-        readEditor(); validateQuestion(editing); delete editing.completed; delete editing.lastCompletedAt; const ok = await repository.save({ ...editing, owner: user.id, author: user.name || 'Giáo viên', status: 'draft', reviewer: '', attempts: 0, rate: null, uses: 0 }); selected.delete(editing.id); close(); await updateQuestions(); selectTab('personal'); announce(`Đã lưu bản nháp, cần duyệt trước khi đưa vào đề. ${persisted(ok)}`);
+        readEditor(); validateQuestion(editing); delete editing.completed; delete editing.lastCompletedAt; const ok = await repository.save({ ...editing, owner: user.id, author: user.name || 'Giáo viên', status: 'draft', reviewer: '', attempts: 0, rate: null, uses: 0 }); selected.delete(editing.id); await updateQuestions(); selectTab('personal'); close(); announce(editing.autoSaved ? 'Đã cập nhật câu hỏi trong database ngân hàng.' : `Đã lưu bản nháp, cần duyệt trước khi đưa vào đề. ${persisted(ok)}`);
       }
       if (event.target.matches('[data-qb-matrix]') && pro) {
         const data = Object.fromEntries(new FormData(event.target)), spec = { ...data, counts: Object.fromEntries(Object.keys(LEVELS).map(k => [k, Number(data[k])])) };

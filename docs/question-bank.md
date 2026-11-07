@@ -17,7 +17,7 @@ Có 8 câu chuẩn thuộc Toán, Vật lý, Tiếng Anh/IELTS và đủ 4 dạn
 
 Mỗi tài khoản có kho riêng trên trình duyệt tại `maihoc:question-bank:v1:<userId>`. Lưu thất bại vẫn giữ thay đổi trong phiên và thông báo rõ. Thêm/sửa tạo bản nháp cần duyệt; câu sửa được loại khỏi giỏ đề. Kho Pro và câu đã duyệt mới được rút vào đề. Chuyển sang Free xóa giỏ và khóa kho dùng chung, ma trận, nhân bản AI; kho cá nhân và soạn câu vẫn dùng được.
 
-Biến thể AI và gợi ý lời giải là **mô phỏng**, không gọi dịch vụ AI hay phát sinh chi phí. Các biến thể có số liệu/đáp án nhất quán nhưng có thể đổi chuyên đề; giao diện nhắc giáo viên rà soát trước khi duyệt. Import cung cấp đường dẫn tới Số hóa đề AI và lựa chọn nhập mẫu; không giả vờ đã đọc PDF thật.
+Bộ sinh biến thể và gợi ý lời giải hiện vẫn là **mô phỏng**, không gọi dịch vụ AI hay phát sinh chi phí. Nhấn Nhân bản AI sẽ sinh biến thể ở backend, kiểm tra chống trùng và lưu thẳng vào PostgreSQL, không có bước duyệt thủ công. Câu hợp lệ có `status=approved`, `autoSaved=true` và dùng được ngay trong giỏ đề/ma trận. Import cung cấp đường dẫn tới Số hóa đề AI và lựa chọn nhập mẫu; không giả vờ đã đọc PDF thật.
 
 ## Đề kiểm tra
 
@@ -36,11 +36,12 @@ JSON chứa `version`, `title`, `subject`, `grade`, `source`, `createdAt`, `tota
   list: () => Question[] | Promise<Question[]>,
   save: question => boolean | Promise<boolean>,
   approve: id => boolean | Promise<boolean>,
+  clone: (source, existing) => Promise<{ items: Question[], skipped: number }>,
   remove: id => boolean | Promise<boolean>
 }
 ```
 
-Mặc định là local repository. Trả `true` khi lưu thành công, `false` khi chỉ giữ được trong bộ nhớ; reject/throw với thông báo lỗi khi request thất bại. Khi nối máy chủ, thay thông báo nguồn dữ liệu và xác nhận lưu ở view để phản ánh đúng trạng thái đồng bộ.
+Mặc định dùng `createQuestionBankRepository` tại `js/platform/question-bank-storage.js`: giữ câu cũ trên trình duyệt và đọc/ghi biến thể qua API xác thực. Trả `true` khi lưu thành công, `false` khi chỉ giữ được trong bộ nhớ; reject/throw với thông báo lỗi khi request thất bại. Khi nối máy chủ, thay thông báo nguồn dữ liệu và xác nhận lưu ở view để phản ánh đúng trạng thái đồng bộ.
 
 Question có `id`, `subject`, `grade` (chuỗi), `topic`, `type`, `level` (`nb/th/vd/vdc`), `stem`, `choices`, `answer`, `solution`, `status` (`draft/approved`), `bank` (`school/pro`), `owner`, `author`, `reviewer`, `attempts`, `rate`, `uses`, `ai`, `createdAt`.
 
@@ -91,3 +92,13 @@ Khi nhóm theo trạng thái, câu/đề chưa làm đứng trước và sắp t
 Trạng thái câu hỏi được đối chiếu bằng fingerprint nội dung, không dùng tổng `attempts` của người học khác. `GET /api/question-bank/history` chỉ trả lịch sử tài khoản hiện tại từ bài School đã nộp và phiên THPT đã nộp; câu bỏ trống không được tính đã làm. API trả fingerprint và thời điểm, không trả đáp án/lời giải. Lỗi tải lịch sử sẽ tạm khóa lọc trạng thái và thông báo, không tự coi các câu là chưa làm. Kho local vẫn lưu trên trình duyệt; dữ liệu trạng thái cá nhân lấy từ máy chủ.
 
 Đề THPT dùng `createdAt` và `lastCompletedAt` từ API. Ngày thêm đề tài liệu là `uploaded_at`. Ngân hàng đề bổ sung cột `created_at` ổn định khi khởi tạo; đề cũ không có ngày tạo dùng `updated_at` được ghi nhận tại lần nâng cấp làm mốc thay thế, không thay đổi khi sửa đề về sau. Câu local mới/biến thể lưu thời điểm ISO đầy đủ; dữ liệu cũ có độ chính xác ngày được giữ nguyên. Tổng lượt làm và năm của đề không được dùng làm lịch sử cá nhân hay ngày thêm.
+
+## Biến thể lưu trực tiếp trong database
+
+- `GET/POST /api/question-bank/variants`: đọc kho biến thể và sinh/lưu trực tiếp.
+- `PATCH/DELETE /api/question-bank/variants/:id`: sửa/xóa biến thể thuộc tài khoản hiện tại; không dùng lại localStorage cho các bản ghi này.
+- `ensureQuestionBankVariants` chạy idempotent khi backend khởi động, tạo bảng bổ sung `question_bank_variants` mà không thay đổi bảng hoặc dữ liệu cũ; không cần shell trên Render. JSONB giữ được metadata đầy đủ và khối IELTS/THPT, không ép vào schema khối số của platform.
+- Giữ phạm vi kho theo tài khoản của giao diện hiện có; biến thể đã lưu đọc được trên trình duyệt khác khi đăng nhập cùng tài khoản. Câu soạn tay và dữ liệu trình duyệt cũ tiếp tục dùng adapter hiện tại, không tự chuyển đổi/xóa dữ liệu.
+- Chỉ giáo viên/quản trị có School được sinh/lưu/sửa/xóa; backend lấy tác giả/chủ sở hữu và trạng thái tự động, không tin các trường quyền gửi từ client.
+- Chống trùng dùng `questionFingerprint` đã merge: so nội dung và phương án sau chuẩn hóa khoảng trắng, bỏ qua thứ tự phương án; không bỏ số, toán tử, hoa/thường hoặc dấu. Đối chiếu cả câu nguồn, mẫu sẵn, kho trình duyệt hiện tại, biến thể DB và câu platform đang hoạt động trong trường tài khoản được truy cập. Bỏ qua câu trùng riêng lẻ, lưu các câu mới còn lại. Khóa giao dịch theo tài khoản/trường và unique index trên hash ngăn lưu trùng khi bấm/gửi đồng thời.
+- Kiểm thử backend: `node --test server/platform/question-bank-variants.test.js`; browser check xác nhận tự lưu, không có nút duyệt, đọc lại bằng context không có localStorage, chống trùng khi tạo lại và luồng giỏ đề còn hoạt động.

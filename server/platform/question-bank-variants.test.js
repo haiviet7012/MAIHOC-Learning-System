@@ -1,0 +1,52 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import { testDatabase } from './test-db.js';
+import { ensureQuestionBankVariants,installQuestionBankVariants } from '../question-bank-variants.js';
+import { seedQuestions,generateVariants } from '../../js/platform/question-bank-model.js';
+import { questionFingerprint } from '../../js/platform/question-identity.js';
+
+test('AI variants persist immediately, skip existing bank content and concurrent retries, and enforce ownership',async t=>{
+  const f=await testDatabase({memoryOnly:true}),db=f.db;t.after(()=>f.close());
+  await ensureQuestionBankVariants(db);await ensureQuestionBankVariants(db);
+  for(const [id,role,level,plan] of [[1,'admin',1,'legacy'],[2,'user',0,'standard'],[3,'admin',1,'legacy'],[4,'user',0,'none']]) await db.query('INSERT INTO users(id,name,email,password_hash,role,admin_level,school_plan) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,'U'+id,id+'@test.local','hash',role,level,plan]);
+  const app=express();app.use(express.json());app.use((req,res,next)=>{const id=Number(req.headers['x-user']);req.user=id?{id,name:'Teacher',role:id===1||id===3?'admin':'user',adminLevel:id===1||id===3?1:0,schoolPlan:id===4?'none':'standard'}:null;next();});
+  installQuestionBankVariants(app,{db,requireAuth:(req,res,next)=>req.user?next():res.sendStatus(401),requireSameOrigin:(req,res,next)=>req.headers.origin==='http://test'?next():res.sendStatus(403)});
+  const server=app.listen(0);await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close();});
+  const call=async(method='GET',body,user=1,path='',origin='http://test')=>{const r=await fetch(`http://localhost:${server.address().port}/api/question-bank/variants${path}`,{method,headers:{'Content-Type':'application/json','x-user':String(user),origin},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json().catch(()=>({}))};};
+  const source=seedQuestions(1)[0];
+  assert.equal((await call('GET',null,0)).status,401);
+  assert.equal((await call('POST',{source},2)).status,403);
+  assert.equal((await call('GET',null,4)).status,403);
+  assert.equal((await call('POST',{source},1,'','http://evil')).status,403);
+  assert.equal((await call('POST',{source:{...source,answer:[]}})).status,400);
+  const proposed=generateVariants(source);
+  // The merged identity ignores whitespace and choice order.
+  const collision={...proposed[0],stem:' '+proposed[0].stem+' ',choices:[...proposed[0].choices].reverse()};
+  const first=await call('POST',{source,existingFingerprints:[questionFingerprint(collision)]});
+  assert.equal(first.status,201);assert.equal(first.data.items.length,1);assert.equal(first.data.skipped,1);
+  const simultaneous=await Promise.all([call('POST',{source}),call('POST',{source})]);
+  assert.equal(simultaneous.reduce((n,r)=>n+r.data.items.length,0),1);
+  let saved=(await call()).data.items;assert.equal(saved.length,2);
+  assert.ok(saved.every(q=>q.status==='approved'&&q.autoSaved&&q.ai&&q.owner===1));
+  assert.equal((await call('GET',null,3)).data.items.length,0);
+  assert.equal((await call('DELETE',null,3,'/'+saved[0].id)).status,404);
+  const duplicateEdit=await call('PATCH',saved[1],1,'/'+saved[0].id);assert.equal(duplicateEdit.status,409);
+  const changed=await call('PATCH',{...saved[0],solution:'Lời giải cập nhật'},1,'/'+saved[0].id);assert.equal(changed.status,200);assert.equal(changed.data.question.status,'approved');
+  assert.equal((await call('DELETE',null,1,'/'+saved[0].id)).status,200);
+  assert.equal((await call()).data.items.length,1);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM question_bank_variants')).rows[0].n,1);
+  // Existing platform questions are checked by the very same fingerprint.
+  await db.query("INSERT INTO schools(id,code,name) VALUES(1,'S','School')");
+  await db.query("INSERT INTO school_memberships(school_id,user_id,role) VALUES(1,1,'teacher')");
+  await db.query("INSERT INTO curriculum_versions(id,school_id,name) VALUES(1,1,'v1')");
+  await db.query("INSERT INTO curriculum_nodes(id,school_id,curriculum_version_id,subject,grade,name) VALUES(1,1,1,'Toán',12,'Hàm số')");
+  await db.query('INSERT INTO question_items(id,school_id,created_by) VALUES(1,1,1)');
+  const missing=saved[0];
+  await db.query("INSERT INTO question_versions(school_id,question_item_id,version,subject,grade,curriculum_node_id,type,stem,choices,answer,source,status) VALUES(1,1,1,'Toán',12,1,'true_false',$1,$2,$3,'test','approved')",[missing.stem,JSON.stringify(missing.choices),JSON.stringify(missing.answer)]);
+  const again=await call('POST',{source});assert.equal(again.data.items.length,0);assert.equal(again.data.skipped,2);
+  const english=seedQuestions(3).find(q=>q.grade==='IELTS');
+  const ielts=await call('POST',{source:english},3);assert.equal(ielts.data.items.length,2);
+  assert.ok(ielts.data.items.every(q=>q.grade==='IELTS' && q.status==='approved'));
+  assert.equal((await call('POST',{source:english},3)).data.items.length,0);
+});

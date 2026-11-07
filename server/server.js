@@ -1,3 +1,4 @@
+import { ensureQuestionBankVariants, installQuestionBankVariants } from './question-bank-variants.js';
 import { installAdminSchoolGrants } from './admin-school-grants.js';
 import { installQuestionBankHistory } from './question-bank-history.js';
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
@@ -2318,6 +2319,7 @@ app.post(
 // -------------------- DOCUMENT LIBRARY API --------------------
 
 installQuestionBankHistory(app, { db, requireAuth });
+installQuestionBankVariants(app, { db, requireAuth, requireSameOrigin });
 installNationalExamBank(app, { db, requireAuth, requireSameOrigin, notifyUser, upsertLearningResult });
 installNationalExamRoutes(app, { db, requireAuth, documentResponse, assessmentConfigFor });
 
@@ -3028,6 +3030,7 @@ export async function initializeApplicationRuntime() {
   await initAuthDatabase();
   await ensureLearningSchema(db);
   await ensureNationalExamBank(db);
+  await ensureQuestionBankVariants(db);
   await initSchoolSystemDatabase(db);
   await ensureAccountUpgrade(db);
   await initChatDatabase();
