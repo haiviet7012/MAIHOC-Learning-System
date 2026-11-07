@@ -34,6 +34,7 @@ for (const [id, name, email, role, level] of [
     [id, name, email, hash, role, level, "school"],
   );
 await fixture.db.query("UPDATE users SET school_plan='legacy' WHERE id IN (100,101,102)");
+if (process.env.MAIHOC_PREVIEW_PAID_STUDENT === '1') await fixture.db.query("UPDATE users SET school_plan='standard',school_expires_at=now()+interval '30 days' WHERE id=100");
 const school = (
   await fixture.db.query(
     "INSERT INTO schools(code,name) VALUES('PREVIEW','Trường THPT MAIHOC · Kiểm thử') RETURNING id",

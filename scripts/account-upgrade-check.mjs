@@ -95,13 +95,14 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
 
  await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page);await page.waitForFunction(async()=>{const r=await fetch('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return false;const d=await r.json();return d.user?.email==='verified@school.edu.vn'&&d.user?.isTeacher===true;});
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
- await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
+ await page.locator('.chat-tab[data-tab=direct]').click();await page.locator('#chat-pane-direct').waitFor({state:'visible'});assert.equal(new URL(page.url()).pathname,'/learning');
  await page.goto(origin+'/school'); await dismissDevelopmentNotice(page);await page.locator('body[data-school-ui]').waitFor();
  assert.match((await page.locator('[data-sidebar-space=school] [data-route=school-advisor]').textContent()).trim(),/Cố vấn AI/,'School advisor navigation is present');
  const advisorNav=page.locator('[data-sidebar-space=school] [data-route=school-advisor]');
  assert.equal((await advisorNav.locator('.nav-glyph').textContent()).trim(),'✦','Cố vấn AI uses the same star glyph as Gia sư AI');
  assert.equal(await advisorNav.locator('.nav-glyph').getAttribute('aria-hidden'),'true','Advisor star is decorative for assistive technology');
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').click();
+ await page.locator('#chat-pane-direct').waitFor({state:'visible'});
  assert.equal(await page.locator('#chat-pane-direct').isVisible(),true);
   for(const width of [1440,820,390]) {
    await page.setViewportSize({width,height:950});
