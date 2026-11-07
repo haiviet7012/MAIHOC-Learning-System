@@ -102,6 +102,7 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
  assert.equal((await advisorNav.locator('.nav-glyph').textContent()).trim(),'✦','Cố vấn AI uses the same star glyph as Gia sư AI');
  assert.equal(await advisorNav.locator('.nav-glyph').getAttribute('aria-hidden'),'true','Advisor star is decorative for assistive technology');
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').click();
+ await page.locator('#chat-pane-direct').waitFor({state:'visible'});
  assert.equal(await page.locator('#chat-pane-direct').isVisible(),true);
   for(const width of [1440,820,390]) {
    await page.setViewportSize({width,height:950});
