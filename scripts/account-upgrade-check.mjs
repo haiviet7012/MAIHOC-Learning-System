@@ -138,7 +138,7 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
   await syncPage.locator('#login-form [name=email]').fill('student@maihoc.test');
   await syncPage.locator('#login-form [name=password]').fill(password);
   await syncPage.locator('#login-form button[type=submit]').click();
-  await syncPage.waitForURL(origin+'/school');
+  await syncPage.waitForURL(origin+'/school/classes');
   await page.waitForFunction(name => window.maihocCurrentUser?.name === name && document.querySelector('#education-user')?.textContent.includes(name), 'Nguyễn Minh Anh');
 
   await page.goto(origin+'/school/plans'); await dismissDevelopmentNotice(page);
