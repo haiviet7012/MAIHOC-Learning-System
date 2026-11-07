@@ -32,3 +32,12 @@ SMTP/Resend và APP_PUBLIC_URL dùng lại cấu hình email hiện hữu. Khôn
 - `node --test server/tests/account-upgrade.test.js`: migration lặp, bảo toàn mật khẩu cũ, không tự cấp gói, edu/token/email binding, single-use, phân công, manager API restrictions và lời mời Gmail (mock SMTP).
 - `npm run test:account-upgrade`: đăng ký qua giao diện bằng OTP mock, giữ hồ sơ ẩn trước xác minh, trung tâm tài khoản giáo viên/mobile và vị trí Cố vấn.
 - Các bộ auth, School access, Learning, advisor, browser và thông báo được cập nhật theo phân quyền mới; không bỏ qua kiểm tra bị ảnh hưởng.
+
+
+## Chat riêng sau khi được cấp School
+
+Quyền chat riêng theo `canAccessSchool(user)` từ tài khoản đã xác thực, áp dụng cả School Standard được Admin cấp miễn phí không thời hạn. Không yêu cầu phải đang đứng ở giao diện School: user đã có quyền có thể mở chat riêng khi đang ở Learning. User chưa có gói vẫn được dẫn tới trang đăng ký School; API vẫn yêu cầu cả người gửi và người nhận có quyền School.
+
+Khi mở tab tin nhắn riêng hoặc mở chat từ danh sách online, widget đọc lại `/api/auth/me` với no-store trước khi quyết định khóa quyền. Widget cũng đồng bộ khi có `maihoc-user-updated`; không chỉ khi đăng nhập/đăng xuất. Cấp gói lúc trang đang mở vì vậy không đòi hỏi đăng nhập lại. Lỗi API quyền tạm thời hiển thị thông báo thử lại, không tự suy ra user thuộc Free. Không ngắt/tạo lại kết nối Socket.IO chỉ để làm mới quyền cùng tài khoản; API và socket vẫn kiểm tra membership/quyền trực tiếp từ DB.
+
+`npm run test:account-upgrade` bao gồm hồi quy cấp School và chat riêng: trang Learning mở trước khi cấp, Admin cấp qua UI, user gửi tin qua Socket.IO thật và đọc lại lịch sử qua API, cùng kiểm tra user Free và lỗi API quyền. Toàn bộ dùng PostgreSQL preview cô lập, không kiểm tra hoặc sửa tài khoản sản xuất.

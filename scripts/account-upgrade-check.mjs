@@ -95,7 +95,7 @@ assert.equal(await page.getByRole('heading',{name:'School Standard',exact:true})
 
  await page.goto(origin+'/learning'); await dismissDevelopmentNotice(page);await page.waitForFunction(async()=>{const r=await fetch('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return false;const d=await r.json();return d.user?.email==='verified@school.edu.vn'&&d.user?.isTeacher===true;});
  await page.locator('#chat-launcher').click();await page.locator('.chat-tab[data-tab=direct]').waitFor();
- await page.locator('.chat-tab[data-tab=direct]').click();await page.waitForURL(origin+'/school/plans');
+ await page.locator('.chat-tab[data-tab=direct]').click();await page.locator('#chat-pane-direct').waitFor({state:'visible'});assert.equal(new URL(page.url()).pathname,'/learning','School entitlement unlocks private chat from Learning too');
  await page.goto(origin+'/school'); await dismissDevelopmentNotice(page);await page.locator('body[data-school-ui]').waitFor();
  assert.match((await page.locator('[data-sidebar-space=school] [data-route=school-advisor]').textContent()).trim(),/Cố vấn AI/,'School advisor navigation is present');
  const advisorNav=page.locator('[data-sidebar-space=school] [data-route=school-advisor]');
