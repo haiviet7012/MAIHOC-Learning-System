@@ -12,6 +12,7 @@ import {
   classPermission,
   cleanAnswers,
   date,
+  scheduleDate,
   deadlineFor,
   fail,
   integer,
@@ -709,8 +710,8 @@ export function createPlatformRouter({
         new Set(ids.map(String)).size !== ids.length
       )
         fail("Chọn từ 1 đến 100 câu hỏi khác nhau.");
-      const open = date(req.body.openAt, "Mở bài"),
-        close = date(req.body.closeAt, "Đóng bài");
+      const open = scheduleDate(req.body.openAt, "Mở bài"),
+        close = scheduleDate(req.body.closeAt, "Đóng bài");
       if (close <= open) fail("Thời gian đóng phải sau thời gian mở.");
       const duration = integer(req.body.durationMinutes, "Thời lượng", 1, 240);
       const result = await db.transaction(async () => {

@@ -1,3 +1,4 @@
+import { vietnamScheduleIso } from './platform/vietnam-time.js';
 import { mountLiterature } from "./platform/literature.js";
 let disposeLiterature = null;
 import { mountSchoolUpgrade, upgradeRoutes } from './platform/school-upgrade.js?v=20261106presentation1';
@@ -1751,6 +1752,11 @@ $("#upload-form").addEventListener("submit", async (e) => {
             throw new Error("Học sinh của trường cần nhập rõ lớp trước khi gửi tài liệu.");
         }
         if (form.elements.category?.value === "test") {
+            for (const key of ['openAt', 'closeAt']) {
+                const value = vietnamScheduleIso(fd.get(key));
+                if (!value) throw new Error('Ngày mở hoặc hạn nộp không hợp lệ (giờ Việt Nam).');
+                fd.set(key, value);
+            }
             let response;
             try {
                 response = await fetch("/api/admin/tests", {
@@ -1760,12 +1766,10 @@ $("#upload-form").addEventListener("submit", async (e) => {
                 });
             } catch (netErr) {
                 await new Promise((r) => setTimeout(r, 600));
-                const retryFd = new FormData(form);
-                retryFd.delete("answerKey");
                 response = await fetch("/api/admin/tests", {
                     method: "POST",
                     credentials: "same-origin",
-                    body: retryFd
+                    body: fd
                 });
             }
             const testRes = await response.json().catch(() => ({}));

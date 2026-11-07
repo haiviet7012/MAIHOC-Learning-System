@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   classPermission,
   cleanAnswers,
-  date,
+  scheduleDate,
   deadlineFor,
   fail,
   integer,
@@ -32,9 +32,9 @@ export async function assertLegacyTestAccess(
   }
   if (checkTime) {
     const now = Date.now();
-    if (now < date(test.open_at, "Mở bài").getTime())
+    if (now < scheduleDate(test.open_at, "Mở bài").getTime())
       fail("Bài kiểm tra chưa mở.", 403);
-    if (now > date(test.close_at, "Đóng bài").getTime())
+    if (now > scheduleDate(test.close_at, "Đóng bài").getTime())
       fail("Bài kiểm tra đã đóng.", 403);
   }
 }

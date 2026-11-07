@@ -1,3 +1,4 @@
+import { formatVietnamDateTime, parseVietnamSchedule, vietnamScheduleIso } from './vietnam-time.js';
 import { mountQuestionBank } from './question-bank.js';
 import { mountSchoolManagement } from './school-management.js';
 import { schoolYearOptions, schoolYearPayload, normalizeSchoolYearCode } from './school-years.js';
@@ -7,7 +8,7 @@ import { escapeHTML as e } from "../ui.js";
 import { api } from "./api.js";
 const id = (value) => e(String(value ?? ""));
 const dt = (value) =>
-  value ? new Date(value).toLocaleString("vi-VN") : "Chưa đặt";
+  value ? formatVietnamDateTime(value) : "Chưa đặt";
 const header = (title, sub, action = "") =>
   `<div class="portal-heading"><div><p class="eyebrow">MAIHOC · SCHOOL & LEARNING</p><h1>${title}</h1><p class="muted">${sub}</p></div>${action}</div>`;
 const empty = (text) =>
@@ -21,7 +22,7 @@ const button = (label, data) =>
 
 export function dashboardMarkup(user, documents, tests) {
   const pending = tests.filter(
-    (t) => !t.submission && (!t.closeAt || new Date(t.closeAt) > new Date()),
+    (t) => !t.submission && (!t.closeAt || parseVietnamSchedule(t.closeAt) > new Date()),
   );
   const subjects = [...new Set(documents.map((d) => d.subject))];
   return `${header(user ? `Chào ${e(user.name.split(" ").slice(-1)[0])}, hôm nay học gì?` : "Mỗi ngày, tiến bộ một chút.", "Một không gian cho lớp học, kiến thức và hành trình của bạn.", `<span class="portal-date">${new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long" })}</span>`)}
@@ -226,8 +227,8 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
           "Giao đề từ ngân hàng câu hỏi",
           input("title", "Tên bài") +
             select("classId", "Lớp", o.classes) +
-            input("openAt", "Mở bài", "datetime-local") +
-            input("closeAt", "Đóng bài", "datetime-local") +
+            input("openAt", "Mở bài (giờ Việt Nam)", "datetime-local") +
+            input("closeAt", "Đóng bài (giờ Việt Nam)", "datetime-local") +
             input("durationMinutes", "Thời lượng phút", "number") +
             `<fieldset><legend>Câu hỏi đã duyệt</legend>${
               q.items
@@ -508,8 +509,8 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
             .split(/[\n,;]/)
             .map((x) => x.trim())
             .filter(Boolean);
-        if (body.openAt) body.openAt = new Date(body.openAt).toISOString();
-        if (body.closeAt) body.closeAt = new Date(body.closeAt).toISOString();
+        if (body.openAt) body.openAt = vietnamScheduleIso(body.openAt);
+        if (body.closeAt) body.closeAt = vietnamScheduleIso(body.closeAt);
         await request(paths[kind], { method: "POST", body });
         await render();
         status("Đã lưu thành công.");

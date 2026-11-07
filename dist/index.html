@@ -187,8 +187,8 @@
       <label>Danh mục<select name="category" required><option value="exam">Đề thi thử</option><option value="practice">Đề ôn tập</option><option value="theory">Lý thuyết</option><option value="test" id="upload-category-test-opt" hidden>Bài kiểm tra (Giáo viên / Admin)</option></select></label>
       <div id="upload-test-extra-fields" class="test-answer-mode-box">
         <div class="test-form-grid-two" data-test-only-fields hidden>
-          <label>Ngày mở bài kiểm tra (Bắt buộc)<input name="openAt" type="datetime-local"></label>
-          <label>Hạn cuối nộp bài (Bắt buộc)<input name="closeAt" type="datetime-local"></label>
+          <label>Ngày mở bài kiểm tra (Giờ Việt Nam, bắt buộc)<input name="openAt" type="datetime-local"></label>
+          <label>Hạn cuối nộp bài (Giờ Việt Nam, bắt buộc)<input name="closeAt" type="datetime-local"></label>
         </div>
         <div class="test-form-grid-two">
           <label data-test-only-fields hidden>Thời gian làm bài
@@ -402,10 +402,10 @@
       </label>
 
       <div class="test-form-grid-two">
-        <label>Ngày mở bài kiểm tra (Bắt buộc)
+        <label>Ngày mở bài kiểm tra (Giờ Việt Nam, bắt buộc)
           <input name="openAt" type="datetime-local" required>
         </label>
-        <label>Hạn cuối để nộp bài / Ngày đóng (Bắt buộc)
+        <label>Hạn cuối nộp bài (Giờ Việt Nam, bắt buộc)
           <input name="closeAt" type="datetime-local" required>
         </label>
       </div>
@@ -500,7 +500,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="/assets/app-NUP5GFPE.js"></script>
+  <script type="module" src="/assets/app-BWQ4EGJQ.js"></script>
   <script src="/js/dev-reload.js" defer></script>
   <script type="module" src="/js/school-billing.js?v=20261104billing3"></script>
   <script src="/socket.io/socket.io.js"></script>

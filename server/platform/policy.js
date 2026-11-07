@@ -1,3 +1,4 @@
+import { parseVietnamSchedule } from '../../js/platform/vietnam-time.js';
 export const superAdmin = (user) =>
   user?.role === "admin" && Number(user.adminLevel ?? user.admin_level) >= 2;
 export const schoolAccountRole = (user) => superAdmin(user) ? "school_admin"
@@ -28,6 +29,11 @@ export function date(value, label) {
   if (!value || !Number.isFinite(d.getTime())) fail(`${label} không hợp lệ.`);
   return d;
 }
+export function scheduleDate(value, label) {
+  const result = parseVietnamSchedule(value);
+  if (!Number.isFinite(result.getTime())) fail(`${label} không hợp lệ.`);
+  return result;
+}
 export function cleanAnswers(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     fail("Đáp án không hợp lệ.");
@@ -48,7 +54,7 @@ export function cleanAnswers(value) {
 export function deadlineFor(start, close, duration) {
   return new Date(
     Math.min(
-      new Date(close).getTime(),
+      scheduleDate(close, "Đóng bài").getTime(),
       new Date(start).getTime() + duration * 60000,
     ),
   );
