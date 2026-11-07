@@ -60,3 +60,26 @@ test('successful deletion removes the row and refreshes count; stale 404 also re
     assert.equal(toasts[0][1], status === 200 ? 'success' : 'error');
   }
 });
+
+test('admin grants School through the user row, refreshes state and can cancel or retry failure', async () => {
+  const learner = { id: 4, name: 'Learner', email: 'learner@test.local', role: 'user', schoolPlan: 'none' };
+  const calls = [];
+  const { context, elements, toasts } = harness((url, options) => {
+    calls.push({url,options});
+    return url.endsWith('/school') ? response({ ok: true, message: 'Đã cấp School' }) : response({ ...accounts, users: [{ ...learner, schoolPlan: 'standard', schoolExpiresAt: null }] });
+  });
+  context.fetch = (url, options) => { calls.push({url,options}); return response({ ...accounts, users: [learner] }); };
+  await context.load();
+  assert.match(elements.get('#admin-users-table').innerHTML, /data-grant-school="4"/);
+  context.fetch = (url, options) => { calls.push({url,options}); return url.endsWith('/school') ? response({ ok: true }) : response({ ...accounts, users: [{ ...learner, schoolPlan: 'standard', schoolExpiresAt: null }] }); };
+  const button = { dataset: { grantSchool: '4', userName: 'Learner' }, disabled: false };
+  const event = { target: { closest: selector => selector === '[data-grant-school]' ? button : null } };
+  context.confirm = () => false; calls.length=0; await context.click(event); assert.equal(calls.length,0);
+  context.confirm = () => true; await context.click(event);
+  assert.equal(calls[0].url, '/api/admin/users/4/school'); assert.equal(calls[0].options.method,'POST');
+  assert.doesNotMatch(elements.get('#admin-users-table').innerHTML, /data-grant-school="4"/);
+  assert.match(elements.get('#admin-users-table').innerHTML, /Không thời hạn/);
+  assert.equal(toasts[0][1],'success');
+  button.disabled=false; context.fetch=() => response({error:'Denied'},403); await context.click(event);
+  assert.equal(button.disabled,false); assert.equal(toasts.at(-1)[1],'error');
+});

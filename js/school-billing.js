@@ -148,14 +148,14 @@
     const target = view()?.querySelector("[data-billing-current]");
     if (!target) return;
     const subscription = (data.subscriptions || []).find(item => item.status === "active" && new Date(item.expiresAt).getTime() > Date.now());
-    if (subscription) {
+    if (data.schoolPlan === "standard" && !data.schoolExpiresAt) {
+      target.innerHTML = '<div class="maihoc-billing-card"><span class="maihoc-billing-kicker">QUYỀN SCHOOL ĐƯỢC CẤP</span><h2 style="margin:7px 0">School Standard</h2><p class="maihoc-billing-muted">Tài khoản đã được cấp School miễn phí, không thời hạn. Bạn không cần thanh toán hoặc gia hạn.</p></div>';
+    } else if (subscription) {
       target.innerHTML = '<div class="maihoc-billing-card"><span class="maihoc-billing-kicker">GÓI ĐANG SỬ DỤNG</span><h2 style="margin:7px 0">School Standard</h2><p class="maihoc-billing-muted">Hiệu lực đến ' + esc(new Date(subscription.expiresAt).toLocaleString("vi-VN", { timeZone:"Asia/Ho_Chi_Minh" })) + ' · Hệ thống sẽ gửi nhắc gia hạn trước 7 ngày.</p></div>';
     } else if (data.schoolPlan === "legacy") {
       target.innerHTML = '<div class="maihoc-billing-card"><span class="maihoc-billing-kicker">QUYỀN ĐƯỢC GIỮ TỪ TRƯỚC</span><h2 style="margin:7px 0">MAIHOC School</h2><p class="maihoc-billing-muted">Tài khoản của bạn đang có quyền School được giữ từ trước. Bạn không cần mua gói Standard.</p></div>';
     } else if (data.schoolPlan === "standard" && data.schoolExpiresAt) {
       target.innerHTML = '<div class="maihoc-billing-card"><span class="maihoc-billing-kicker">GÓI ĐANG SỬ DỤNG</span><h2 style="margin:7px 0">School Standard</h2><p class="maihoc-billing-muted">Hiệu lực đến ' + esc(new Date(data.schoolExpiresAt).toLocaleString("vi-VN", { timeZone:"Asia/Ho_Chi_Minh" })) + '.</p></div>';
-    } else if (data.schoolPlan === "standard" && !data.schoolExpiresAt) {
-      target.innerHTML = '<div class="maihoc-billing-card"><span class="maihoc-billing-kicker">QUYỀN SCHOOL</span><h2 style="margin:7px 0">School Standard</h2><p class="maihoc-billing-muted">Quyền School hiện tại được cấp thủ công và chưa có ngày hết hạn được ghi nhận.</p></div>';
     } else {
       target.innerHTML = '<div class="maihoc-billing-message">Bạn chưa có gói School Standard đang hoạt động.</div>';
     }
@@ -164,6 +164,10 @@
     const main = view()?.querySelector("[data-billing-main]");
     if (!main) return;
     const user = currentUser() || {};
+    if (user.schoolPlan === "standard" && !user.schoolExpiresAt && !options.canBuyForSchool) {
+      main.innerHTML = '<span class="maihoc-billing-kicker">SCHOOL STANDARD</span><h2>Bạn đã có gói School</h2><p class="maihoc-billing-muted">Quyền School được cấp miễn phí, không thời hạn. Bạn không cần mua thêm gói.</p>';
+      return;
+    }
     if (user.schoolPlan === "legacy" || ((user.isTeacher || user.isSuperAdmin || (user.schoolPlan === "standard" && !user.schoolExpiresAt)) && !options.canBuyForSchool)) {
       main.innerHTML = '<span class="maihoc-billing-kicker">SCHOOL STANDARD</span><h2>Gói School Standard</h2><p class="maihoc-billing-muted">Gói chỉ dành cho học sinh; giáo viên và quản trị viên không phải mua quyền cá nhân.</p>';
       return;

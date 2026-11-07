@@ -1,3 +1,4 @@
+import { installAdminSchoolGrants } from './admin-school-grants.js';
 import { installQuestionBankHistory } from './question-bank-history.js';
 import { createSchoolUpgradeRouter } from './school-upgrade/routes.js';
 import { installClassroomAccess } from './classroom-access.js';
@@ -1176,10 +1177,12 @@ async function deleteAccountPermanently(id) {
   return true;
 }
 
+installAdminSchoolGrants(app, { db, requireSuperAdmin, requireSameOrigin });
+
 app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
   const users = await db
     .prepare(`
-      SELECT id,name,email,role,admin_level,account_type,school_plan,is_manager,created_at,
+      SELECT id,name,email,role,admin_level,account_type,school_plan,school_expires_at,is_manager,created_at,
         (SELECT class_code FROM school_teacher_assignments a WHERE a.teacher_id=users.id AND a.assignment_type='homeroom' LIMIT 1) AS homeroom_class,
         (SELECT class_code FROM school_class_members m WHERE m.user_id=users.id ORDER BY m.created_at DESC LIMIT 1) AS student_class
       FROM users ORDER BY id DESC LIMIT 500
