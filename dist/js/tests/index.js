@@ -1,3 +1,4 @@
+import { formatVietnamDateTime, vietnamDateTimeInput, vietnamScheduleIso } from '../platform/vietnam-time.js';
 import { canAccessSchool } from '../platform/school-access.js';
 import { readExamDraft, downloadExam, examDraftKey } from '../platform/question-bank.js';
 import { escapeHTML, toast, openDialog, closeDialog } from "../ui.js";
@@ -56,29 +57,13 @@ export async function refreshTestsQueue() {
   }
 }
 
-export function formatTestDateTime(value) {
-  if (!value) return "—";
-  const raw = String(value).trim();
-  let iso = raw.includes("T") ? raw : raw.replace(" ", "T");
-  iso = iso.replace(/(\.\d{3})\d+/, "$1").replace(/([+-]\d{2})$/, "$1:00");
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+export function formatTestDateTime(value, schedule = false) {
+  return formatVietnamDateTime(value, { schedule });
 }
 
 function defaultDateTimeInputs() {
   const now = new Date();
-  const pad = n => String(n).padStart(2, "0");
-  const toLocalInput = d =>
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const close = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  return { openAt: toLocalInput(now), closeAt: toLocalInput(close) };
+  return { openAt: vietnamDateTimeInput(now), closeAt: vietnamDateTimeInput(new Date(now.getTime() + 7 * 86400000)) };
 }
 
 const FALLBACK_SCHOOL_CLASSES = [
@@ -197,8 +182,8 @@ export function renderTestsQueuePage(currentUser) {
         .map((test, index) => {
           const isCompleted = Boolean(test.completed);
           const durationText = test.durationMinutes ? `${test.durationMinutes} phút` : "Không giới hạn";
-          const openText = formatTestDateTime(test.openAt);
-          const closeText = formatTestDateTime(test.closeAt);
+          const openText = formatTestDateTime(test.openAt, true);
+          const closeText = formatTestDateTime(test.closeAt, true);
           const classDisplay = test.classCode
             ? test.classCode === "ALL"
               ? " · Cả khối"
@@ -797,8 +782,8 @@ export async function loadAdminTestsAndPendingGrading() {
                         </td>
                         <td>${escapeHTML(t.subject)} · Lớp ${escapeHTML(t.grade)}${escapeHTML(classInfo)}</td>
                         <td>
-                          <span class="tiny">Mở: <strong>${escapeHTML(formatTestDateTime(t.openAt))}</strong></span><br>
-                          <span class="tiny">Đóng: <strong>${escapeHTML(formatTestDateTime(t.closeAt))}</strong></span>
+                          <span class="tiny">Mở: <strong>${escapeHTML(formatTestDateTime(t.openAt, true))}</strong></span><br>
+                          <span class="tiny">Đóng: <strong>${escapeHTML(formatTestDateTime(t.closeAt, true))}</strong></span>
                         </td>
                         <td>${t.durationMinutes ? `${t.durationMinutes} phút` : "Không giới hạn"}</td>
                         <td>${statusBadgeHtml}</td>
@@ -1156,6 +1141,11 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
         throw new Error("Vui lòng chọn tệp đề bài kiểm tra trước khi tạo.");
       }
       const fd = new FormData(createForm);
+      for (const key of ['openAt', 'closeAt']) {
+        const value = vietnamScheduleIso(fd.get(key));
+        if (!value) throw new Error('Ngày mở hoặc hạn nộp không hợp lệ (giờ Việt Nam).');
+        fd.set(key, value);
+      }
       const activeUser = window.maihocCurrentUser;
       if (activeUser?.role === "admin" && Number(activeUser.adminLevel) < 2 && activeUser.accountType === "school" && !fd.get("classCode")) {
         throw new Error("Vui lòng chọn lớp nhận bài kiểm tra (hoặc chọn Cả khối).");
@@ -1174,7 +1164,7 @@ export function wireTestsEvents({ onNavigate, onStartTest, onOpenSavedTestSubmis
         response = await fetch("/api/admin/tests", {
           method: "POST",
           credentials: "same-origin",
-          body: new FormData(createForm)
+          body: fd
         });
       }
 

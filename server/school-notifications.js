@@ -1,3 +1,4 @@
+import { parseVietnamSchedule } from '../js/platform/vietnam-time.js';
 import { randomUUID } from 'node:crypto';
 import { deliverMail, mailConfig } from './mail-delivery.js';
 import { isTeacherUser, isSuperAdminUser } from './auth.js';
@@ -12,7 +13,7 @@ export function publicAppOrigin(env = process.env) {
     return url.origin;
   } catch { return null; }
 }
-export const schoolMailDate = value => new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }) + ' (giờ Việt Nam)';
+export const schoolMailDate = value => parseVietnamSchedule(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }) + ' (giờ Việt Nam)';
 export async function ensureSchoolNotifications(db) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS school_announcements (

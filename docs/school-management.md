@@ -43,3 +43,12 @@ Bộ chọn năm học có bốn lựa chọn dựa theo năm lịch tại Việ
 Giáo viên bộ môn không ghi/xem dữ liệu chuyên cần trong quản lý và báo cáo; API điểm danh/xếp lớp kiểm tra quyền chủ nhiệm hoặc quản trị. Giáo viên chủ nhiệm chỉ xếp vào lớp mình chủ nhiệm; chuyển học sinh từ lớp khác cũng cần quyền chủ nhiệm lớp nguồn, nếu không phải nhờ quản trị trường. Quản trị có thể chuyển trong phạm vi trường.
 
 Thời khóa biểu hỗ trợ thêm GDQP-AN và GDDP, kể cả nhập/xuất Excel và lưu backend.
+
+
+## Giờ giao bài và mở/đóng bài kiểm tra
+
+Các form giao bài/kiểm tra nhập theo **giờ Việt Nam (Asia/Ho_Chi_Minh, UTC+7)**, kể cả khi trình duyệt dùng múi giờ khác. Ví dụ chọn 08:00 ngày 07/11 thì request/lưu mới dùng 01:00 UTC cùng ngày; hiển thị lại và email là 08:00 Việt Nam. Không đặt TZ toàn máy chủ và không cộng 7 giờ vào mọi timestamp.
+
+Module dùng chung `js/platform/vietnam-time.js` phân biệt lịch không có offset (giờ Việt Nam) với timestamp sự kiện trong DB không có offset (UTC). ISO có Z hoặc offset được giữ nguyên thời điểm. Lịch cũ dạng datetime-local được hiểu theo Việt Nam khi trả API, kiểm tra mở/đóng và tính deadline; không sửa hàng loạt dữ liệu lịch cũ. Form mới và retry gửi cùng giá trị ISO rõ múi giờ. Ngày khởi tạo mặc định, hiển thị lịch, email và xuất ngày trên bảng điểm dùng cùng quy tắc.
+
+Kiểm tra: `node --test tests/vietnam-schedule.test.js` (UTC, Việt Nam, New York; qua nửa đêm; lịch cũ; mốc mở/đóng và deadline); `node scripts/assignment-timezone-check.mjs` chạy máy chủ UTC, trình duyệt New York và xác nhận form/API vẫn đúng 08:00 Việt Nam. Script dùng PostgreSQL cô lập và giả lập lưu trữ/email; không gọi dịch vụ thật.

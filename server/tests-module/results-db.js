@@ -1,3 +1,4 @@
+import { parseVietnamSchedule } from '../../js/platform/vietnam-time.js';
 import { db as postgresDb } from "../postgres.js";
 import { buildXlsxWorkbook, buildCsvBuffer } from "./sheets-exporter.js";
 
@@ -386,7 +387,8 @@ export async function syncFromMainDatabase(mainDb = resultsDb) {
   }
 }
 
-export function formatDateTimeVN(value) {
+export function formatDateTimeVN(value, schedule = false) {
+  if (schedule && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) value = parseVietnamSchedule(value);
   if (value === null || value === undefined || value === "") return "—";
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return "—";
@@ -575,8 +577,8 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
       r.subject_name,
       `Lớp ${r.grade}`,
       r.item_title,
-      formatDateTimeVN(r.open_at),
-      formatDateTimeVN(r.close_at),
+      formatDateTimeVN(r.open_at, true),
+      formatDateTimeVN(r.close_at, true),
       r.duration_minutes ? `${r.duration_minutes} phút` : "Không giới hạn",
       formatDateTimeVN(r.submitted_at),
       { value: statusLabel, style: isGraded ? 7 : 8 },
@@ -681,8 +683,8 @@ export async function buildTeacherScoresSheetExport(mainDb = resultsDb, filters 
       t.title,
       t.subject,
       `Lớp ${t.grade}${t.class_code ? (t.class_code === "ALL" ? " (Cả khối)" : ` (${t.class_code})`) : ""}`,
-      formatDateTimeVN(t.open_at),
-      formatDateTimeVN(t.close_at),
+      formatDateTimeVN(t.open_at, true),
+      formatDateTimeVN(t.close_at, true),
       t.duration_minutes ? `${t.duration_minutes} phút` : "Không giới hạn",
       { value: tRows.length, type: "number", style: 5 },
       { value: gradedRows.length, type: "number", style: 5 },
@@ -794,8 +796,8 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
         scoreCell,
         hasScore || isPendingGrade ? { value: Number(r.scale || 10), type: "number", style: 5 } : "—",
         gradingLabel,
-        formatDateTimeVN(r.open_at || r.started_at || r.submitted_at || r.updated_at),
-        formatDateTimeVN(r.submitted_at || r.close_at || r.updated_at)
+        formatDateTimeVN(r.open_at || r.started_at || r.submitted_at || r.updated_at, Boolean(r.open_at)),
+        formatDateTimeVN(r.submitted_at || r.close_at || r.updated_at, !r.submitted_at && Boolean(r.close_at))
       ]
     });
   }
@@ -820,8 +822,8 @@ async function buildSheetsForSingleStudent(mainDb, targetUser, allTests, headers
         "—",
         { value: 10, type: "number", style: 5 },
         "Chưa nộp bài",
-        formatDateTimeVN(t.open_at),
-        formatDateTimeVN(t.close_at)
+        formatDateTimeVN(t.open_at, true),
+        formatDateTimeVN(t.close_at, true)
       ]
     });
   }

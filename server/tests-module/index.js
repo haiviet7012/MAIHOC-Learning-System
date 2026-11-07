@@ -1,3 +1,4 @@
+import { parseVietnamSchedule, parseUtcTimestamp, vietnamScheduleIso } from '../../js/platform/vietnam-time.js';
 import { targetClasses, schoolRecipients, enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import fs from "node:fs";
 import path from "node:path";
@@ -1058,8 +1059,8 @@ export function installTestsModule({
           durationMinutes: sub.duration_minutes,
           timeSpentSeconds: sub.time_spent_seconds,
           fullscreenExitAutoSubmit: Boolean(sub.auto_submitted_fullscreen),
-          openAt: testRow.open_at,
-          closeAt: testRow.close_at,
+          openAt: vietnamScheduleIso(testRow.open_at),
+          closeAt: vietnamScheduleIso(testRow.close_at),
           submittedAt: sub.submitted_at,
           gradedAt: nowIso,
           gradedById: reviewerId,
@@ -1124,7 +1125,7 @@ export function installTestsModule({
       const nowMs = Date.now();
       const parseTimeMs = (val) => {
         if (!val) return null;
-        const d = new Date(val);
+        const d = parseUtcTimestamp(val);
         return Number.isNaN(d.getTime()) ? null : d.getTime();
       };
 
@@ -1154,8 +1155,8 @@ export function installTestsModule({
           newCount = visibleRows.filter(row => {
             if (!row.class_code) return false;
             if (userSubmissionsByTest.has(row.id)) return false;
-            const openMs = parseTimeMs(row.open_at);
-            const closeMs = parseTimeMs(row.close_at);
+            const openMs = parseVietnamSchedule(row.open_at).getTime();
+            const closeMs = parseVietnamSchedule(row.close_at).getTime();
             return (openMs == null || openMs <= nowMs) && (closeMs == null || closeMs >= nowMs);
           }).length;
         }
@@ -1165,8 +1166,8 @@ export function installTestsModule({
         const sub = userSubmissionsByTest.get(row.id) || null;
         const totalSubmissionsCount = Number(row.totalSubmissionsCount) || 0;
         const completed = isAdminOrTeacher ? totalSubmissionsCount > 0 : Boolean(sub);
-        const openMs = parseTimeMs(row.open_at);
-        const closeMs = parseTimeMs(row.close_at);
+        const openMs = parseVietnamSchedule(row.open_at).getTime();
+        const closeMs = parseVietnamSchedule(row.close_at).getTime();
         const isNotOpenYet = openMs != null && nowMs < openMs;
         const isExpired = closeMs != null && nowMs > closeMs;
         const hasApprovedAnswers = Boolean(
@@ -1192,8 +1193,8 @@ export function installTestsModule({
           grade: row.grade,
           classCode: row.class_code || null,
           category: "test",
-          openAt: row.open_at,
-          closeAt: row.close_at,
+          openAt: vietnamScheduleIso(row.open_at),
+          closeAt: vietnamScheduleIso(row.close_at),
           durationMinutes: row.duration_minutes ? Number(row.duration_minutes) : null,
           answerMode: row.answer_mode,
           hasApprovedAnswers,
@@ -1239,8 +1240,8 @@ export function installTestsModule({
           return a.completed ? 1 : -1;
         }
         if (!a.completed) {
-          const aClose = parseTimeMs(a.closeAt) || Number.MAX_SAFE_INTEGER;
-          const bClose = parseTimeMs(b.closeAt) || Number.MAX_SAFE_INTEGER;
+          const aClose = parseVietnamSchedule(a.closeAt).getTime() || Number.MAX_SAFE_INTEGER;
+          const bClose = parseVietnamSchedule(b.closeAt).getTime() || Number.MAX_SAFE_INTEGER;
           return aClose - bClose;
         }
         const aSub = parseTimeMs(a.submission?.submittedAt) || 0;
@@ -1292,8 +1293,8 @@ export function installTestsModule({
         const title = String(b.title || documentFile.originalname || "").trim().slice(0, 140);
         const subject = String(b.subject || "Toán").trim();
         const grade = String(b.grade || "10").trim();
-        const openAt = String(b.openAt || "").trim();
-        const closeAt = String(b.closeAt || "").trim();
+        let openAt = String(b.openAt || "").trim();
+        let closeAt = String(b.closeAt || "").trim();
         const rawDuration = String(b.durationMinutes ?? "").trim();
         const durationMinutes =
           rawDuration === "" || rawDuration === "0" || rawDuration === "none" ? null : Number(rawDuration);
@@ -1320,14 +1321,16 @@ export function installTestsModule({
             .status(400)
             .json({ error: "Bắt buộc phải thiết lập Ngày mở bài kiểm tra và Hạn cuối nộp bài." });
         }
-        const openDate = new Date(openAt);
-        const closeDate = new Date(closeAt);
+        const openDate = parseVietnamSchedule(openAt);
+        const closeDate = parseVietnamSchedule(closeAt);
         if (Number.isNaN(openDate.getTime()) || Number.isNaN(closeDate.getTime())) {
           return res.status(400).json({ error: "Định dạng ngày mở hoặc hạn cuối nộp bài không hợp lệ." });
         }
         if (closeDate.getTime() <= openDate.getTime()) {
           return res.status(400).json({ error: "Hạn cuối nộp bài phải sau Ngày mở bài kiểm tra." });
         }
+        openAt = openDate.toISOString();
+        closeAt = closeDate.toISOString();
         if (durationMinutes !== null && !ALLOWED_DURATIONS.has(durationMinutes)) {
           return res.status(400).json({
             error: "Thời gian làm bài chỉ nhận các mốc: 30, 45, 60, 90, 120 phút hoặc không giới hạn."
@@ -1606,7 +1609,7 @@ export function installTestsModule({
     }
 
     const nowMs = Date.now();
-    const openMs = new Date(testRow.open_at).getTime();
+    const openMs = parseVietnamSchedule(testRow.open_at).getTime();
     if (req.user.role !== "admin" && Number.isFinite(openMs) && nowMs < openMs) {
       return res.status(403).json({ error: "Bài kiểm tra này chưa đến thời gian mở đề." });
     }
@@ -1786,8 +1789,8 @@ export function installTestsModule({
         durationMinutes: testRow.duration_minutes,
         timeSpentSeconds,
         fullscreenExitAutoSubmit: autoSubmittedFullscreen,
-        openAt: testRow.open_at,
-        closeAt: testRow.close_at,
+        openAt: vietnamScheduleIso(testRow.open_at),
+        closeAt: vietnamScheduleIso(testRow.close_at),
         submittedAt: new Date().toISOString(),
         gradedAt: resultPayload.graded ? new Date().toISOString() : null
       });
@@ -2334,8 +2337,8 @@ export function installTestsModule({
         durationMinutes: sub.duration_minutes,
         timeSpentSeconds: sub.time_spent_seconds,
         fullscreenExitAutoSubmit: Boolean(sub.auto_submitted_fullscreen),
-        openAt: testRow.open_at,
-        closeAt: testRow.close_at,
+        openAt: vietnamScheduleIso(testRow.open_at),
+        closeAt: vietnamScheduleIso(testRow.close_at),
         submittedAt: sub.submitted_at,
         gradedAt: nowIso,
         gradedById: req.user.id,
@@ -2481,8 +2484,8 @@ export function installTestsModule({
             durationMinutes: other.duration_minutes,
             timeSpentSeconds: other.time_spent_seconds,
             fullscreenExitAutoSubmit: Boolean(other.auto_submitted_fullscreen),
-            openAt: testRow.open_at,
-            closeAt: testRow.close_at,
+            openAt: vietnamScheduleIso(testRow.open_at),
+            closeAt: vietnamScheduleIso(testRow.close_at),
             submittedAt: other.submitted_at,
             gradedAt: nowIso,
             gradedById: req.user.id,
