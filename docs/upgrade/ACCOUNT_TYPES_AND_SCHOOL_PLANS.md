@@ -32,3 +32,10 @@ SMTP/Resend và APP_PUBLIC_URL dùng lại cấu hình email hiện hữu. Khôn
 - `node --test server/tests/account-upgrade.test.js`: migration lặp, bảo toàn mật khẩu cũ, không tự cấp gói, edu/token/email binding, single-use, phân công, manager API restrictions và lời mời Gmail (mock SMTP).
 - `npm run test:account-upgrade`: đăng ký qua giao diện bằng OTP mock, giữ hồ sơ ẩn trước xác minh, trung tâm tài khoản giáo viên/mobile và vị trí Cố vấn.
 - Các bộ auth, School access, Learning, advisor, browser và thông báo được cập nhật theo phân quyền mới; không bỏ qua kiểm tra bị ảnh hưởng.
+
+
+## Chat riêng từ Learning
+
+Chat riêng kiểm tra quyền School của tài khoản đã xác thực, không phụ thuộc đang mở Learning hay School. Trước khi mở tab riêng hoặc mở hội thoại từ danh sách online, frontend đọc lại `/api/auth/me` để nhận gói còn hạn hoặc gói admin vừa cấp. Lỗi mạng/API chỉ hiển thị thông báo thử lại, không đưa tài khoản sang thanh toán. Backend tiếp tục kiểm tra quyền của cả người gửi và người nhận.
+
+Kiểm tra `npm run test:account-upgrade` bao gồm học sinh School Standard còn hạn gửi tin nhắn thật từ Learning, tài khoản miễn phí tới trang nâng cấp, cấp School ngay khi trang đang mở, gửi/lưu hội thoại qua Socket.IO và thử lại khi API xác thực lỗi.
