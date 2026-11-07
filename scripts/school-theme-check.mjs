@@ -60,9 +60,9 @@ try {
     });
     for (const theme of ["light", "dark"]) {
       await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
-      await page.locator("[data-platform-content].school-management-stack").waitFor();
+      await page.getByRole('heading',{name:'Lớp của bạn',exact:true}).waitFor();
       assert.equal(await page.locator('.school-overview-hero,.school-quick-links,.school-overview-stats').count(),0);
-      assert.equal(await page.locator('[data-management-year] option').count(),4);
+      assert.equal(await page.locator('[data-management-year]').count(),0);
       const dark = await page
         .locator("html")
         .evaluate((el) => el.classList.contains("dark"));
@@ -78,7 +78,7 @@ try {
         animations: "disabled",
       });
       const mainStyles = await page
-        .locator(".portal-panel")
+        .locator(".school-roster-section")
         .first()
         .evaluate((el) => ({
           radius: parseFloat(getComputedStyle(el).borderRadius),
@@ -99,7 +99,7 @@ try {
             .reduce((sum, x, i) => sum + x * [0.2126, 0.7152, 0.0722][i], 0);
         return [
           ...document.querySelectorAll(
-            ".school-management-stack h2,.education-sidebar nav button.active",
+            ".school-roster-section h2,.education-sidebar nav button.active",
           ),
         ].map((el) => {
           const fg = luminance(getComputedStyle(el).color);
@@ -203,7 +203,7 @@ try {
     // The logo stays anchored in the sidebar; the opposite-workspace action
     // must remain inside the top-right dropdown in both workspace layouts.
     await page.goto(origin + "/school"); await dismissDevelopmentNotice(page);
-    await page.locator("[data-platform-content].school-management-stack").waitFor();
+    await page.getByRole('heading',{name:'Lớp của bạn',exact:true}).waitFor();
     await page.locator("#menu-toggle").click();
     const schoolHeaderGeometry = await page.evaluate(() => {
       const rect = (selector) => {
@@ -275,12 +275,12 @@ try {
   });
   for (const path of [
     "/school/question-bank",
-    "/school/assignment-management",
+    "/school/tests",
     "/school/advisor",
   ]) {
     await page.goto(origin + path); await dismissDevelopmentNotice(page);
     await page.locator("body[data-school-ui]").waitFor();
-    await page.locator(path === '/school/question-bank' ? '.qb-card' : '.portal-panel').first().waitFor();
+    await page.locator(path === '/school/question-bank' ? '.qb-card' : path === '/school/tests' ? '#view h1' : '.portal-panel').first().waitFor();
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth + 1,

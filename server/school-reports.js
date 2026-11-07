@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'node:url';
-import { gradeSummary } from './platform/management.js';
+import { gradeSummary } from './grade-summary.js';
 export function aggregateReport(records,students) {
  const attendance={present:0,late:0,excused:0,unexcused:0};
  const daily=new Map();

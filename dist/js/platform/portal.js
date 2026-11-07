@@ -1,7 +1,5 @@
-import { formatVietnamDateTime, parseVietnamSchedule, vietnamScheduleIso } from './vietnam-time.js';
+import { formatVietnamDateTime, parseVietnamSchedule } from './vietnam-time.js';
 import { mountQuestionBank } from './question-bank.js';
-import { mountSchoolManagement } from './school-management.js';
-import { schoolYearOptions, schoolYearPayload, normalizeSchoolYearCode } from './school-years.js';
 import { mountSchoolEvidence } from './school-evidence.js';
 import { mountLearningAdvisor } from './learning-advisor.js';
 import { escapeHTML as e } from "../ui.js";
@@ -13,10 +11,6 @@ const header = (title, sub, action = "") =>
   `<div class="portal-heading"><div><p class="eyebrow">MAIHOC · SCHOOL & LEARNING</p><h1>${title}</h1><p class="muted">${sub}</p></div>${action}</div>`;
 const empty = (text) =>
   `<div class="portal-empty"><span aria-hidden="true">▤</span><p>${text}</p></div>`;
-const select = (name, label, rows, key = "id", labelKey = "name") =>
-  `<label>${label}<select name="${name}" required><option value="">Chọn ${label.toLowerCase()}</option>${rows.map((r) => `<option value="${id(r[key])}">${e(r[labelKey] || r.title || r.code)}</option>`).join("")}</select></label>`;
-const input = (name, label, type = "text", required = true) =>
-  `<label>${label}<input name="${name}" type="${type}" ${required ? "required" : ""} maxlength="500"></label>`;
 const button = (label, data) =>
   `<button class="button secondary small" ${data}>${label}</button>`;
 
@@ -79,22 +73,15 @@ export function hydrateActivity(container, user) {
 export function mountPortal(container, route, user, onNavigate, target = {}) {
   if (route === 'question-bank' && user) return mountQuestionBank(container, user, onNavigate);
   if (route === "school-analytics") route = "analytics";
-  const management = route === 'assignment-management';
-  if (management) route = 'assignments';
-  if (route === 'assignments' && user) {
-    const student = user.role === 'user' && !user.isTeacher && !user.isSuperAdmin;
-    if (management ? student : !student) {
-      container.innerHTML = header('Không có quyền truy cập', management ? 'Chức năng này dành cho người quản lý bài.' : 'Bài được giao chỉ dành cho học sinh.');
-      return () => {};
-    }
+  if (route === 'assignments' && user && (user.role !== 'user' || user.isTeacher || user.isSuperAdmin)) {
+    container.innerHTML = header('Không có quyền truy cập', 'Bài được giao chỉ dành cho học sinh.');
+    return () => {};
   }
   const controller = new AbortController();
   let disposeAdvisor = () => {};
   let disposeEvidence = () => {};
-  let disposeManagement = () => {};
   let context;
   let schoolId = String(target.targetSchoolId || "");
-  let selectedYear = "";
   let activeAttempt = null;
   let saveTimer;
   let version = 0;
@@ -117,14 +104,11 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
         ) +
         `<div class="portal-panel" role="alert"><p>${e(error.message)}</p><button class="button secondary" data-route="home">Về tổng quan</button></div>`;
   };
-  const form = (kind, title, fields, submit = "Lưu") =>
-    `<form data-platform-form="${kind}" class="portal-panel portal-form"><h2>${title}</h2>${fields}<button class="button primary" type="submit">${submit}</button></form>`;
   const list = (rows, markup, text = "Chưa có dữ liệu.") =>
     rows.length ? rows.map(markup).join("") : empty(text);
   async function render() {
     disposeAdvisor();
     disposeEvidence();
-    disposeManagement();
     if (!user) {
       container.innerHTML =
         header(
@@ -135,11 +119,6 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       return;
     }
     context = await request("/api/platform/context");
-    if (!context.enabled && route === 'organization' && (user.isTeacher || user.isSuperAdmin || user.role === 'teacher' || user.role === 'admin')) {
-      container.innerHTML = header('Quản lý nhà trường', 'Backend chưa bật nền tảng quản lý School.') +
-        `<section class="portal-panel"><h2>Cần quản trị viên kích hoạt</h2><p>PR đã bổ sung chức năng, nhưng môi trường backend hiện trả về enabled=false. Các mục bên dưới sẽ dùng được khi nền tảng được bật và tài khoản được phân công vào trường.</p><div class="grid three">${['Thời khóa biểu & Lịch sự kiện','Sổ điểm điện tử','Theo dõi chuyên cần'].map(title => `<article class="card"><h3>${title}</h3><p class="muted">Chờ kích hoạt nền tảng</p></article>`).join('')}</div><details><summary>Hướng dẫn cho quản trị viên triển khai</summary><ol><li>Chạy migration School trên backend theo quy trình sao lưu hiện có: <code>npm run db:migrate</code>.</li><li>Nếu lớp hiện tại chưa ánh xạ vào trường/năm học, cấu hình LEGACY_SCHOOL_* / LEGACY_YEAR_* / LEGACY_ADMIN_ID và chạy <code>npm run db:bootstrap</code> để xem trước; kiểm tra rồi mới dùng <code>npm run db:bootstrap -- --apply</code>. Không chạy lại nếu đã ánh xạ.</li><li>Trong Environment của backend Render, đặt <code>MAIHOC_PLATFORM_ENABLED=1</code>, lưu và deploy lại backend.</li><li>Đảm bảo tài khoản giáo viên có phân công trong trường. Cấu hình email và mail worker để gửi thông báo phụ huynh.</li></ol><p>Merge code hoặc deploy frontend không tự thay đổi biến môi trường backend.</p></details><button class="button secondary" data-route="school">Lớp của bạn</button></section>`;
-      return;
-    }
     if (!context.enabled) {
       container.innerHTML =
         header(
@@ -159,9 +138,8 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     container.innerHTML =
       header(
         {
-          organization: "Quản lý nhà trường",
           "question-bank": "Ngân hàng câu hỏi",
-          assignments: management ? "Giao và quản lý bài" : "Bài được giao",
+          assignments: "Bài được giao",
           analytics: "Kết quả học tập School",
         }[route],
         "Kết nối việc dạy, việc học và phản hồi trong cùng một nền tảng.",
@@ -173,75 +151,23 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       content.innerHTML =
         empty(
           "Bạn chưa thuộc trường học nào. Liên hệ quản trị trường để được thêm vào.",
-        ) +
-        (user.isSuperAdmin
-          ? form(
-              "school",
-              "Tạo trường học",
-              input("code", "Mã trường") + input("name", "Tên trường"),
-            )
-          : "");
+        );
       return;
     }
     const school = schools.find((s) => String(s.id) === schoolId),
       staff =
         ["school_admin", "teacher"].includes(school.role) || user.isSuperAdmin;
-    if (route === 'assignments' && (management ? !staff : school.role !== 'student')) {
+    if (route === 'assignments' && school.role !== 'student') {
       content.innerHTML = empty('Bạn không có quyền sử dụng chức năng này trong trường đã chọn.');
       return;
     }
-    if (route === "organization") {
-      const data = await request(schoolUrl("/overview"));
-      const admin=school.role==='school_admin'||user.isSuperAdmin;
-      const yearOptions=schoolYearOptions();
-      if(!yearOptions.some(y=>y.code===selectedYear)) selectedYear=yearOptions.find(y=>data.years.some(r=>normalizeSchoolYearCode(r.code)===normalizeSchoolYearCode(y.code)))?.code||yearOptions[0].code;
-      const year=data.years.find(r=>normalizeSchoolYearCode(r.code)===normalizeSchoolYearCode(selectedYear));
-      const classes=data.classes.filter(c=>String(c.academic_year_id)===String(year?.id));
-      const homeroomIds=data.homeroomClassIds||[];
-      const transferClasses=admin?classes:classes.filter(c=>homeroomIds.some(id=>String(id)===String(c.id)));
-      content.className='school-management-stack';
-      content.innerHTML=`<section class="portal-panel"><h2>Năm học</h2><label>Năm học<select data-management-year>${yearOptions.map(y=>`<option value="${e(y.code)}" ${selectedYear===y.code?'selected':''}>${e(y.code)}</option>`).join('')}</select></label>${!year?`<p class="muted">Năm học này chưa được tạo trong trường.</p>${admin?`<form data-platform-form="year"><input type="hidden" name="code" value="${e(selectedYear)}"><button class="button primary">Tạo năm học đã chọn</button></form><p class="muted">Năm học bắt đầu từ 05/09 và kết thúc vào 30/06 năm sau.</p>`:''}`:''}</section><div data-management-modules></div>`;
-      if(year&&admin){
-        const panel=content.querySelector('.portal-panel');
-        panel.insertAdjacentHTML('beforeend',`<details data-management-create-class><summary>Thêm lớp vào năm học ${e(selectedYear)}</summary><p class="muted">Các lớp được thêm sẽ xuất hiện trong lịch sự kiện, sổ điểm và xếp/chuyển lớp. Học sinh cần được xếp vào lớp trước khi nhập điểm.</p>${form('class','Thêm lớp',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+input('classCode','Mã lớp')+input('name','Tên lớp')+'<label>Khối<select name="gradeLevel" required><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>')}</details>`);
-      }
-      disposeManagement=mountSchoolManagement(content.querySelector('[data-management-modules]'),{schoolId,classes,admin,homeroomClassIds:homeroomIds});
-      if(year&&admin)content.insertAdjacentHTML('beforeend',form('term','Thêm học kỳ',`<input type="hidden" name="academicYearId" value="${id(year.id)}">`+`<label>Học kỳ (năm.kỳ)<input name="name" required pattern="${yearOptions.find(y=>y.code===selectedYear).start}\\.[12]" placeholder="${yearOptions.find(y=>y.code===selectedYear).start}.1"></label>`+input('startDate','Bắt đầu','date')+input('endDate','Kết thúc','date')));
-      if(admin&&!year)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Thêm học kỳ</h2><p>Tạo năm học đã chọn trước khi thêm học kỳ.</p></section>');
-      if(admin&&!transferClasses.length)content.insertAdjacentHTML('beforeend','<section class="portal-panel"><h2>Xếp hoặc chuyển lớp</h2><p>Chưa có lớp trong năm học đã chọn.</p></section>');
-      if(year&&transferClasses.length)content.insertAdjacentHTML('beforeend',form('enrollment','Xếp hoặc chuyển lớp',input('email','Email học sinh','email')+select('classId','Lớp',transferClasses)+input('reason','Lý do')));
-    } else if (route === "assignments") {
+    if (route === "assignments") {
       const data = await request(schoolUrl("/assignments"));
       if (target.assignmentId) {
         data.items = data.items.filter(a => String(a.id) === String(target.assignmentId));
         if (!data.items.length) throw new Error('Bài được giao không tồn tại hoặc bạn không thuộc nhóm nhận.');
       }
-      content.innerHTML = `<section class="portal-panel"><h2>Nhiệm vụ học tập</h2>${list(data.items, (a) => `<article class="portal-record"><div><small>${e(a.subject)} · ${e(a.class_name)}</small><h3>${e(a.title)}</h3><p>${dt(a.open_at)} – ${dt(a.close_at)}</p></div>${button(staff ? "Kết quả" : "Mở bài", staff ? `data-platform-results="${id(a.id)}"` : `data-platform-start="${id(a.id)}"`)}</article>`)}</section>`;
-      if (staff) {
-        const [q, o] = await Promise.all([
-          request(schoolUrl("/questions")),
-          request(schoolUrl("/overview")),
-        ]);
-        content.innerHTML += form(
-          "assignment",
-          "Giao đề từ ngân hàng câu hỏi",
-          input("title", "Tên bài") +
-            select("classId", "Lớp", o.classes) +
-            input("openAt", "Mở bài (giờ Việt Nam)", "datetime-local") +
-            input("closeAt", "Đóng bài (giờ Việt Nam)", "datetime-local") +
-            input("durationMinutes", "Thời lượng phút", "number") +
-            `<fieldset><legend>Câu hỏi đã duyệt</legend>${
-              q.items
-                .filter((q) => q.status === "approved")
-                .map(
-                  (q) =>
-                    `<label class="portal-check"><input type="checkbox" name="questionIds" value="${id(q.id)}">${e(q.stem)}<span>Điểm</span><input type="number" name="points_${id(q.id)}" min="0.25" max="100" step="0.25" value="1" style="width:80px"></label>`,
-                )
-                .join("") || "<p>Hãy thêm và duyệt câu hỏi trước.</p>"
-            }</fieldset>`,
-          "Phát hành bài",
-        );
-      }
+      content.innerHTML = `<section class="portal-panel"><h2>Nhiệm vụ học tập</h2>${list(data.items, (a) => `<article class="portal-record"><div><small>${e(a.subject)} · ${e(a.class_name)}</small><h3>${e(a.title)}</h3><p>${dt(a.open_at)} – ${dt(a.close_at)}</p></div>${button("Mở bài", `data-platform-start="${id(a.id)}"`)}</article>`)}</section>`;
     } else {
       const data = await request(schoolUrl("/analytics"));
       content.innerHTML = `<section class="portal-panel"><h2>${staff ? "Kết quả trong phạm vi phụ trách" : "Nhìn lại hành trình học tập"}</h2><p class="muted">Tỷ lệ đúng được tính từ các câu đã chấm. Đây là tín hiệu luyện tập, chưa phải kết luận năng lực.</p>${list(data.topics, (t) => `<article class="portal-record"><div><strong>${e(t.name)}</strong><p>${t.observations} câu đã chấm · ${t.correct} câu đúng</p><p>${Number(t.observations) < 5 ? "Chưa đủ dữ liệu để nhận định." : Number(t.correct) / Number(t.observations) < 0.7 ? "Nên ôn lại chuyên đề và luyện thêm." : "Tiếp tục ôn tập để củng cố kiến thức."}</p></div><strong>${Math.round((Number(t.correct) / Math.max(1, Number(t.observations))) * 100)}%</strong>${!staff ? button("Luyện chuyên đề", `data-platform-practice="${id(t.id)}"`) : ""}</article>`, "Chưa có dữ liệu từng câu hỏi. Kết quả cũ vẫn xem được trong tài khoản và bài kiểm tra.")}<button class="button secondary" data-route="account-center">Mở lịch sử học tập hiện có</button></section>`;
@@ -337,10 +263,8 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
   container.addEventListener(
     "change",
     (event) => {
-      if(event.target.matches("[data-management-year]")){selectedYear=event.target.value;render().catch(renderError);}
       if (event.target.matches("[data-platform-school]")) {
         schoolId = event.target.value;
-        selectedYear="";
         render().catch(renderError);
       }
     },
@@ -350,50 +274,6 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     "click",
     async (event) => {
       try {
-        const author = event.target.closest("[data-platform-ai-author]");
-        if (author) {
-          sessionStorage.setItem(
-            "maihoc:ai-author-draft",
-            "Tôi là giáo viên. Hãy gợi ý một câu hỏi THPT, nêu chuyên đề, yêu cầu cần đạt, đáp án, giải thích và các điểm cần giáo viên kiểm tra trước khi duyệt. Nội dung chỉ là bản nháp. Chủ đề: ",
-          );
-          onNavigate("ai-solver");
-          return;
-        }
-        const revise = event.target.closest("[data-platform-revise]");
-        if (revise) {
-          const data = await request(schoolUrl("/questions"));
-          const q = data.items.find(
-            (q) => String(q.id) === revise.dataset.platformRevise,
-          );
-          const target = container.querySelector(
-            "[data-platform-form=question]",
-          );
-          for (const [name, value] of Object.entries({
-            subject: q.subject,
-            grade: q.grade,
-            type: q.type,
-            stem: q.stem,
-            choices: q.choices.join("\n"),
-            answer: q.answer,
-            curriculumNodeId: q.curriculum_node_id,
-            source: q.source,
-          })) {
-            if (target.elements[name]) target.elements[name].value = value;
-          }
-          let previous = target.elements.previousVersionId;
-          if (!previous) {
-            previous = document.createElement("input");
-            previous.type = "hidden";
-            previous.name = "previousVersionId";
-            target.append(previous);
-          }
-          previous.value = q.id;
-          target.scrollIntoView({ behavior: "smooth" });
-          status(
-            "Đang soạn phiên bản mới; nội dung đã phát hành được giữ nguyên.",
-          );
-          return;
-        }
         const practice = event.target.closest("[data-platform-practice]");
         if (practice) {
           const data = await request(schoolUrl("/practice"), {
@@ -403,26 +283,8 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
           await openAttempt(data.id);
           return;
         }
-        const approve = event.target.closest("[data-platform-approve]");
-        if (approve) {
-          await request(
-            schoolUrl(`/questions/${approve.dataset.platformApprove}/approve`),
-            { method: "POST", body: {} },
-          );
-          await render();
-        }
         const start = event.target.closest("[data-platform-start]");
         if (start) await openAttempt(start.dataset.platformStart);
-        const results = event.target.closest("[data-platform-results]");
-        if (results) {
-          const data = await request(
-            schoolUrl(
-              `/assignments/${results.dataset.platformResults}/results`,
-            ),
-          );
-          container.querySelector("[data-platform-content]").innerHTML =
-            `<section class="portal-panel"><h2>Kết quả bài được giao</h2><a class="button secondary small" href="${schoolUrl(`/assignments/${results.dataset.platformResults}/export`)}">Xuất bảng điểm CSV</a>${list(data.items, (r) => `<article class="portal-record"><div><strong>${e(r.student_name)}</strong><p>${e(r.status)} · ${dt(r.submitted_at)}</p></div><strong>${r.score == null ? "Chờ chấm" : e(r.score) + " / " + e(r.scale)}</strong>${r.status === "pending_grade" ? `<form data-platform-grade="${id(r.id)}">${input("score", "Điểm tổng", "number")}${input("feedback", "Nhận xét")}<button class="button secondary small">Lưu điểm</button></form>` : ""}</article>`)}</section>`;
-        }
       } catch (err) {
         status(err.message);
       }
@@ -435,7 +297,7 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
       const target = event.target;
       if (
         !target.matches(
-          "[data-platform-form], [data-attempt-form], [data-platform-grade]",
+          "[data-attempt-form]",
         )
       )
         return;
@@ -468,52 +330,6 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
             `<section class="portal-panel"><h2>${data.status === "pending_grade" ? "Đang chờ giáo viên chấm" : `Kết quả ${data.score} / ${data.scale}`}</h2><button class="button primary" data-route="school-analytics">Xem kết quả theo chuyên đề</button></section>`;
           return;
         }
-        const body = Object.fromEntries(new FormData(target));
-        const kind = target.dataset.platformForm;
-        if(kind==='year')Object.assign(body,schoolYearPayload(body.code));
-        if (target.dataset.platformGrade) {
-          await request(
-            schoolUrl(`/attempts/${target.dataset.platformGrade}/grade`),
-            { method: "POST", body },
-          );
-          status("Đã lưu điểm và nhật ký chỉnh sửa.");
-          return;
-        }
-        const paths = {
-          school: "/api/platform/schools",
-          year: schoolUrl("/years"),
-          class: schoolUrl("/classes"),
-          member: schoolUrl("/members"),
-          enrollment: schoolUrl("/enrollments"),
-          teacher: schoolUrl("/teachers"),
-          term: schoolUrl("/terms"),
-          course: schoolUrl("/courses"),
-          import: schoolUrl("/import"),
-          question: schoolUrl("/questions"),
-          topic: schoolUrl("/curriculum"),
-          assignment: schoolUrl("/assignments"),
-        };
-        if (kind === "assignment") {
-          body.questionIds = new FormData(target).getAll("questionIds");
-          body.points = Object.fromEntries(
-            body.questionIds.map((id) => [id, body[`points_${id}`] || 1]),
-          );
-        }
-        if (kind === "question")
-          body.choices = body.choices
-            .split("\n")
-            .map((x) => x.trim())
-            .filter(Boolean);
-        if (kind === "import")
-          body.emails = body.emails
-            .split(/[\n,;]/)
-            .map((x) => x.trim())
-            .filter(Boolean);
-        if (body.openAt) body.openAt = vietnamScheduleIso(body.openAt);
-        if (body.closeAt) body.closeAt = vietnamScheduleIso(body.closeAt);
-        await request(paths[kind], { method: "POST", body });
-        await render();
-        status("Đã lưu thành công.");
       } catch (err) {
         status(err.message);
       } finally {
@@ -527,7 +343,6 @@ export function mountPortal(container, route, user, onNavigate, target = {}) {
     controller.abort();
     disposeAdvisor();
     disposeEvidence();
-    disposeManagement();
     clearInterval(saveTimer);
   };
 }

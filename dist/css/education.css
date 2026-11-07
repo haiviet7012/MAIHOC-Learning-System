@@ -2119,10 +2119,3 @@ html { scrollbar-gutter: stable; }
 #register-dialog .teacher-registration-profile input:is([type=checkbox],[type=radio]) { appearance: auto; width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; flex: 0 0 18px; accent-color: #123b70; }
 #register-dialog .teacher-registration-profile select { width: 100%; min-height: 44px; }
 @media(max-width:400px) { #register-dialog .teacher-choice-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
-
-.school-management-stack { display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; width: 100%; min-width: 0; }
-.school-management-stack > *, .school-management-stack .portal-panel { width:100%; min-width:0; margin:0; box-sizing:border-box; }
-.school-management-stack .portal-panel { display:grid; gap:16px; padding:24px; }
-.school-management-stack label { display:grid; gap:8px; }
-.school-management-stack form { display:grid; gap:16px; }
-.school-management-stack select,.school-management-stack input,.school-management-stack textarea { max-width:100%; }

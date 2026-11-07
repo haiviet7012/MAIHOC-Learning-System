@@ -27,7 +27,7 @@ Như vậy có hai module nghiệp vụ mới; sidebar thêm bốn lối vào v�
 
 Học sinh thấy: Bài được giao; Kiểm tra và luyện thi; Thời khóa biểu; Lớp của bạn; Thí nghiệm; Phòng học School; Cố vấn AI; Số hóa đề AI; Vở học AI; Kết quả học tập; IELTS hiện có. Các mục quản trị và ngân hàng câu hỏi không cấp quyền chỉnh sửa cho học sinh.
 
-Giáo viên dùng cùng các công cụ phù hợp vai trò; giữ Giao và quản lý bài, Ngân hàng câu hỏi, Cố vấn giảng dạy, Kết quả học tập. Trong Số hóa đề AI có khu vực duyệt và xuất bản; trong Kết quả học tập có tab Nhóm phụ đạo.
+Giáo viên dùng cùng các công cụ phù hợp vai trò; giữ Ngân hàng câu hỏi, Cố vấn giảng dạy, Kết quả học tập. Trong Số hóa đề AI có khu vực duyệt và xuất bản; trong Kết quả học tập có tab Nhóm phụ đạo.
 
 ## 3. Quyền lợi và phân quyền
 

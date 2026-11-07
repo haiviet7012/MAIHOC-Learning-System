@@ -9,9 +9,7 @@ const paths = {
   'school-ielts': '/school/ielts',
   home: "/learning",
   school: "/school/classes",
-  organization: "/school",
   "question-bank": "/school/question-bank",
-  "assignment-management": "/school/assignment-management",
   assignments: "/school/assignments",
   "school-analytics": "/school/progress",
   timetable: "/school/timetable",
@@ -49,6 +47,7 @@ export function routeUrl(state) {
     return `/learning/documents/${encodeURIComponent(state.docId)}`;
   if (state.route === "school-class")
     return `/school/classes/${encodeURIComponent(state.classCode)}`;
+  if (["organization", "assignment-management"].includes(state.route)) return paths.school;
   const base = paths[state.route];
   if (base) return base;
   const query = new URLSearchParams({
@@ -65,12 +64,14 @@ export function parseRoute(url) {
   const examRoom = path.match(/^\/learning\/national-exams\/([^/]+)\/room$/);
   if (examRoom) return { route: 'exam-room-view', examDocId: decodeURIComponent(examRoom[1]), examOrigin: 'national-exam-hub' };
   if (path.startsWith('/school/rooms/')) return {route:'school-rooms', classroomCode:decodeURIComponent(path.slice('/school/rooms/'.length))};
+  if (["organization", "assignment-management"].includes(url.searchParams.get("route"))) return { route: "school" };
   if (url.searchParams.has("route"))
     return {
       route: url.searchParams.get("route"),
       subject: url.searchParams.get("subject") || "Toán",
       grade: url.searchParams.get("grade") || "10",
     };
+  if (path === "/school" || path === "/school/assignment-management") return { route: "school" };
   if (path === '/school/announcements') return { route: 'school-announcements', announcementId: null };
   if (path.startsWith('/school/ielts/')) return { route: 'ielts-skill', subject: 'IELTS', ieltsSkill: decodeURIComponent(path.slice('/school/ielts/'.length)) };
   if (path.startsWith('/school/announcements/')) return { route: 'school-announcements', announcementId: decodeURIComponent(path.slice(22)) };

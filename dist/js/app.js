@@ -44,7 +44,7 @@ const state = { route: standaloneStudentProgress ? "student-progress" : "home", 
 Object.assign(state, standaloneStudentProgress ? {} : parseRoute(new URL(window.location.href)));
 let currentUser = null;
 let authResolved = false;
-const schoolHomeRoute = () => canAccessSchool(currentUser) ? "organization" : "school-plans";
+const schoolHomeRoute = () => canAccessSchool(currentUser) ? "school" : "school-plans";
 const AUTH_SYNC_STORAGE_KEY = "maihoc:auth-session-change";
 let authSyncChannel = null;
 let authSyncRequest = null;
@@ -963,7 +963,7 @@ function render() {
     if (workspaceSwitch) {
         const targetSpace = sidebarSpace === 'school' ? 'learning' : 'school';
         const targetRoute = targetSpace === 'school'
-            ? (authResolved ? schoolHomeRoute() : 'organization')
+            ? (authResolved ? schoolHomeRoute() : 'school')
             : 'home';
         const targetLabel = targetSpace === 'school' ? 'School' : 'Learning';
         workspaceSwitch.dataset.workspaceTarget = targetSpace;
@@ -1054,7 +1054,7 @@ function render() {
         state.newTimetable = false;
         activePortalCleanup = mountTimetable(view, currentUser, { createNew });
     }
-    else if (['organization','question-bank','assignments','assignment-management','school-analytics'].includes(state.route)) {
+    else if (['question-bank','assignments','school-analytics'].includes(state.route)) {
         activePortalCleanup = mountPortal(view, state.route, currentUser, go, state);
     }
     else if (state.route === "physics-formulas") {
@@ -1075,7 +1075,7 @@ function render() {
     }
     else if (["ai-solver", "school-tutor"].includes(state.route)) {
         view.innerHTML = "";
-        activeUniversalAiCleanup = mountUniversalAiSolver(view, { initialPrompt: state.aiQuestionContext || '', onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "organization" : r, p) });
+        activeUniversalAiCleanup = mountUniversalAiSolver(view, { initialPrompt: state.aiQuestionContext || '', onNavigate: (r, p) => go(state.route === "school-tutor" && r === "home" ? "school" : r, p) });
         state.aiQuestionContext = null;
     }
     else if (state.route === "subject") {
@@ -2113,7 +2113,7 @@ $("#login-form").addEventListener("submit", async (event) => {
         toast("Đăng nhập thành công.", "success");
         if (emailDestination && canAccessSchool(currentUser)) go(emailDestination.route, emailDestination);
         else if (loginWorkspace === "school") go(schoolHomeRoute());
-        else go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "organization" : "assignment-management") : "home");
+        else go(currentUser.role === "admin" ? (currentUser.isSuperAdmin ? "school" : "tests") : "home");
     }
     catch (err) {
         error.textContent = err.message;
@@ -2148,7 +2148,7 @@ $("#register-form").addEventListener("submit", async (event) => {
         closeDialog("register-dialog");
         form.reset();
         toast("Tạo tài khoản thành công.", "success");
-        go(currentUser.isTeacher ? "assignment-management" : "home");
+        go(currentUser.isTeacher ? "tests" : "home");
     }
     catch (err) {
         error.textContent = err.message;
