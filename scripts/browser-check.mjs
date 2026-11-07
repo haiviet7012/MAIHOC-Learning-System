@@ -1,3 +1,4 @@
+import { vietnamDateTimeInput, vietnamScheduleIso } from '../js/platform/vietnam-time.js';
 import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,7 @@ const previewPassword = randomUUID();
 const preview = spawn(
   process.execPath,
   [fileURLToPath(new URL("./dev-preview.mjs", import.meta.url))],
-  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, MAIHOC_PREVIEW_PASSWORD: previewPassword } },
+  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, TZ: "UTC", MAIHOC_PREVIEW_PASSWORD: previewPassword } },
 );
 await new Promise((resolve, reject) => {
   let output = "";
@@ -29,6 +30,7 @@ const directory = new URL("../test-results/", import.meta.url);
 await mkdir(directory, { recursive: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1050 },
+  timezoneId: "UTC",
 });
 let page = await context.newPage();
 const errors = [];
@@ -229,12 +231,23 @@ try {
   const assignmentForm=page.locator('[data-platform-form="assignment"]');
   await assignmentForm.locator('[name="title"]').fill('Bài kiểm tra pilot');
   await assignmentForm.locator('[name="classId"]').selectOption({label:'Lớp 12A1'});
-  const localInput=date=>{const d=new Date(date);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
-  await assignmentForm.locator('[name="openAt"]').fill(localInput(Date.now()-60000));
-  await assignmentForm.locator('[name="closeAt"]').fill(localInput(Date.now()+3600000));
+  // These controls are explicitly Vietnam wall time, even on UTC CI runners.
+  const openInput = vietnamDateTimeInput(new Date(Date.now() - 60000));
+  const closeInput = vietnamDateTimeInput(new Date(Date.now() + 3600000));
+  await assignmentForm.locator('[name="openAt"]').fill(openInput);
+  await assignmentForm.locator('[name="closeAt"]').fill(closeInput);
   await assignmentForm.locator('[name="durationMinutes"]').fill('30');
   await assignmentForm.locator('[name="questionIds"]').check();
+  const assignmentCreated = page.waitForResponse(response => response.url() === bankApi + '/assignments' && response.request().method() === 'POST');
   await assignmentForm.locator('button[type="submit"]').click();
+  const publishedResponse = await assignmentCreated;
+  assert.equal(publishedResponse.status(), 201, await publishedResponse.text());
+  const published = await publishedResponse.json();
+  assert.equal(new Date(published.open_at).toISOString(), vietnamScheduleIso(openInput));
+  assert.equal(new Date(published.close_at).toISOString(), vietnamScheduleIso(closeInput));
+  assert.ok(new Date(published.open_at).getTime() <= Date.now(), 'The test assignment must already be open');
+  assert.ok(new Date(published.close_at).getTime() > Date.now(), 'The test assignment must not be closed');
+
   await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
   const linkedAssignment = await page.locator('[data-platform-results]').getAttribute('data-platform-results');
   const linkedSchool = await page.locator('[data-platform-school]').inputValue();
@@ -246,7 +259,10 @@ try {
   await page.locator('#education-user').filter({hasText:'Nguyễn Minh Anh'}).waitFor();
   await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
   assert.equal(new URL(page.url()).pathname, `/school/assignments/${linkedAssignment}`);
+  const attemptStarted = page.waitForResponse(response => response.url() === `${origin}/api/platform/assignments/${linkedAssignment}/start` && response.request().method() === 'POST');
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
+  const startResponse = await attemptStarted;
+  assert.equal(startResponse.status(), 200, await startResponse.text());
   await page.locator('[data-attempt-form] textarea').fill('1/2');
   await page.reload({waitUntil:'networkidle'}); await dismissDevelopmentNotice(page);
   await page.getByRole('button',{name:'Mở bài',exact:true}).click();
