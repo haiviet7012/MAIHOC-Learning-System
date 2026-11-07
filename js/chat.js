@@ -7,6 +7,7 @@ import { canAccessSchool } from './platform/school-access.js';
 (function () {
   let socket = null;
   let currentUser = null;
+  let authRequestVersion = 0;
   let activeTab = "global"; // "global" | "direct"
   let activeDirectConv = null; // { id, partner: { id, name, isOnline } }
   let conversationsMap = new Map(); // convId => convObject
@@ -502,15 +503,23 @@ import { canAccessSchool } from './platform/school-access.js';
     }
   });
 
-  function schoolChatAvailable() { return document.body.hasAttribute('data-school-ui') && canAccessSchool(currentUser); }
+  function schoolChatAvailable() { return canAccessSchool(currentUser); }
   function syncChatSpace() {
     if (!dom.tabDirect) return;
     dom.tabDirect.hidden = false;
     if (!schoolChatAvailable()) switchTab('global');
   }
   window.addEventListener('maihoc-route-changed', syncChatSpace);
-  function switchTab(tab) {
-    if (tab === 'direct' && !schoolChatAvailable()) { window.location.assign('/school/plans'); return; }
+  async function switchTab(tab) {
+    if (tab === 'direct') {
+      // Grants may arrive while this page is already open. Check the current
+      // server entitlement before deciding whether to show the upgrade page.
+      if (!await checkAuthAndInit()) {
+        dom.statusText.textContent = 'Chưa kiểm tra được quyền School. Vui lòng thử lại.';
+        return false;
+      }
+      if (!schoolChatAvailable()) { window.location.assign('/school/plans'); return false; }
+    }
     activeTab = tab;
     dom.tabGlobal.classList.toggle("active", tab === "global");
     dom.tabDirect.classList.toggle("active", tab === "direct");
@@ -542,6 +551,7 @@ import { canAccessSchool } from './platform/school-access.js';
       }
       updateHeaderStatus();
     }
+    return true;
   }
 
   function updateHeaderStatus() {
@@ -1065,15 +1075,10 @@ import { canAccessSchool } from './platform/school-access.js';
   // Open a direct chat from the online-users dashboard.
   window.addEventListener("maihoc-open-direct-chat", async (event) => {
     const targetUserId = Number(event.detail?.userId);
-    if (!targetUserId) return;
-    if (!currentUser) {
-      dom.guestNotice.hidden = false;
-      return;
-    }
+    if (!targetUserId || !await switchTab("direct")) return;
     isWindowOpen = true;
     dom.window.hidden = false;
     dom.guestNotice.hidden = true;
-    switchTab("direct");
     await startDirectChatWithUser(targetUserId);
   });
 
@@ -1081,13 +1086,17 @@ import { canAccessSchool } from './platform/school-access.js';
   // Auth State Listener
   // ----------------------------------------------------
   async function checkAuthAndInit() {
+    const requestVersion = ++authRequestVersion;
     try {
-      const res = await fetch("/api/auth/me", { credentials: "same-origin" });
+      const res = await fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" });
+      if (!res.ok) throw new Error('Không thể kiểm tra quyền tài khoản.');
       const data = await res.json();
+      if (requestVersion !== authRequestVersion) return false;
+      const previousId = currentUser?.id;
       currentUser = data.user || null;
 
       if (currentUser) {
-        initSocket();
+        if (!socket || Number(previousId) !== Number(currentUser.id)) initSocket();
         dom.launcher.hidden = false;
       } else {
         clearPendingGlobalAttachment();
@@ -1101,9 +1110,12 @@ import { canAccessSchool } from './platform/school-access.js';
         unreadCounts = { global: 0, directTotal: 0 };
         updateBadgeUI();
       }
+      syncChatSpace();
+      return true;
     } catch {
-      currentUser = null;
-      clearPendingGlobalAttachment();
+      // A transient API failure must not turn a granted account into a Free
+      // account or redirect it to checkout. The next click can retry.
+      return false;
     }
   }
 
@@ -1111,13 +1123,14 @@ import { canAccessSchool } from './platform/school-access.js';
   document.addEventListener("DOMContentLoaded", () => {
     buildWidget();
     checkAuthAndInit();
-    syncChatSpace();
   });
 
   // Re-check auth whenever user logs in or out in MAI HỌC
   window.addEventListener("maihoc-auth-changed", () => {
     checkAuthAndInit();
-    syncChatSpace();
+  });
+  window.addEventListener("maihoc-user-updated", () => {
+    checkAuthAndInit();
   });
 })();
 
