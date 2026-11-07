@@ -74,6 +74,10 @@ await fixture.db.query(
 await fixture.db.query(
   "INSERT INTO notifications(user_id,type,title,message) VALUES(100,'learning','Chào mừng đến lớp học','Hãy bắt đầu với học liệu và bài được giao.'),(100,'learning','Kiến thức luôn được kết nối','Theo dõi tiến trình sau mỗi bài làm.')",
 );
+if (process.env.MAIHOC_PREVIEW_NATIVE_ASSIGNMENT === '1') {
+  const { seedNativeAssessment } = await import('./native-assessment-preview-data.mjs');
+  await seedNativeAssessment(fixture.db, school.id, cls.id);
+}
 if (process.env.MAIHOC_PREVIEW_ADVISOR_DATA === '1') {
   const { seedAdvisorPreview } = await import('./advisor-preview-data.mjs');
   await seedAdvisorPreview(fixture.db, school.id, year.id, cls.id);

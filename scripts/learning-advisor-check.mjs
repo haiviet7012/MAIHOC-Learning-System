@@ -135,7 +135,7 @@ try {
   await page.locator("#menu-toggle").click();
   assert.equal((await page.locator("#workspace-switch").textContent()).trim(), "School");
   await page.locator("#workspace-switch").click();
-  await page.waitForURL(origin + "/school");
+  await page.waitForURL(origin + "/school/classes");
   await page
     .locator('.education-sidebar nav [data-route="school-analytics"]')
     .click();

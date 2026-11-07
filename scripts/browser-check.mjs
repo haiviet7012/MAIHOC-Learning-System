@@ -1,4 +1,3 @@
-import { vietnamDateTimeInput, vietnamScheduleIso } from '../js/platform/vietnam-time.js';
 import { dismissDevelopmentNotice } from './browser-notices.mjs';
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from 'node:url';
@@ -10,7 +9,7 @@ const previewPassword = randomUUID();
 const preview = spawn(
   process.execPath,
   [fileURLToPath(new URL("./dev-preview.mjs", import.meta.url))],
-  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, TZ: "UTC", MAIHOC_PREVIEW_PASSWORD: previewPassword } },
+  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, TZ: "UTC", MAIHOC_PREVIEW_NATIVE_ASSIGNMENT: "1", MAIHOC_PREVIEW_PASSWORD: previewPassword } },
 );
 await new Promise((resolve, reject) => {
   let output = "";
@@ -41,7 +40,7 @@ await page.route(/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr/, (route) =>
 );
 const origin = "http://127.0.0.1:4173";
 async function clickSidebar(route) {
-  const space = ['assignments','assignment-management','school-analytics','tests','organization','school','question-bank'].includes(route) ? 'school' : 'learning';
+  const space = ['assignments','school-analytics','tests','school','question-bank'].includes(route) ? 'school' : 'learning';
   const activeSpace = await page.locator('body').evaluate(body => body.hasAttribute('data-school-ui') ? 'school' : 'learning');
   if (activeSpace !== space) {
     const pageCount = context.pages().length;
@@ -90,7 +89,6 @@ try {
   const links = [
     "study-rooms",
     "assignments",
-    "organization",
     "analytics",
     "ai-solver",
     "school",
@@ -227,30 +225,12 @@ try {
   const question = await questionResponse.json();
   const approval = await page.request.post(bankApi + `/questions/${question.id}/approve`, { headers: { Origin: origin }, data: {} });
   assert.ok(approval.ok(), await approval.text());
-  await clickSidebar("assignment-management");
-  const assignmentForm=page.locator('[data-platform-form="assignment"]');
-  await assignmentForm.locator('[name="title"]').fill('Bài kiểm tra pilot');
-  await assignmentForm.locator('[name="classId"]').selectOption({label:'Lớp 12A1'});
-  // These controls are explicitly Vietnam wall time, even on UTC CI runners.
-  const openInput = vietnamDateTimeInput(new Date(Date.now() - 60000));
-  const closeInput = vietnamDateTimeInput(new Date(Date.now() + 3600000));
-  await assignmentForm.locator('[name="openAt"]').fill(openInput);
-  await assignmentForm.locator('[name="closeAt"]').fill(closeInput);
-  await assignmentForm.locator('[name="durationMinutes"]').fill('30');
-  await assignmentForm.locator('[name="questionIds"]').check();
-  const assignmentCreated = page.waitForResponse(response => response.url() === bankApi + '/assignments' && response.request().method() === 'POST');
-  await assignmentForm.locator('button[type="submit"]').click();
-  const publishedResponse = await assignmentCreated;
-  assert.equal(publishedResponse.status(), 201, await publishedResponse.text());
-  const published = await publishedResponse.json();
-  assert.equal(new Date(published.open_at).toISOString(), vietnamScheduleIso(openInput));
-  assert.equal(new Date(published.close_at).toISOString(), vietnamScheduleIso(closeInput));
-  assert.ok(new Date(published.open_at).getTime() <= Date.now(), 'The test assignment must already be open');
-  assert.ok(new Date(published.close_at).getTime() > Date.now(), 'The test assignment must not be closed');
-
-  await page.getByRole('heading',{name:'Bài kiểm tra pilot',exact:true}).waitFor();
-  const linkedAssignment = await page.locator('[data-platform-results]').getAttribute('data-platform-results');
-  const linkedSchool = await page.locator('[data-platform-school]').inputValue();
+  assert.equal(await page.locator('.education-sidebar [data-route="assignment-management"],.education-sidebar [data-route="organization"]').count(), 0);
+  await clickSidebar('school');
+  await page.getByRole('heading', {name:'Lớp của bạn',exact:true}).waitFor();
+  const existing = await page.request.get(bankApi + '/assignments').then(r=>r.json());
+  const linkedAssignment = existing.items.find(a=>a.title==='Bài kiểm tra pilot').id;
+  const linkedSchool = questionSchoolId;
   await page.locator('#logout-button').click();
   await page.goto(`${origin}/school/assignments/${linkedAssignment}?schoolId=${linkedSchool}`); await dismissDevelopmentNotice(page);
   await page.getByRole('heading',{name:'Đăng nhập để xem nội dung'}).waitFor();

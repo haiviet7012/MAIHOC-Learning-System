@@ -92,6 +92,16 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
       data: await response.json().catch(() => ({})),
     };
   };
+  // Existing assignments are fixtures: the retired publishing API is no longer used.
+  async function existingAssignment(body) {
+    const assessment = (await db.query('INSERT INTO assessments(school_id,title,created_by,subject) VALUES($1,$2,3,$3) RETURNING id', [schoolA.id, body.title, 'Toán'])).rows[0];
+    for (const [position, questionId] of body.questionIds.entries()) {
+      const q = (await db.query('SELECT * FROM question_versions WHERE id=$1', [questionId])).rows[0];
+      await db.query('INSERT INTO assessment_items(school_id,assessment_id,question_version_id,position,points,snapshot) VALUES($1,$2,$3,$4,1,$5)', [schoolA.id, assessment.id, q.id, position, JSON.stringify({stem:q.stem,type:q.type,choices:q.choices,answer:q.answer,curriculumNodeId:q.curriculum_node_id})]);
+    }
+    const data = (await db.query('INSERT INTO assessment_assignments(school_id,assessment_id,class_id,open_at,close_at,duration_minutes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *', [schoolA.id, assessment.id, body.classId, body.openAt, body.closeAt, body.durationMinutes])).rows[0];
+    return {data};
+  }
   let schoolA, schoolB, yearA, classA, classB, question, assignment, attempt;
   try {
     await t.test(
@@ -150,6 +160,11 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
         })
       ).data;
       assert.ok(schoolA.id && schoolB.id);
+    });
+    await t.test('retired management endpoints return 404 for an administrator', async () => {
+      for (const [path, method] of [['/management','GET'],['/management/reports','GET'],['/management/grade','POST'],['/management/guardians','POST'],['/assignments','POST'],['/assignments/1/results','GET'],['/assignments/1/export','GET']]) {
+        assert.equal((await request(`/api/platform/schools/${schoolA.id}${path}`, method, method === 'POST' ? {} : undefined)).status,404,path);
+      }
     });
     await t.test(
       "same class code in different schools stays isolated",
@@ -370,7 +385,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
               3,
             )
           ).status,
-          400,
+          404,
         );
         await request(
           `/api/platform/schools/${schoolA.id}/questions/${question.id}/approve`,
@@ -378,18 +393,8 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
           {},
           3,
         );
-        assignment = (
-          await request(
-            `/api/platform/schools/${schoolA.id}/assignments`,
-            "POST",
-            body,
-            3,
-          )
-        ).data;
+        assignment = (await existingAssignment(body)).data;
         assert.ok(assignment.id);
-        const emailTargets = (await db.query("SELECT user_id,link FROM school_mail_outbox WHERE event_key=$1", [`assignment:${assignment.id}`])).rows;
-        assert.deepEqual(emailTargets.map(r => Number(r.user_id)), [2]);
-        assert.equal(emailTargets[0].link, `/school/assignments/${assignment.id}?schoolId=${schoolA.id}`);
         const snapshot = (
           await db.query(
             "SELECT snapshot FROM assessment_items WHERE assessment_id=$1",
@@ -406,7 +411,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
               5,
             )
           ).status,
-          403,
+          404,
         );
       },
     );
@@ -589,33 +594,11 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
           2,
         );
         assert.equal(Number(analytics.data.topics[0].correct), 1);
-        assert.equal(
-          (
-            await request(
-              `/api/platform/schools/${schoolA.id}/attempts/${attempt.attempt.id}/grade`,
-              "POST",
-              { score: 8, feedback: "Feedback" },
-              5,
-            )
-          ).status,
-          403,
-        );
-        assert.equal(
-          (
-            await request(
-              `/api/platform/schools/${schoolA.id}/attempts/${attempt.attempt.id}/grade`,
-              "POST",
-              { score: 8, feedback: "Feedback" },
-              3,
-            )
-          ).status,
-          200,
-        );
-        const log = (
-          await db.query("SELECT detail FROM audit_logs WHERE action='grade'")
-        ).rows[0];
-        assert.equal(Number(log.detail.before.score), 10);
-        assert.equal(log.detail.after.score, 8);
+        // Retired management endpoints cannot mutate historical results.
+        for (const user of [1, 3, 5]) {
+          assert.equal((await request(`/api/platform/schools/${schoolA.id}/attempts/${attempt.attempt.id}/grade`, 'POST', {score:8,feedback:'Retired'}, user)).status, 404);
+        }
+        assert.equal(Number((await db.query('SELECT score FROM assessment_results WHERE attempt_id=$1', [attempt.attempt.id])).rows[0].score), 10);
       },
     );
     await t.test(
@@ -671,9 +654,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
     await t.test(
       "native deadlines accept only acknowledged drafts after timeout",
       async () => {
-        const extra = await request(
-          `/api/platform/schools/${schoolA.id}/assignments`,
-          "POST",
+        const extra = await existingAssignment(
           {
             title: "Timeout",
             classId: classA.id,
@@ -682,7 +663,6 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
             closeAt: new Date(Date.now() + 3600000),
             durationMinutes: 30,
           },
-          3,
         );
         const a = (
           await request(
@@ -750,9 +730,7 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
           3,
         );
         const a = (
-          await request(
-            `/api/platform/schools/${schoolA.id}/assignments`,
-            "POST",
+          await existingAssignment(
             {
               title: "Đúng sai",
               classId: classA.id,
@@ -761,7 +739,6 @@ test("School/Learning PostgreSQL integration and legacy compatibility", async (t
               closeAt: new Date(Date.now() + 3600000),
               durationMinutes: 30,
             },
-            3,
           )
         ).data;
         const started = (

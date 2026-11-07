@@ -1,7 +1,5 @@
 import { uniqueQuestions } from '../../js/platform/question-identity.js';
 import { lockQuestionBank, assertQuestionIsNew } from './question-bank-policy.js';
-import { installManagement } from './management.js';
-import { enqueueSchoolNotice, schoolMailDate } from '../school-notifications.js';
 import { canAccessSchool } from '../../js/platform/school-access.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
@@ -12,7 +10,6 @@ import {
   classPermission,
   cleanAnswers,
   date,
-  scheduleDate,
   deadlineFor,
   fail,
   integer,
@@ -696,99 +693,6 @@ export function createPlatformRouter({
       res.json({ items });
     }),
   );
-  router.post(
-    "/schools/:schoolId/assignments",
-    wrap(async (req, res) => {
-      await school(req, ["school_admin", "teacher"]);
-      const sid = req.params.schoolId,
-        cls = integer(req.body.classId, "Lớp"),
-        ids = req.body.questionIds;
-      if (
-        !Array.isArray(ids) ||
-        !ids.length ||
-        ids.length > 100 ||
-        new Set(ids.map(String)).size !== ids.length
-      )
-        fail("Chọn từ 1 đến 100 câu hỏi khác nhau.");
-      const open = scheduleDate(req.body.openAt, "Mở bài"),
-        close = scheduleDate(req.body.closeAt, "Đóng bài");
-      if (close <= open) fail("Thời gian đóng phải sau thời gian mở.");
-      const duration = integer(req.body.durationMinutes, "Thời lượng", 1, 240);
-      const result = await db.transaction(async () => {
-        const questions = await rows(
-          db,
-          "SELECT * FROM question_versions WHERE school_id=$1 AND id=ANY($2::bigint[]) AND status='approved'",
-          [sid, ids.map((x) => integer(x, "Câu hỏi"))],
-        );
-        if (questions.length !== ids.length)
-          fail("Có câu hỏi chưa duyệt hoặc không thuộc trường.");
-        if (uniqueQuestions(questions).length !== questions.length) fail("Đề có câu hỏi trùng nội dung.", 409);
-        const subject = questions[0].subject;
-        if (
-          questions.some(
-            (q) => q.subject !== subject || q.grade !== questions[0].grade,
-          )
-        )
-          fail("Đề cần cùng môn và khối.");
-        await classPermission(db, req.user, sid, cls, { teach: true, subject });
-        const target = await one(
-          db,
-          "SELECT grade_level FROM classes WHERE school_id=$1 AND id=$2",
-          [sid, cls],
-        );
-        if (
-          !target ||
-          Number(target.grade_level) !== Number(questions[0].grade)
-        )
-          fail("Khối của lớp không khớp đề.");
-        const assessment = await one(
-          db,
-          "INSERT INTO assessments(school_id,title,created_by,subject) VALUES($1,$2,$3,$4) RETURNING id",
-          [sid, text(req.body.title, "Tên bài", 250), req.user.id, subject],
-        );
-        for (let i = 0; i < ids.length; i++) {
-          const points = Number(req.body.points?.[ids[i]] ?? 1);
-          if (!Number.isFinite(points) || points <= 0 || points > 100)
-            fail("Điểm mỗi câu phải lớn hơn 0 và không quá 100.");
-          const q = questions.find((q) => String(q.id) === String(ids[i]));
-          await db.query(
-            "INSERT INTO assessment_items(school_id,assessment_id,question_version_id,position,points,snapshot) VALUES($1,$2,$3,$4,$5,$6)",
-            [
-              sid,
-              assessment.id,
-              q.id,
-              i,
-              points,
-              JSON.stringify({
-                stem: q.stem,
-                type: q.type,
-                choices: q.choices,
-                answer: q.answer,
-                curriculumNodeId: q.curriculum_node_id,
-              }),
-            ],
-          );
-        }
-        const assignment = await one(
-          db,
-          "INSERT INTO assessment_assignments(school_id,assessment_id,class_id,open_at,close_at,duration_minutes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
-          [sid, assessment.id, cls, open, close, duration],
-        );
-        await audit(db, req.user, sid, "publish", "assignment", assignment.id, {
-          assessmentId: assessment.id,
-        });
-        const userIds = (await rows(db, `SELECT DISTINCT u.id FROM student_enrollments e
-          JOIN school_memberships m ON m.school_id=e.school_id AND m.user_id=e.student_id AND m.status='active' AND m.role='student'
-          JOIN users u ON u.id=e.student_id WHERE e.school_id=$1 AND e.class_id=$2 AND e.status='active'
-          AND u.role='user' AND u.account_type='school' AND COALESCE(u.admin_level,0)=0`, [sid, cls])).map(u => u.id);
-        await enqueueSchoolNotice(db, { eventKey: `assignment:${assignment.id}`, userIds,
-          title: `Bài được giao mới: ${req.body.title}`, message: `${req.user.name} giao bài môn ${subject}. Hạn nộp: ${schoolMailDate(close)}.`,
-          link: `/school/assignments/${assignment.id}?schoolId=${sid}` });
-        return assignment;
-      })();
-      res.status(201).json(result);
-    }),
-  );
   async function assignmentFor(id) {
     const a = await one(
       db,
@@ -1028,112 +932,6 @@ export function createPlatformRouter({
     }),
   );
   router.get(
-    "/schools/:schoolId/assignments/:assignmentId/results",
-    wrap(async (req, res) => {
-      await school(req, ["school_admin", "teacher"]);
-      const a = await assignmentFor(req.params.assignmentId);
-      if (String(a.school_id) !== String(req.params.schoolId))
-        fail("Không có bài này trong trường.", 404);
-      await classPermission(db, req.user, a.school_id, a.class_id, {
-        teach: true,
-        subject: a.subject,
-      });
-      res.json({
-        items: await rows(
-          db,
-          "SELECT a.id,a.status,a.submitted_at,u.name AS student_name,r.score,r.scale FROM assessment_attempts a JOIN users u ON u.id=a.student_id LEFT JOIN assessment_results r ON r.attempt_id=a.id WHERE a.assignment_id=$1 ORDER BY u.name",
-          [a.id],
-        ),
-      });
-    }),
-  );
-  router.get(
-    "/schools/:schoolId/assignments/:assignmentId/export",
-    wrap(async (req, res) => {
-      await school(req, ["school_admin", "teacher"]);
-      const a = await assignmentFor(req.params.assignmentId);
-      if (String(a.school_id) !== String(req.params.schoolId))
-        fail("Không có bài này trong trường.", 404);
-      await classPermission(db, req.user, a.school_id, a.class_id, {
-        teach: true,
-        subject: a.subject,
-      });
-      const results = await rows(
-        db,
-        "SELECT u.name,u.email,a.status,r.score,r.scale,a.submitted_at FROM assessment_attempts a JOIN users u ON u.id=a.student_id LEFT JOIN assessment_results r ON r.attempt_id=a.id WHERE a.assignment_id=$1 ORDER BY u.name",
-        [a.id],
-      );
-      const csv = (value) =>
-        '"' +
-        String(value ?? "")
-          .replace(/^[=+@-]/, "'$&")
-          .replaceAll('"', '""') +
-        '"';
-      const lines = [
-        ["Họ tên", "Email", "Trạng thái", "Điểm", "Thang điểm", "Nộp lúc"],
-        ...results.map((r) => [
-          r.name,
-          r.email,
-          r.status,
-          r.score,
-          r.scale,
-          r.submitted_at,
-        ]),
-      ];
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="assignment-${a.id}.csv"`,
-      );
-      res.setHeader("Cache-Control", "private, no-store");
-      res.send(
-        "\uFEFF" + lines.map((line) => line.map(csv).join(",")).join("\r\n"),
-      );
-    }),
-  );
-  router.post(
-    "/schools/:schoolId/attempts/:attemptId/grade",
-    wrap(async (req, res) => {
-      await school(req, ["school_admin", "teacher"]);
-      const score = Number(req.body.score);
-      if (!Number.isFinite(score) || score < 0 || score > 10)
-        fail("Điểm phải từ 0 đến 10.");
-      const feedback = text(req.body.feedback, "Nhận xét", 5000);
-      await db.transaction(async () => {
-        const attempt = await one(
-          db,
-          "SELECT * FROM assessment_attempts WHERE school_id=$1 AND id=$2 FOR UPDATE",
-          [req.params.schoolId, integer(req.params.attemptId, "Lượt làm")],
-        );
-        if (!attempt || attempt.status === "in_progress")
-          fail("Bài chưa nộp hoặc không thuộc trường.");
-        const a = await assignmentFor(attempt.assignment_id);
-        await classPermission(db, req.user, a.school_id, a.class_id, {
-          teach: true,
-          subject: a.subject,
-        });
-        const before = await one(
-          db,
-          "SELECT score,feedback FROM assessment_results WHERE attempt_id=$1",
-          [attempt.id],
-        );
-        await db.query(
-          "UPDATE assessment_results SET score=$2,feedback=$3,grading_version=grading_version+1,graded_by=$4,graded_at=now() WHERE attempt_id=$1",
-          [attempt.id, score, feedback, req.user.id],
-        );
-        await db.query(
-          "UPDATE assessment_attempts SET status='graded' WHERE id=$1",
-          [attempt.id],
-        );
-        await audit(db, req.user, a.school_id, "grade", "attempt", attempt.id, {
-          before,
-          after: { score, feedback },
-        });
-      })();
-      res.json({ ok: true });
-    }),
-  );
-  router.get(
     "/schools/:schoolId/analytics",
     wrap(async (req, res) => {
       const member = await school(req);
@@ -1197,12 +995,8 @@ export function createPlatformRouter({
       res.json(job);
     }),
   );
-  installManagement(router, { db });
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    if ((error.pgCode || error.code) === '42P01' && req.path.includes('/management')) {
-      return res.status(503).json({code:'SCHOOL_MANAGEMENT_NOT_READY',error:'Dữ liệu quản lý nhà trường chưa được khởi tạo đầy đủ. Vui lòng liên hệ quản trị trường để cập nhật hệ thống.'});
-    }
     const status =
       error.status ||
       (["23503", "23505", "23514", "22P02"].includes(error.pgCode || error.code)
